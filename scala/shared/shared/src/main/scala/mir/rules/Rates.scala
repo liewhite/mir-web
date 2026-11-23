@@ -9,7 +9,7 @@ import mir.data.{DropDef, ItemDef}
  */
 object Rates:
   /** 打怪经验倍数 */
-  val exp: Int = 10
+  val exp: Int = 100
   /** 非装备物品（金币、药、书、材料）的掉落概率倍数，最高 100% */
   val drop: Int = 20
   /** 高级装备（要求 20 级以上，或要求攻击/魔法/道术）的掉落概率下限 */

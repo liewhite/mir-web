@@ -94,8 +94,8 @@ object RulesSpec extends ZIOSpecDefault:
       }
     ),
     suite("经验与倍率")(
-      test("打怪经验 ×10，复活过的减半后取整") {
-        assertTrue(Rates.killExp(5, 1.0) == Exp(50L), Rates.killExp(5, 0.5) == Exp(20L))
+      test("打怪经验 ×100，复活过的减半后取整") {
+        assertTrue(Rates.killExp(5, 1.0) == Exp(500L), Rates.killExp(5, 0.5) == Exp(200L))
       },
       test("经验够了连升，扣掉每级要的；满级不再升") {
         val need1 = catalog.expToNext(1).get.value

@@ -28,7 +28,11 @@ object RulesGoldenSpec extends ZIOSpecDefault:
   private final case class DropCase(monster: MonsterName, item: ItemName, chance: Double)
   private given JsonDecoder[DropCase] = DeriveJsonDecoder.gen
 
+  private final case class TsRates(exp: Int, drop: Int, highEquipMin: Double, highEquipLevel: Int)
+  private given JsonDecoder[TsRates] = DeriveJsonDecoder.gen
+
   private final case class Golden(
+      rates: TsRates,
       levelAbility: List[List[LevelAbility]],
       items: List[ItemCase],
       stats: List[StatsCase],
@@ -73,6 +77,9 @@ object RulesGoldenSpec extends ZIOSpecDefault:
     Json.Obj("stat" -> Json.Str(stat), "value" -> Json.Num(r.value))
 
   def spec = suite("规则与 TS 版一致")(
+    test("倍率（rates.ts）") {
+      assertTrue(golden.rates == TsRates(Rates.exp, Rates.drop, Rates.highEquipMin, Rates.highEquipLevel))
+    },
     test("等级基础属性：三职业 1–60 级") {
       val diffs = for
         (rows, j) <- golden.levelAbility.zipWithIndex

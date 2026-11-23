@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import type { GameData, ItemDef } from '../../game/src/data/defs';
 import { computeStats, levelAbility, type Job } from '../../game/src/world/rules';
 import { itemEffects, itemKind, requirement } from '../../game/src/world/items';
-import { dropChance, isHighEquip } from '../../game/src/world/rates';
+import { RATES, dropChance, isHighEquip } from '../../game/src/world/rates';
 
 const [gameJson, out] = process.argv.slice(2) as [string, string];
 const data = JSON.parse(readFileSync(gameJson, 'utf8')) as GameData;
@@ -28,6 +28,7 @@ const statsCases = equips.map((it, i) => {
 });
 
 const golden = {
+  rates: RATES,
   levelAbility: jobs.map((j) => levels.map((lv) => levelAbility(j, lv))),
   items: data.items.map((d) => ({
     name: d.name, kind: itemKind(d), effects: itemEffects(d), requirement: requirement(d), highEquip: isHighEquip(d),
