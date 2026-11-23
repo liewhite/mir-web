@@ -29,8 +29,11 @@ object Main:
   def main(args: Array[String]): Unit =
     val local = new dom.URLSearchParams(dom.window.location.search).has("local")
     Lobby.status("读取游戏数据…")
+    // 素材要登录后才给，先登录再读数据（旧版留下的 cookie 新服务端不认，也会走到登录表单）
     val boot =
       for
+        _       <- if local then Future.unit else Lobby.ensureLogin()
+        _        = Lobby.status("读取游戏数据…")
         assets  <- Assets.load()
         text    <- assets.text("data/game.json")
         catalog <- Catalog.decode(text).fold(e => Future.failed(Exception(s"游戏数据有误：$e")), Future.successful)
@@ -103,11 +106,8 @@ object Main:
     // iOS 转屏后 innerWidth 有时晚一帧才更新
     dom.window.addEventListener("orientationchange", (_: dom.Event) => dom.window.setTimeout(() => fit(), 300): Unit)
 
-    val connect = if local then Future.unit else lobby.ensureLogin()
-    connect.foreach { _ =>
-      lobby.status("连接服务器…")
-      client.connect(if local then LocalServer(catalog, assets, client.receive) else WsTransport(client.receive))
-    }
+    lobby.status("连接服务器…")
+    client.connect(if local then LocalServer(catalog, assets, client.receive) else WsTransport(client.receive))
     dom.window.setInterval(() => client.ping(), PingEveryMs)
 
     lazy val frame: js.Function1[Double, Unit] = t =>

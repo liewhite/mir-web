@@ -23,6 +23,13 @@ final class Lobby(send: SessionCmd => Unit):
   def show(): Unit = $[dom.HTMLElement]("#loading").classList.remove("hidden")
   def hide(): Unit = $[dom.HTMLElement]("#loading").classList.add("hidden")
 
+  def loggedIn(account: String): Unit =
+    status(s"$account，读取角色…")
+    send(SessionCmd.ListChars)
+
+object Lobby:
+  private def $[T <: dom.Element](sel: String): T = dom.document.querySelector(sel).asInstanceOf[T]
+
   /** 没登录就显示登录表单，登录成功才返回。 */
   def ensureLogin(): Future[Unit] =
     dom.fetch("api/me", new dom.RequestInit { credentials = dom.RequestCredentials.`same-origin`; cache = dom.RequestCache.`no-store` })
@@ -52,13 +59,6 @@ final class Lobby(send: SessionCmd => Unit):
         else $[dom.HTMLElement]("#login-error").textContent = if r.status == 429 then "试太多次了，过一会再试" else "账号或密码不对"
       }
     done.future
-
-  def loggedIn(account: String): Unit =
-    status(s"$account，读取角色…")
-    send(SessionCmd.ListChars)
-
-object Lobby:
-  private def $[T <: dom.Element](sel: String): T = dom.document.querySelector(sel).asInstanceOf[T]
 
   /** 加载页上的状态文字（进游戏前的各步、出错原因）。 */
   def status(text: String): Unit = $[dom.HTMLElement]("#status").textContent = text
