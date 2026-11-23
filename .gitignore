@@ -7,3 +7,6 @@ node_modules/
 public/assets/
 deploy/mir176.env
 deploy/node.tar.xz
+scala/**/target/
+scala/.bsp/
+scala/project/project/

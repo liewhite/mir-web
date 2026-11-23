@@ -28,6 +28,17 @@
   - `input/`：鼠标/触屏/键盘 → 指令。
   - `save/`：SaveStore 接口。
 
+## Scala 3 多人版（#1148，进行中；替换前线上仍是上面的 TS 单机版）
+- `scala/`（sbt；JDK 用 `JAVA_HOME=/opt/homebrew/opt/openjdk@21`；`sbt test` 同时跑 JVM 和 JS）：
+  - `shared/`（JVM+JS 交叉编译，纯逻辑，不碰网络/文件/DOM）：
+    - `mir.core`：编号与数值的不透明类型（ActorId、ItemUid、ItemName、MonsterName、MapId、SkillId、CharId、Hp、Mp、Gold、Exp、Millis）、格子 Cell、八方向 Dir（ordinal = 原版编号）。
+    - `mir.model`：职业、性别、装备位、动作、攻击种类、藏身、中毒等枚举；物品实例、身上位置、学会的技能、角色便利设置。
+    - `mir.data`：game.json 解码（GameData，格式不变）与索引 Catalog（查不到返回 None）。
+    - `mir.rules`：ItemKind/ItemEffects/Requirement（items.ts）、Rules（rules.ts，随机数经 Rng 传入）、Rates（rates.ts）、Leveling。
+    - `mir.protocol`：`ClientCmd`（指令）、`ServerMsg`（事件）两个 enum + 视野类型，zio-json 编码（外层键是分支名）。走路按原版：客户端带起点格和方向，服务端回 MoveOk / MoveDenied(拉回格)。
+  - `server/`（JVM，#1154）、`client/`（Scala.js，#1155）。
+- 测试：game.json 完整解码与引用检查；规则与 TS 版逐条对照（`scala/testdata/ts-golden.json`，TS 规则改了就跑 `scala/testdata/gen-golden.sh` 重算）；协议每种消息往返（新加消息必须补样例，测试会查）。
+
 ## 进度
 - [x] 找素材、找数据、核实平台存储限制
 - [x] WIL/WZL/MAP 解析，比奇地图渲染验证
