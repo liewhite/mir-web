@@ -7,15 +7,37 @@ import zio.json.*
 /**
  * 客户端 → 服务端的指令。客户端只表达意图，一切结果由服务端判定（服务端权威）。
  * 清单见 #1148 21:19 评论；参考原版 Grobal2.pas 的 CM_* 消息。
+ * 分两类：会话指令（登录、选人、对时）由服务端连接处理；游戏指令交给角色所在地图的世界（mir.world.World）。
+ * JSON 里两类一样是「分支名作外层键」，分支名不重复。
  */
-enum ClientCmd:
-  // ---- 登录、选人 ----
+type ClientCmd = SessionCmd | GameCmd
+
+/** 会话指令：还没进游戏也能发。 */
+enum SessionCmd:
   case Login(account: String, password: String)
   case ListChars
   case CreateChar(name: String, job: Job, sex: Sex)
   case DeleteChar(id: CharId)
   case EnterGame(id: CharId)
+  /** 对时：clientMs 是客户端发出时的本地时钟，服务端原样带回 */
+  case Ping(clientMs: Long)
 
+object SessionCmd:
+  given JsonCodec[SessionCmd] = DeriveJsonCodec.gen
+
+  /**
+   * ClientCmd（两类的并）的编解码。放在这里是因为并类型的隐式作用域是两边的伴生对象，用的地方不用额外 import。
+   */
+  given clientCmd: JsonCodec[ClientCmd] =
+    val encoder = new JsonEncoder[ClientCmd]:
+      def unsafeEncode(a: ClientCmd, indent: Option[Int], out: zio.json.internal.Write): Unit = a match
+        case s: SessionCmd => JsonEncoder[SessionCmd].unsafeEncode(s, indent, out)
+        case g: GameCmd    => JsonEncoder[GameCmd].unsafeEncode(g, indent, out)
+    val decoder = JsonDecoder[SessionCmd].widen[ClientCmd].orElse(JsonDecoder[GameCmd].widen[ClientCmd])
+    JsonCodec(encoder, decoder)
+
+/** 游戏指令：进了游戏后对世界的操作。 */
+enum GameCmd:
   // ---- 移动（原版做法：带上起点格，服务端回 MoveOk / MoveDenied；回之前客户端不再发下一个动作） ----
   case Walk(from: Cell, dir: Dir)
   case Run(from: Cell, dir: Dir)
@@ -65,11 +87,9 @@ enum ClientCmd:
   case UpdateSettings(settings: CharSettings)
   /** 说话：「!」开头是全图喊话 */
   case Say(text: String)
-  /** 对时：clientMs 是客户端发出时的本地时钟，服务端原样带回 */
-  case Ping(clientMs: Long)
 
-object ClientCmd:
-  given JsonCodec[ClientCmd] = DeriveJsonCodec.gen
+object GameCmd:
+  given JsonCodec[GameCmd] = DeriveJsonCodec.gen
 
 /**
  * 服务端 → 客户端的事件。视野类消息只发给看得见的人；「自己」类消息变了才发。

@@ -24,37 +24,37 @@ object ProtocolSpec extends ZIOSpecDefault:
   private val stat = Stats(19, 15, sp, sp, sp, sp, sp, 5, 15, 900, 0, 0, 0, 0, 0, 50, 15, 12)
 
   val clientSamples: List[ClientCmd] = List(
-    ClientCmd.Login("liewhite", "密码"),
-    ClientCmd.ListChars,
-    ClientCmd.CreateChar("小明", Job.Taoist, Sex.Female),
-    ClientCmd.DeleteChar(CharId(3L)),
-    ClientCmd.EnterGame(CharId(3L)),
-    ClientCmd.Walk(c1, Dir.UpLeft),
-    ClientCmd.Run(c1, Dir.Down),
-    ClientCmd.Turn(Dir.Right),
-    ClientCmd.Attack(Dir.Up, Some(ActorId(100))),
-    ClientCmd.Attack(Dir.Up, None),
-    ClientCmd.Cast(SkillId(1), Some(ActorId(101)), c1),
-    ClientCmd.SetSword(SwordArt.WideHit, true),
-    ClientCmd.TalkTo(ActorId(5)),
-    ClientCmd.PickUp,
-    ClientCmd.Revive,
-    ClientCmd.Teleport(TeleportRef(3)),
-    ClientCmd.UseItem(ItemUid(42L)),
-    ClientCmd.Equip(ItemUid(43L), Some(EquipSlot.RingR)),
-    ClientCmd.Unequip(EquipSlot.Weapon),
-    ClientCmd.MoveItem(ItemUid(42L), ItemPlace.Belt(2)),
-    ClientCmd.MoveItem(ItemUid(42L), ItemPlace.Worn(EquipSlot.BraceletL)),
-    ClientCmd.DropItem(ItemUid(42L)),
-    ClientCmd.Buy(ActorId(5), ItemName("木剑")),
-    ClientCmd.Sell(ActorId(5), ItemUid(44L)),
-    ClientCmd.Deposit(ActorId(6), ItemUid(44L)),
-    ClientCmd.Withdraw(ActorId(6), ItemUid(44L)),
-    ClientCmd.SetSkillKey(SkillId(2), Some(3)),
-    ClientCmd.SetSkillKey(SkillId(2), None),
-    ClientCmd.UpdateSettings(CharSettings(autoHpPercent = 55, autoPickup = false)),
-    ClientCmd.Say("!大家好"),
-    ClientCmd.Ping(1700000000000L)
+    SessionCmd.Login("liewhite", "密码"),
+    SessionCmd.ListChars,
+    SessionCmd.CreateChar("小明", Job.Taoist, Sex.Female),
+    SessionCmd.DeleteChar(CharId(3L)),
+    SessionCmd.EnterGame(CharId(3L)),
+    GameCmd.Walk(c1, Dir.UpLeft),
+    GameCmd.Run(c1, Dir.Down),
+    GameCmd.Turn(Dir.Right),
+    GameCmd.Attack(Dir.Up, Some(ActorId(100))),
+    GameCmd.Attack(Dir.Up, None),
+    GameCmd.Cast(SkillId(1), Some(ActorId(101)), c1),
+    GameCmd.SetSword(SwordArt.WideHit, true),
+    GameCmd.TalkTo(ActorId(5)),
+    GameCmd.PickUp,
+    GameCmd.Revive,
+    GameCmd.Teleport(TeleportRef(3)),
+    GameCmd.UseItem(ItemUid(42L)),
+    GameCmd.Equip(ItemUid(43L), Some(EquipSlot.RingR)),
+    GameCmd.Unequip(EquipSlot.Weapon),
+    GameCmd.MoveItem(ItemUid(42L), ItemPlace.Belt(2)),
+    GameCmd.MoveItem(ItemUid(42L), ItemPlace.Worn(EquipSlot.BraceletL)),
+    GameCmd.DropItem(ItemUid(42L)),
+    GameCmd.Buy(ActorId(5), ItemName("木剑")),
+    GameCmd.Sell(ActorId(5), ItemUid(44L)),
+    GameCmd.Deposit(ActorId(6), ItemUid(44L)),
+    GameCmd.Withdraw(ActorId(6), ItemUid(44L)),
+    GameCmd.SetSkillKey(SkillId(2), Some(3)),
+    GameCmd.SetSkillKey(SkillId(2), None),
+    GameCmd.UpdateSettings(CharSettings(autoHpPercent = 55, autoPickup = false)),
+    GameCmd.Say("!大家好"),
+    SessionCmd.Ping(1700000000000L)
   )
 
   val serverSamples: List[ServerMsg] = List(
@@ -112,14 +112,18 @@ object ProtocolSpec extends ZIOSpecDefault:
     test("样例覆盖了全部种类（新加的消息必须补样例）") {
       val c = clientSamples.map(_.asInstanceOf[Product].productPrefix).toSet
       val s = serverSamples.map(_.asInstanceOf[Product].productPrefix).toSet
-      assertTrue(caseNames[ClientCmd] -- c == Set.empty[String], caseNames[ServerMsg] -- s == Set.empty[String])
+      assertTrue(
+        (caseNames[SessionCmd] ++ caseNames[GameCmd]) -- c == Set.empty[String],
+        caseNames[ServerMsg] -- s == Set.empty[String],
+        (caseNames[SessionCmd] intersect caseNames[GameCmd]) == Set.empty[String]
+      )
     },
     test("JSON 形状：分支名作外层键，编号是裸数字，枚举是名字") {
       assertTrue(
-        (ClientCmd.Walk(Cell(1, 2), Dir.UpLeft): ClientCmd).toJson == """{"Walk":{"from":{"x":1,"y":2},"dir":7}}""",
-        (ClientCmd.PickUp: ClientCmd).toJson == """{"PickUp":{}}""",
+        (GameCmd.Walk(Cell(1, 2), Dir.UpLeft): ClientCmd).toJson == """{"Walk":{"from":{"x":1,"y":2},"dir":7}}""",
+        (GameCmd.PickUp: ClientCmd).toJson == """{"PickUp":{}}""",
         (ServerMsg.Damage(ActorId(3), 5, None): ServerMsg).toJson == """{"Damage":{"target":3,"amount":5}}""",
-        (ClientCmd.Unequip(EquipSlot.BraceletL): ClientCmd).toJson == """{"Unequip":{"slot":"braceletL"}}"""
+        (GameCmd.Unequip(EquipSlot.BraceletL): ClientCmd).toJson == """{"Unequip":{"slot":"braceletL"}}"""
       )
     },
     test("坏消息解码失败而不是抛异常") {

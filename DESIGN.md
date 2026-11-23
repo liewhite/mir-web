@@ -35,9 +35,15 @@
     - `mir.model`：职业、性别、装备位、动作、攻击种类、藏身、中毒等枚举；物品实例、身上位置、学会的技能、角色便利设置。
     - `mir.data`：game.json 解码（GameData，格式不变）与索引 Catalog（查不到返回 None）。
     - `mir.rules`：ItemKind/ItemEffects/Requirement（items.ts）、Rules（rules.ts，随机数经 Rng 传入）、Rates（rates.ts）、Leveling。
-    - `mir.protocol`：`ClientCmd`（指令）、`ServerMsg`（事件）两个 enum + 视野类型，zio-json 编码（外层键是分支名）。走路按原版：客户端带起点格和方向，服务端回 MoveOk / MoveDenied(拉回格)。
+    - `mir.protocol`：`ClientCmd = SessionCmd | GameCmd`（登录选人对时归服务端连接；游戏指令归世界）、`ServerMsg`（事件）+ 视野类型，zio-json 编码（外层键是分支名）。走路按原版：客户端带起点格和方向，服务端回 MoveOk / MoveDenied(拉回格)。
+    - `mir.world`（#1153）：一张图一个 `World`（单线程用，内部可变，对外「`handle(玩家, GameCmd)` / `tick(时刻)` 进，`flush(): Outbox` 出」；随机数 Rng、物品编号 UidSource、时钟都从外面给；没玩家的图 tick 不做事）。
+      - 进出：`join(CharacterData, 宝宝)` 返回本图对象编号；`leave` 取存档；换图（传送点、传送菜单、回城、复活）在 `Outbox.departures` 里交给服务端送去目的地图。
+      - `Behavior`（Race → 出招/藏身/附加本领）+ `MonsterAi`；`Combat`（普攻剑术、技能）；`PlayerOps`（指令：移动校验、物品、NPC 买卖存取，非法的回 Refused）；`AutoPlay`（自动喝药、按住攻击、还手、烈火、捡物，按角色设置在服务端跑）。
+      - 视野：flush 时按切比雪夫 14 格算每个玩家的出现/消失，对象的动作/血量/外观按「和上次发出去的比，变了才发」，特效声音飘字只发给附近的人，自己的属性背包等变了才发。
+      - 守卫按 Race 认（11/12/20/112），不再按名字（TS 版把沃玛卫士、祖玛卫士当成了守卫）。
+    - `mir.view.ViewState`：客户端的视野副本，`apply(ServerMsg)` 纯函数折叠；测试里每一步都和世界对照。
   - `server/`（JVM，#1154）、`client/`（Scala.js，#1155）。
-- 测试：game.json 完整解码与引用检查；规则与 TS 版逐条对照（`scala/testdata/ts-golden.json`，TS 规则改了就跑 `scala/testdata/gen-golden.sh` 重算）；协议每种消息往返（新加消息必须补样例，测试会查）。
+- 测试：怪物行为（TS 版 7 项）、多人（互相看见、各打各的、掉落、换图消失、60 秒随机操作每步副本与世界一致、比奇省满图性能）、非法指令；game.json 完整解码与引用检查；规则与 TS 版逐条对照（`scala/testdata/ts-golden.json`，TS 规则改了就跑 `scala/testdata/gen-golden.sh` 重算）；协议每种消息往返（新加消息必须补样例，测试会查）。
 
 ## 进度
 - [x] 找素材、找数据、核实平台存储限制
