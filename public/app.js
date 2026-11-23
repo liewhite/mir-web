@@ -129,6 +129,11 @@ var Catalog = class {
     if (!it) throw new Error(`\u6CA1\u6709\u7269\u54C1 ${name}`);
     return it;
   }
+  map(id) {
+    const m = this.mapsById.get(id);
+    if (!m) throw new Error(`\u6CA1\u6709\u5730\u56FE ${id}`);
+    return m;
+  }
   /** 升到下一级要的经验；满级返回 Infinity。 */
   expToNext(level) {
     return this.data.exp[String(level)] ?? Infinity;
@@ -148,8 +153,9 @@ var UNITX = 48;
 var UNITY = 32;
 var GROUND_BLOCK = 16;
 var MapData = class _MapData {
-  constructor(id, width, height, flags, front, area, ani, aniTick, doorIndex, doorOffset, light) {
+  constructor(id, asset, width, height, flags, front, area, ani, aniTick, doorIndex, doorOffset, light) {
     this.id = id;
+    this.asset = asset;
     this.width = width;
     this.height = height;
     this.flags = flags;
@@ -172,7 +178,8 @@ var MapData = class _MapData {
   flyable(x, y) {
     return this.inside(x, y) && (this.flags[y * this.width + x] & 2) === 0;
   }
-  static parse(id, buf) {
+  static parse(def, buf) {
+    const id = def.id;
     const dv = new DataView(buf);
     const magic = String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3));
     if (magic !== "M176") throw new Error(`\u5730\u56FE ${id} \u683C\u5F0F\u4E0D\u5BF9`);
@@ -189,15 +196,15 @@ var MapData = class _MapData {
     const front = new Uint16Array(n);
     for (let i = 0; i < n; i++) front[i] = dv.getUint16(off + i * 2, true);
     off += n * 2;
-    return new _MapData(id, w, h, flags, front, u8(), u8(), u8(), u8(), u8(), u8());
+    return new _MapData(id, def.asset, w, h, flags, front, u8(), u8(), u8(), u8(), u8(), u8());
   }
 };
-async function loadMap(id) {
+async function loadMap(def) {
   for (let i = 0; ; i++) {
     try {
-      const r2 = await fetch(assetUrl(`assets/map/${id}.bin`));
-      if (!r2.ok) throw new Error(`\u5730\u56FE ${id}: ${r2.status}`);
-      return MapData.parse(id, await r2.arrayBuffer());
+      const r2 = await fetch(assetUrl(`assets/map/${def.asset}.bin`));
+      if (!r2.ok) throw new Error(`\u5730\u56FE ${def.title}: ${r2.status}`);
+      return MapData.parse(def, await r2.arrayBuffer());
     } catch (e) {
       if (i >= 4) throw e;
       await new Promise((res) => setTimeout(res, 1e3 * (i + 1)));
@@ -221,6 +228,8 @@ var ActorBase = class {
     this.shieldUntil = 0;
     this.shieldLevel = 0;
     this.invisibleUntil = 0;
+    /** 麻痹（原版 STONE 状态）到什么时候：期间不能动 */
+    this.paralyzedUntil = 0;
     /** 最近打过我的角色，用于反击和经验归属 */
     this.lastHitBy = 0;
     this.map = map;
@@ -290,6 +299,23 @@ var Monster = class extends ActorBase {
     this.removeAt = 0;
     /** 被打到时短暂停手 */
     this.stunnedUntil = 0;
+    /** 藏身状态：open 在外面；buried 埋在地下（看不见、打不到）；stone 石像（打不到）。见 monster_ai.ts */
+    this.cover = "open";
+    /** 最近一次钻出/钻回/醒来的时间 */
+    this.coverAt = 0;
+    this.bornAt = 0;
+    /** 召唤出来的小怪 */
+    this.minions = [];
+    /** 还能复活几次、几时复活（0 = 不复活） */
+    this.revivesLeft = 0;
+    this.reviveAt = 0;
+    /** 打死给的经验倍数（复活一次减半） */
+    this.expScale = 1;
+    /** 祖玛教主召唤档位、沃玛教主狂暴计数 */
+    this.danger = 5;
+    this.rage = "calm";
+    this.rageAt = 0;
+    this.extraTick = 0;
     this.def = def;
     this.spawn = spawn;
     this.maxHp = def.hp;
@@ -299,6 +325,8 @@ var Monster = class extends ActorBase {
     this.dc = def.dc;
     this.hit = def.hit;
     this.agility = def.speed;
+    this.attackInterval = def.attackSpeed;
+    this.walkInterval = def.walkSpeed;
     this.dir = Math.floor(Math.random() * 8);
   }
 };
@@ -463,6 +491,10 @@ function dirTo(from, to) {
   for (let d = 0; d < 8; d++) if (DX[d] === dx && DY[d] === dy) return d;
   return 4;
 }
+function dir16(from, to) {
+  const a = Math.atan2((to.x - from.x) * 48, -(to.y - from.y) * 32);
+  return (Math.round(a / (Math.PI / 8)) % 16 + 16) % 16;
+}
 function chebyshev(a, b) {
   return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 }
@@ -470,6 +502,9 @@ function samePos(a, b) {
   return a.x === b.x && a.y === b.y;
 }
 var ALL_DIRS = [0, 1, 2, 3, 4, 5, 6, 7];
+function opposite(d) {
+  return (d + 4) % 8;
+}
 
 // src/world/rules.ts
 var JOB_NAME = ["\u6218\u58EB", "\u6CD5\u5E08", "\u9053\u58EB"];
@@ -579,11 +614,11 @@ function computeStats(job, level, equips, passive) {
 function hits(attackerHit, defenderAgility) {
   return !(attackerHit < random(defenderAgility));
 }
-function afterArmor(power, ac) {
-  return Math.max(0, power - roll(ac));
+function afterArmor(power2, ac) {
+  return Math.max(0, power2 - roll(ac));
 }
-function afterMagicArmor(power, mac) {
-  return Math.max(0, power - roll(mac));
+function afterMagicArmor(power2, mac) {
+  return Math.max(0, power2 - roll(mac));
 }
 function hitChance(h, a) {
   return a <= 0 ? 1 : Math.min(1, (h + 1) / a);
@@ -596,8 +631,8 @@ function skillPower13(n, level, defPower) {
   const d18 = n - d10;
   return round(d18 / 4 * (level + 1) + d10 + (defPower[0] + random(defPower[1] - defPower[0])));
 }
-function magicBase(power) {
-  return power[0] + random(power[1] - power[0]);
+function magicBase(power2) {
+  return power2[0] + random(power2[1] - power2[0]);
 }
 function rpow(r2) {
   return r2[1] > r2[0] ? random(r2[1] - r2[0] + 1) + r2[0] : r2[0];
@@ -730,7 +765,7 @@ function train(w, p, s, amount) {
     w.events.push({ type: "msg", text: `${def.name} \u5347\u5230 ${s.level} \u7EA7`, color: "good" });
   }
 }
-function physicalHit(w, p, t, power, ignoreArmor) {
+function physicalHit(w, p, t, power2, ignoreArmor) {
   if (t.kind === "npc" || !w.isEnemy(p, t)) return false;
   const agility = t.kind === "monster" ? t.agility : t.stats.agility;
   if (!hits(p.stats.hit, agility)) {
@@ -738,7 +773,7 @@ function physicalHit(w, p, t, power, ignoreArmor) {
     return false;
   }
   const ac = t.kind === "monster" ? t.ac : t.stats.ac;
-  const dmg = ignoreArmor ? power : afterArmor(power, ac);
+  const dmg = ignoreArmor ? power2 : afterArmor(power2, ac);
   if (dmg <= 0) {
     w.events.push({ type: "miss", target: t.id });
     return false;
@@ -747,22 +782,22 @@ function physicalHit(w, p, t, power, ignoreArmor) {
   return true;
 }
 function resolvePlayerHit(w, p, dir, style) {
-  let power = attackPower(p.stats.dc[0], p.stats.dc[1] - p.stats.dc[0]);
+  let power2 = attackPower(p.stats.dc[0], p.stats.dc[1] - p.stats.dc[0]);
   const luck = p.stats.luck;
-  if (luck > 0 && random(10 - Math.min(9, luck)) === 0) power = p.stats.dc[1];
-  else if (luck < 0 && random(10 - Math.min(9, -luck)) === 0) power = p.stats.dc[0];
+  if (luck > 0 && random(10 - Math.min(9, luck)) === 0) power2 = p.stats.dc[1];
+  else if (luck < 0 && random(10 - Math.min(9, -luck)) === 0) power2 = p.stats.dc[0];
   const front = step(p, dir);
   const target = w.occupant(front.x, front.y);
   switch (style) {
     case "power": {
       const s = skillOf(p, 7);
-      power += 5 + s.level;
+      power2 += 5 + s.level;
       p.powerHitReady = false;
       break;
     }
     case "fire": {
       const s = skillOf(p, 26);
-      power += Math.round(power / 100 * (4 + s.level * 4) * 10);
+      power2 += Math.round(power2 / 100 * (4 + s.level * 4) * 10);
       p.fireReady = false;
       if (target) train(w, p, s, 1);
       break;
@@ -773,19 +808,19 @@ function resolvePlayerHit(w, p, dir, style) {
     default:
       break;
   }
-  if (target) physicalHit(w, p, target, power, false);
+  if (target) physicalHit(w, p, target, power2, false);
   if (style === "long") {
     const s = skillOf(p, 12);
     const far = step(p, dir, 2);
     const t2 = w.occupant(far.x, far.y);
     if (t2 && w.isEnemy(p, t2)) {
-      physicalHit(w, p, t2, power, true);
+      physicalHit(w, p, t2, power2, true);
       train(w, p, s, 1);
     }
   }
   if (style === "wide") {
     const s = skillOf(p, 25);
-    const pw = Math.round(power * (s.level + 1) / 4) + 1;
+    const pw = Math.round(power2 * (s.level + 1) / 4) + 1;
     for (const k of [1, 2, 6, 7, 3, 5, 4]) {
       const c = step(p, (dir + k) % 8);
       const t = w.occupant(c.x, c.y);
@@ -824,10 +859,6 @@ function fx(w, e) {
     duration: e.duration ?? e.frames * e.frameTime
   });
 }
-function dir16(from, to) {
-  const a = Math.atan2((to.x - from.x) * 48, -(to.y - from.y) * 32);
-  return (Math.round(a / (Math.PI / 8)) % 16 + 16) % 16;
-}
 function castFx(w, p, def) {
   const base = CAST_BASE[def.effect];
   if (base === void 0) return;
@@ -849,10 +880,10 @@ var CAST_BASE = {
   31: { lib: "magic", idx: 3840 },
   27: { lib: "magic", idx: 1790 }
 };
-function hitMagic(w, p, t, power) {
+function hitMagic(w, p, t, power2) {
   if (!w.isEnemy(p, t)) return;
   const mac = t.kind === "monster" ? t.mac : t.kind === "player" ? t.stats.mac : [0, 0];
-  const dmg = afterMagicArmor(power, mac);
+  const dmg = afterMagicArmor(power2, mac);
   if (dmg > 0) w.applyDamage(t, dmg, p.id);
   else w.events.push({ type: "miss", target: t.id });
 }
@@ -906,13 +937,13 @@ function castSpell(w, p, skillId, tgt) {
       r2 = need(!!t && w.isEnemy(p, t), "\u9700\u8981\u9009\u4E2D\u4E00\u4E2A\u76EE\u6807");
       if (r2) return r2;
       if (!w.map.flyable(t.x, t.y)) return { ok: false, why: "\u88AB\u6321\u4F4F\u4E86" };
-      let power = mcPower();
-      if (skillId === 11 && t.kind === "monster" && t.def.undead) power = Math.round(power * 1.5);
+      let power2 = mcPower();
+      if (skillId === 11 && t.kind === "monster" && t.def.undead) power2 = Math.round(power2 * 1.5);
       const delay = skillId === 11 ? 100 : 80 * chebyshev(p, t);
       w.sound(magicSound(skillId, 1));
       w.after(delay, () => {
         w.sound(magicSound(skillId, 2), t.pos);
-        hitMagic(w, p, t, power);
+        hitMagic(w, p, t, power2);
       });
       if (skillId === 11) {
         fx(w, { lib: "magic2", start: 10, frames: 5, frameTime: 80, at: { actor: t.id } });
@@ -925,8 +956,8 @@ function castSpell(w, p, skillId, tgt) {
     }
     case 33: {
       const c = t ? t.pos : tgt.pos;
-      const power = mcPower();
-      for (const e of enemiesAround(w, p, c, 1)) hitMagic(w, p, e, power);
+      const power2 = mcPower();
+      for (const e of enemiesAround(w, p, c, 1)) hitMagic(w, p, e, power2);
       fx(w, { lib: "magic", start: 3850, frames: 20, frameTime: 60, at: c });
       break;
     }
@@ -940,12 +971,12 @@ function castSpell(w, p, skillId, tgt) {
       break;
     }
     case 9: {
-      const power = mcPower();
+      const power2 = mcPower();
       const d = t ? dirTo(p, t) : dirTo(p, tgt.pos);
       for (let k = 1; k <= 5; k++) {
         const c = step(p, d, k);
         const a = w.occupant(c.x, c.y);
-        if (a) hitMagic(w, p, a, power);
+        if (a) hitMagic(w, p, a, power2);
         fx(w, { lib: "magic", start: 930, frames: 6, frameTime: 70, at: c });
       }
       break;
@@ -986,8 +1017,8 @@ function castSpell(w, p, skillId, tgt) {
       const kind = amuletPoison(p, w);
       if (kind !== 1 && kind !== 2) return { ok: false, why: "\u5DE6\u624B\u956F\u4F4D\u8981\u88C5\u5907\u7070\u8272\u6216\u9EC4\u8272\u836F\u7C89" };
       consumeAmulet(p, w, kind);
-      const power = skillPower13(kind === 1 ? 40 : 30, s.level, def.defPower) + rpow(SC) * 2;
-      t.poison = { kind: kind === 1 ? "green" : "red", until: w.now + power * 1e3, power: Math.max(1, Math.round(rpow(SC) / 2) + 1), nextTick: w.now + 2e3, by: p.id };
+      const power2 = skillPower13(kind === 1 ? 40 : 30, s.level, def.defPower) + rpow(SC) * 2;
+      t.poison = { kind: kind === 1 ? "green" : "red", until: w.now + power2 * 1e3, power: Math.max(1, Math.round(rpow(SC) / 2) + 1), nextTick: w.now + 2e3, by: p.id };
       if (t.kind === "monster" && !t.target) t.target = p.id;
       fx(w, { lib: "magic", start: 600 + 10, frames: 10, frameTime: 60, at: { actor: t.id } });
       break;
@@ -997,13 +1028,13 @@ function castSpell(w, p, skillId, tgt) {
       if (r2) return r2;
       if (amuletPoison(p, w) !== 0) return { ok: false, why: "\u5DE6\u624B\u956F\u4F4D\u8981\u88C5\u5907\u62A4\u8EAB\u7B26" };
       consumeAmulet(p, w, 0);
-      const power = attackPower(skillPower(magicBase(def.power), s.level, def.defPower) + SC[0], SC[1] - SC[0] + 1);
+      const power2 = attackPower(skillPower(magicBase(def.power), s.level, def.defPower) + SC[0], SC[1] - SC[0] + 1);
       const delay = 80 * chebyshev(p, t);
       fx(w, { lib: "magic", start: 1160 + dir16(p, t) * 10, frames: 3, frameTime: 60, at: { actor: t.id }, from: p.pos, duration: delay });
       w.sound(magicSound(13, 1));
       w.after(delay, () => {
         w.sound(magicSound(13, 2), t.pos);
-        hitMagic(w, p, t, power);
+        hitMagic(w, p, t, power2);
         fx(w, { lib: "magic", start: 1320, frames: 10, frameTime: 50, at: { actor: t.id } });
       });
       break;
@@ -1070,6 +1101,562 @@ function castSpell(w, p, skillId, tgt) {
   train(w, p, s, 1 + random(3));
   if (p.invisibleUntil > w.now && skillId !== 18) p.invisibleUntil = 0;
   return { ok: true };
+}
+
+// src/world/monster_ai.ts
+var AXE = { lib: "mon3", base: 447, stride: 10, frames: 3 };
+var THORN = { lib: "mon3", base: 2967, stride: 10, frames: 3 };
+var ARROW = { lib: "effect", base: 272, stride: 1, frames: 1 };
+var ZUMA = ["\u7956\u739B\u536B\u58EB", "\u7956\u739B\u96D5\u50CF", "\u7956\u739B\u5F13\u7BAD\u624B", "\u6954\u86FE"];
+function behave(strike, more = {}) {
+  return { strike, cover: { kind: "none" }, rooted: false, passive: false, extras: [], ...more };
+}
+var MELEE = { kind: "melee" };
+function behaviorOf(def) {
+  switch (def.race) {
+    case 50:
+    case 51:
+    case 52:
+      return behave(MELEE, { passive: true });
+    case 82:
+    case 119:
+      return behave({ kind: "spit" });
+    case 85:
+      return behave(MELEE, { cover: { kind: "burrow", comeOut: 4, reach: 4 }, rooted: true });
+    case 87:
+      return behave({ kind: "missile", range: 7, fly: def.raceImg === 15 ? AXE : def.raceImg === 22 ? THORN : null });
+    case 104:
+    case 112:
+      return behave({ kind: "missile", range: 7, fly: def.raceImg === 45 ? ARROW : null });
+    case 90:
+    case 105:
+    case 106:
+      return behave({ kind: "gas" });
+    case 91:
+      return behave({ kind: "magic" });
+    case 92:
+      return behave({ kind: "split", physical: 0.5 }, { extras: [{ kind: "cowKing" }] });
+    case 94:
+      return behave({ kind: "lightning" });
+    case 95:
+      return behave(MELEE, { cover: { kind: "digOut" } });
+    case 96:
+      return behave(MELEE, { extras: [{ kind: "revive" }] });
+    case 101:
+      return behave(MELEE, { cover: { kind: "statue", wakeAll: true } });
+    case 102:
+      return behave({ kind: "split", physical: 0 }, { cover: { kind: "statue", wakeAll: false }, extras: [{ kind: "summonZuma" }] });
+    case 103:
+      return behave({ kind: "spawn", child: "\u8759\u8760", below: false }, { rooted: true });
+    case 107:
+      return behave({ kind: "area", range: 6, poison: true }, { cover: { kind: "centipede" }, rooted: true });
+    case 115:
+      return behave({ kind: "area", range: 16, poison: false }, { rooted: true });
+    case 116:
+      return behave({ kind: "spawn", child: "\u7206\u88C2\u8718\u86DB", below: true }, { rooted: true });
+    case 117:
+      return behave({ kind: "explode" });
+    default:
+      return behave(MELEE);
+  }
+}
+var cache = /* @__PURE__ */ new WeakMap();
+function behavior(m) {
+  let b = cache.get(m.def);
+  if (!b) {
+    b = behaviorOf(m.def);
+    cache.set(m.def, b);
+  }
+  return b;
+}
+function isGuard(d) {
+  return d.name.includes("\u536B\u58EB") || d.name.includes("\u62A4\u536B") || d.name.includes("\u5B88\u536B");
+}
+function fixedDir(m) {
+  return [33, 34, 35, 43].includes(m.def.raceImg);
+}
+function initMonster(w, m) {
+  const b = behavior(m);
+  if (fixedDir(m)) m.dir = 0;
+  switch (b.cover.kind) {
+    case "burrow":
+    case "digOut":
+    case "centipede":
+      m.cover = "buried";
+      break;
+    case "statue":
+      m.cover = "stone";
+      if (m.def.raceImg === 49) m.dir = 5;
+      break;
+    case "none":
+      m.cover = "open";
+  }
+  if (b.extras.some((e) => e.kind === "revive") && random(3) === 0) m.revivesLeft = random(3) + 1;
+  m.bornAt = w.now;
+}
+function thinkMonster(w, m) {
+  if (w.now < m.nextThink || w.now < m.busyUntil) return;
+  if (m.dead) {
+    tryRevive(w, m);
+    return;
+  }
+  m.nextThink = w.now + 100 + random(100);
+  if (m.action.kind !== "stand" && w.now >= m.action.startedAt + m.action.duration) {
+    w.setAction(m, "stand", 0);
+  }
+  const b = behavior(m);
+  if (!updateCover(w, m, b)) return;
+  for (const e of b.extras) extraTick(w, m, e);
+  if (b.strike.kind === "explode" && w.now - m.bornAt > 6e4) {
+    explode(w, m);
+    return;
+  }
+  if (b.strike.kind === "spawn") {
+    spawnTick(w, m, b.strike);
+    return;
+  }
+  const guard = isGuard(m.def);
+  const master = m.master ? w.actors.get(m.master) : void 0;
+  let target = m.target ? w.actors.get(m.target) : void 0;
+  if (target && (target.dead || !w.isEnemy(m, target) || chebyshev(m, target) > 14 || target.invisibleUntil > w.now)) {
+    target = void 0;
+    m.target = 0;
+  }
+  if (!target && (!b.passive || master)) {
+    const range = guard ? 6 : master ? 8 : b.strike.kind === "area" ? b.strike.range : 7;
+    target = w.nearestEnemy(m, range);
+    if (target) m.target = target.id;
+  }
+  if (target) {
+    if (!attack(w, m, b, target) && !guard && !b.rooted) stepToward(w, m, target);
+    return;
+  }
+  if (master && master.map === m.map) {
+    if (chebyshev(m, master) > 2) stepToward(w, m, master);
+    return;
+  }
+  if (master || guard || b.rooted) return;
+  if (random(100) < 4 && w.move(m, random(8), false)) {
+    m.busyUntil = w.now + m.def.walkSpeed + random(1e3);
+  }
+}
+function updateCover(w, m, b) {
+  const c = b.cover;
+  const near = (r2, strict = false) => {
+    const e = w.nearestEnemy(m, r2);
+    return e && (!strict || chebyshev(m, e) < r2) ? e : void 0;
+  };
+  if (m.cover === "stone" && c.kind === "statue") {
+    if (!near(2)) return false;
+    wake(w, m);
+    if (c.wakeAll) {
+      for (const a of w.actors.values()) {
+        if (a.kind === "monster" && a.cover === "stone" && chebyshev(a, m) <= 7 && behavior(a).cover.kind === "statue") wake(w, a);
+      }
+    }
+    return false;
+  }
+  if (m.cover === "buried") {
+    if (c.kind === "centipede" && w.now - m.coverAt < 1e4) return false;
+    const e = c.kind === "burrow" ? near(c.comeOut, true) : c.kind === "centipede" ? near(4, true) : near(3);
+    if (!e) return false;
+    surface(w, m);
+    if (c.kind === "centipede") m.hp = m.maxHp;
+    return false;
+  }
+  if (c.kind === "burrow") {
+    const t = m.target ? w.actors.get(m.target) : void 0;
+    if (!t || t.dead || chebyshev(m, t) > c.reach) {
+      const e = w.nearestEnemy(m, c.reach);
+      if (!e) {
+        burrow(w, m);
+        return false;
+      }
+      m.target = e.id;
+    }
+  }
+  if (c.kind === "centipede") {
+    if (w.now - m.coverAt < 3e3) return false;
+    if (!w.nearestEnemy(m, 5) && w.now - m.coverAt > 1e4) {
+      burrow(w, m);
+      return false;
+    }
+  }
+  return true;
+}
+function digAnim(w, m, kind) {
+  const t = w.actTable(m);
+  const info = t ? kind === "digdown" || !herbLike(m) ? t.ActDeath : t.ActWalk : null;
+  const dur = info ? Math.max(300, info[1] * info[3]) : 600;
+  w.setAction(m, kind, dur);
+  m.busyUntil = w.now + dur;
+  return dur;
+}
+function herbLike(m) {
+  return [13, 33, 34, 35].includes(m.def.raceImg);
+}
+function surface(w, m) {
+  m.cover = "open";
+  m.coverAt = w.now;
+  digAnim(w, m, "digup");
+}
+function burrow(w, m) {
+  m.target = 0;
+  m.coverAt = w.now;
+  digAnim(w, m, "digdown");
+  w.after(m.busyUntil - w.now, () => {
+    if (!m.dead) m.cover = "buried";
+  });
+}
+function wake(w, m) {
+  m.cover = "open";
+  m.coverAt = w.now;
+  digAnim(w, m, "digup");
+}
+function power(m) {
+  return m.dc[0] + random(Math.max(0, m.dc[1] - m.dc[0]) + 1);
+}
+function defenseOf(t) {
+  if (t.kind === "player") return { ac: t.stats.ac, mac: t.stats.mac, agility: t.stats.agility };
+  if (t.kind === "monster") return { ac: t.ac, mac: t.mac, agility: t.agility };
+  return null;
+}
+function damage(w, m, t, amount) {
+  if (amount > 0) w.applyDamage(t, amount, m.id);
+  else w.events.push({ type: "miss", target: t.id });
+}
+function physical(w, m, t, pw, checkHit = true) {
+  const d = defenseOf(t);
+  if (!d) return;
+  if (checkHit && !hits(m.hit, d.agility)) {
+    w.events.push({ type: "miss", target: t.id });
+    return;
+  }
+  damage(w, m, t, afterArmor(pw, d.ac));
+}
+function magical(w, m, t, pw) {
+  const d = defenseOf(t);
+  if (d) damage(w, m, t, afterMagicArmor(pw, d.mac));
+}
+function swing(w, m, t) {
+  if (t && !fixedDir(m)) m.dir = dirTo(m, t);
+  const tab = w.actTable(m);
+  const info = tab ? m.def.raceImg === 33 ? tab.ActCritical : tab.ActAttack : null;
+  const anim = info ? info[1] * info[3] : 600;
+  w.setAction(m, "attack", anim);
+  m.busyUntil = w.now + anim;
+  m.lastAttack = w.now;
+  w.sound(monsterSound(m.def.appr, 2), m.pos);
+  attackFx(w, m, t, info ? info[1] : 6, info ? info[3] : 100);
+  return anim;
+}
+var ATTACK_FX = {
+  16: { lib: "mon3", base: 1444 },
+  // 洞蛆毒气（晚一帧开始）
+  20: { lib: "mon4", base: 1800, extra: 1 },
+  // 火焰沃玛
+  21: { lib: "mon4", base: 1900 },
+  // 沃玛教主
+  40: { lib: "mon5", base: 350, dir16: true },
+  // 僵尸电光
+  49: { lib: "mon7", base: 1680, frames: 9 },
+  // 祖玛教主
+  52: { lib: "mon4", base: 3590 },
+  // 楔蛾
+  53: { lib: "mon3", base: 3590 }
+  // 粪虫
+};
+function attackFx(w, m, t, frames, ftime) {
+  const f = ATTACK_FX[m.def.raceImg];
+  if (!f) return;
+  const dir = f.dir16 && t ? dir16(m, t) : f.dir16 ? m.dir * 2 : m.dir;
+  const n = f.frames ?? frames + (f.extra ?? 0);
+  w.effects.push({
+    lib: f.lib,
+    start: f.base + dir * 10,
+    frames: n,
+    frameTime: ftime,
+    at: { actor: m.id },
+    blend: true,
+    startedAt: w.now,
+    duration: n * ftime
+  });
+}
+function ready(w, m) {
+  return w.now - m.lastAttack >= m.attackInterval;
+}
+function attack(w, m, b, t) {
+  const d = chebyshev(m, t);
+  const s = b.strike;
+  switch (s.kind) {
+    case "melee":
+    case "magic":
+    case "split":
+    case "gas":
+    case "explode": {
+      if (d > 1) return false;
+      if (!fixedDir(m)) m.dir = dirTo(m, t);
+      if (!ready(w, m)) return true;
+      if (s.kind === "explode") {
+        explode(w, m);
+        return true;
+      }
+      swing(w, m, t);
+      const pw = power(m);
+      if (s.kind === "melee") physical(w, m, t, pw);
+      else if (s.kind === "magic") magical(w, m, t, pw);
+      else if (s.kind === "split") {
+        const ph = Math.round(pw * s.physical);
+        if (ph > 0) physical(w, m, t, ph, false);
+        magical(w, m, t, pw - ph);
+      } else gas(w, m, t, pw);
+      return true;
+    }
+    case "spit": {
+      const dir = dirTo(m, t);
+      const inLine2 = d <= 2 && (step(m, dir, d).x === t.x && step(m, dir, d).y === t.y);
+      if (!inLine2) return false;
+      m.dir = dir;
+      if (!ready(w, m)) return true;
+      swing(w, m, t);
+      const pw = power(m);
+      for (const k of [1, 2]) {
+        const c = step(m, dir, k);
+        const a = w.occupant(c.x, c.y);
+        const def = a && defenseOf(a);
+        if (!a || !def || !w.isEnemy(m, a) || !hits(m.hit, def.agility)) continue;
+        magical(w, m, a, pw);
+        if (!a.dead && random(20) === 0) poisonGreen(w, a, m, 3e4, 1);
+      }
+      return true;
+    }
+    case "missile": {
+      if (d < 1 || d > s.range) return false;
+      if (!ready(w, m)) return true;
+      swing(w, m, t);
+      const delay = d * 50 + 300;
+      if (s.fly) {
+        w.effects.push({
+          lib: s.fly.lib,
+          start: s.fly.base + dir16(m, t) * s.fly.stride,
+          frames: s.fly.frames,
+          frameTime: 60,
+          at: { actor: t.id },
+          from: m.pos,
+          blend: false,
+          startedAt: w.now,
+          duration: delay
+        });
+      }
+      const pw = power(m);
+      w.after(delay, () => {
+        if (!t.dead && !m.dead) physical(w, m, t, pw, false);
+      });
+      return true;
+    }
+    case "lightning": {
+      if (d <= 2 && random(3) === 0 && stepAway(w, m, t)) return true;
+      if (d >= 6) return false;
+      if (!ready(w, m)) return true;
+      swing(w, m, t);
+      const dir = dirTo(m, t);
+      const pw = power(m);
+      const hitIds = /* @__PURE__ */ new Set();
+      for (let k = 1; k <= 8; k++) {
+        const c = step(m, dir, k);
+        const a = w.occupant(c.x, c.y);
+        if (a && !hitIds.has(a.id) && w.isEnemy(m, a)) {
+          hitIds.add(a.id);
+          magical(w, m, a, pw);
+        }
+      }
+      return true;
+    }
+    case "area": {
+      if (d >= s.range) return true;
+      if (!ready(w, m)) return true;
+      swing(w, m, t);
+      const pw = power(m);
+      const delay = s.poison ? 600 : 200;
+      for (const a of [...w.actors.values()]) {
+        if (!w.isEnemy(m, a) || chebyshev(m, a) >= s.range) continue;
+        w.after(delay, () => {
+          if (a.dead || m.dead) return;
+          magical(w, m, a, pw);
+          if (s.poison && !a.dead && random(4) === 0) {
+            if (random(3) !== 0) poisonGreen(w, a, m, 6e4, 3);
+            else paralyze(w, a, 5e3);
+          }
+        });
+      }
+      return true;
+    }
+    case "spawn":
+      return true;
+  }
+}
+function gas(w, m, t, pw) {
+  const d = defenseOf(t);
+  if (!d) return;
+  if (!hits(m.hit, d.agility)) {
+    w.events.push({ type: "miss", target: t.id });
+    return;
+  }
+  magical(w, m, t, pw);
+  if (!t.dead && random(20) === 0) paralyze(w, t, 5e3);
+}
+function poisonGreen(w, t, m, ms, pw) {
+  t.poison = { kind: "green", until: w.now + ms, power: pw, nextTick: w.now + 2e3, by: m.id };
+  if (t.kind === "player") w.events.push({ type: "msg", text: "\u4F60\u4E2D\u6BD2\u4E86", color: "bad" });
+}
+function paralyze(w, t, ms) {
+  t.paralyzedUntil = Math.max(t.paralyzedUntil, w.now + ms);
+  t.busyUntil = Math.max(t.busyUntil, t.paralyzedUntil);
+  if (t.kind === "player") w.events.push({ type: "msg", text: `\u4F60\u88AB\u9EBB\u75F9\u4E86\uFF08${ms / 1e3} \u79D2\uFF09`, color: "bad" });
+}
+function explode(w, m) {
+  const pw = power(m);
+  for (const a of [...w.actors.values()]) {
+    if (!w.isEnemy(m, a) || chebyshev(m, a) > 1) continue;
+    const d = defenseOf(a);
+    if (!d) continue;
+    const dmg = afterArmor(Math.floor(pw / 2), d.ac) + afterMagicArmor(Math.floor(pw / 2), d.mac);
+    damage(w, m, a, dmg);
+  }
+  w.killWithoutReward(m);
+}
+function spawnTick(w, m, s) {
+  m.minions = m.minions.filter((id) => {
+    const a = w.actors.get(id);
+    return a !== void 0 && !a.dead;
+  });
+  if (!ready(w, m)) return;
+  m.lastAttack = w.now;
+  const t = w.nearestEnemy(m, 9);
+  if (!t || m.minions.length >= 15) return;
+  swing(w, m, null);
+  const def = w.catalog.monstersByName.get(s.child);
+  if (!def) return;
+  w.after(500, () => {
+    if (m.dead) return;
+    const at = s.below ? { x: m.x, y: m.y + 1 } : m.pos;
+    const c = w.spawnMonster(def, -1, at, 1);
+    if (c) {
+      c.target = t.id;
+      m.minions.push(c.id);
+    }
+  });
+}
+function extraTick(w, m, e) {
+  switch (e.kind) {
+    case "revive":
+      return;
+    case "summonZuma": {
+      if (w.now - m.extraTick < 1e3) return;
+      m.extraTick = w.now;
+      const level = Math.floor(m.hp * 5 / m.maxHp);
+      if (m.hp >= m.maxHp) m.danger = 5;
+      if (m.danger > level && m.danger > 0 && m.target) {
+        m.danger--;
+        m.minions = m.minions.filter((id) => !(w.actors.get(id)?.dead ?? true));
+        const at = step(m, m.dir);
+        const n = random(6) + 6;
+        for (let i = 0; i < n && m.minions.length < 30; i++) {
+          const def = w.catalog.monstersByName.get(ZUMA[random(ZUMA.length)]);
+          const c = def && w.spawnMonster(def, -1, at, 2);
+          if (c) {
+            c.cover = "open";
+            c.target = m.target;
+            m.minions.push(c.id);
+          }
+        }
+      }
+      return;
+    }
+    case "cowKing":
+      cowKing(w, m);
+  }
+}
+function cowKing(w, m) {
+  if (w.now - m.extraTick < 3e4) return;
+  m.extraTick = w.now;
+  const t = m.target ? w.actors.get(m.target) : void 0;
+  if (t && !t.dead) {
+    let blocked = 0;
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+      if ((dx || dy) && !w.canEnter(m.x + dx, m.y + dy)) blocked++;
+    }
+    if (blocked >= 5) {
+      const back = step(t, opposite(t.dir));
+      const to = w.canEnter(back.x, back.y) ? back : w.freeCellNear(t, 3);
+      if (to) {
+        w.teleportActor(m, to);
+        return;
+      }
+    }
+  }
+  const before = m.danger;
+  m.danger = 7 - Math.floor(m.hp / Math.max(1, Math.floor(m.maxHp / 7)));
+  if (m.danger >= 2 && m.danger !== before) {
+    m.rage = "ready";
+    m.rageAt = w.now;
+  }
+  if (m.rage === "ready") {
+    if (w.now - m.rageAt < 8e3) m.attackInterval = 1e4;
+    else {
+      m.rage = "crazy";
+      m.rageAt = w.now;
+    }
+  }
+  if (m.rage === "crazy") {
+    if (w.now - m.rageAt < 8e3) {
+      m.attackInterval = 500;
+      m.walkInterval = 400;
+    } else {
+      m.rage = "calm";
+      m.attackInterval = m.def.attackSpeed;
+      m.walkInterval = m.def.walkSpeed;
+    }
+  }
+}
+function tryRevive(w, m) {
+  if (m.revivesLeft <= 0 || m.reviveAt === 0 || w.now < m.reviveAt) return;
+  if (!w.canEnter(m.x, m.y)) {
+    m.reviveAt = w.now + 1e3;
+    return;
+  }
+  m.revivesLeft--;
+  m.reviveAt = 0;
+  m.maxHp = Math.max(1, m.maxHp >> 1);
+  m.hp = m.maxHp;
+  m.expScale /= 2;
+  w.reviveMonster(m);
+  digAnim(w, m, "digup");
+}
+function onMonsterDeath(w, m) {
+  if (m.revivesLeft > 0) {
+    m.reviveAt = w.now + (random(20) + 4) * 1e3;
+    m.removeAt = Math.max(m.removeAt, m.reviveAt + 1e3);
+  }
+}
+function stepToward(w, m, t) {
+  if (w.move(m, dirTo(m, t), false)) {
+    m.busyUntil = w.now + m.walkInterval;
+    return;
+  }
+  const path = w.findPathFor(m, t);
+  if (path?.[0] !== void 0 && w.move(m, path[0], false)) m.busyUntil = w.now + m.walkInterval;
+  else m.busyUntil = w.now + 500;
+}
+function stepAway(w, m, t) {
+  const away = opposite(dirTo(m, t));
+  for (const d of [away, (away + 1) % 8, (away + 7) % 8]) {
+    if (w.move(m, d, false)) {
+      m.busyUntil = w.now + m.walkInterval;
+      return true;
+    }
+  }
+  return false;
 }
 
 // src/world/world.ts
@@ -1190,6 +1777,7 @@ var World = class {
     m.nextThink = this.now + random(2e3);
     this.actors.set(m.id, m);
     this.occupy(m);
+    initMonster(this, m);
     return m;
   }
   runSpawns() {
@@ -1227,7 +1815,7 @@ var World = class {
     }
     this.runSpawns();
     for (const a of [...this.actors.values()]) {
-      if (a.kind === "monster") this.thinkMonster(a);
+      if (a.kind === "monster") thinkMonster(this, a);
       this.tickStatus(a);
     }
     this.regen();
@@ -1298,7 +1886,7 @@ var World = class {
   monsterMoveMs(m) {
     const t = this.actTable(m);
     const anim = t ? t.ActWalk[1] * t.ActWalk[3] : 600;
-    return Math.max(300, Math.min(anim, m.def.walkSpeed));
+    return Math.max(300, Math.min(anim, m.walkInterval));
   }
   actTable(m) {
     return m.def.act ? this.catalog.data.monsterActions[m.def.act] : void 0;
@@ -1310,6 +1898,7 @@ var World = class {
   // ---------------- 战斗 ----------------
   isEnemy(a, b) {
     if (a.dead || b.dead || a === b || b.kind === "npc" || a.kind === "npc") return false;
+    if (b.kind === "monster" && b.cover !== "open") return false;
     const side = (x) => x.kind === "player" ? "p" : x.master ? "p" : isGuard(x.def) ? "g" : "m";
     const sa = side(a);
     const sb = side(b);
@@ -1365,17 +1954,38 @@ var World = class {
       const killer = this.actors.get(killerId);
       const owner = killer?.kind === "player" ? killer : killer?.kind === "monster" && killer.master ? this.actors.get(killer.master) : void 0;
       if (owner?.kind === "player" && !target.master) {
-        this.gainExp(owner, target.def.exp * RATES.exp);
+        this.gainExp(owner, Math.floor(target.def.exp * target.expScale) * RATES.exp);
         this.dropLoot(target);
       }
       if (target.master) {
         const m = this.actors.get(target.master);
         if (m?.kind === "player") m.pets = m.pets.filter((id) => id !== target.id);
       }
+      onMonsterDeath(this, target);
     } else if (target.kind === "player") {
       this.events.push({ type: "died" });
       this.events.push({ type: "msg", text: "\u4F60\u6B7B\u4E86\u3002\u70B9\u300C\u56DE\u57CE\u590D\u6D3B\u300D\u56DE\u5230\u57CE\u91CC\u3002", color: "bad" });
     }
+  }
+  /** 不给经验、不掉东西的死（自爆）。 */
+  killWithoutReward(a) {
+    a.hp = 0;
+    this.kill(a, 0);
+  }
+  /** 怪物原地复活（僵尸）。 */
+  reviveMonster(m) {
+    m.dead = false;
+    m.target = 0;
+    m.removeAt = 0;
+    this.occupy(m);
+  }
+  /** 瞬移到某格（沃玛教主）。 */
+  teleportActor(a, to) {
+    this.vacate(a);
+    a.x = to.x;
+    a.y = to.y;
+    this.occupy(a);
+    this.setAction(a, "stand", 0);
   }
   revive() {
     const p = this.player;
@@ -1660,50 +2270,7 @@ var World = class {
     if (style === "long" && target) this.sound(S.longHit);
     resolvePlayerHit(this, p, dir, style);
   }
-  // ---------------- 怪物 AI ----------------
-  thinkMonster(m) {
-    if (m.dead || this.now < m.nextThink || this.now < m.busyUntil) return;
-    m.nextThink = this.now + 100 + random(100);
-    if (m.action.kind !== "stand" && this.now >= m.action.startedAt + m.action.duration) {
-      m.action = { kind: "stand", startedAt: this.now, duration: 0 };
-    }
-    const guard = isGuard(m.def);
-    const master = m.master ? this.actors.get(m.master) : void 0;
-    let target = m.target ? this.actors.get(m.target) : void 0;
-    if (target && (target.dead || !this.isEnemy(m, target) || chebyshev(m, target) > 14 || target.invisibleUntil > this.now)) {
-      target = void 0;
-      m.target = 0;
-    }
-    if (!target) {
-      const passive = isPassive_(m.def);
-      if (!passive || master) {
-        const range = guard ? 6 : master ? 8 : 7;
-        target = this.nearestEnemy(m, range);
-        if (target) m.target = target.id;
-      }
-    }
-    if (target) {
-      const d = chebyshev(m, target);
-      if (isRanged(m.def) && d <= 7 && d >= 1) {
-        this.monsterAttack(m, target, true);
-      } else if (d <= 1) {
-        this.monsterAttack(m, target);
-      } else if (!guard) {
-        this.monsterStepToward(m, target);
-      }
-      return;
-    }
-    if (master && master.map === m.map) {
-      if (chebyshev(m, master) > 2) this.monsterStepToward(m, master);
-      return;
-    }
-    if (master && master.dead) return;
-    if (!guard && random(100) < 4) {
-      const dir = random(8);
-      this.move(m, dir, false);
-      m.busyUntil = this.now + m.def.walkSpeed + random(1e3);
-    }
-  }
+  // ---------------- 怪物 AI（行为在 monster_ai.ts） ----------------
   /** range 格以内最近的敌人（怪看不见隐身的，除非它能看穿隐身）。 */
   nearestEnemy(m, range) {
     let best;
@@ -1719,74 +2286,16 @@ var World = class {
     }
     return best;
   }
-  monsterStepToward(m, t) {
-    const dir = dirTo(m, t);
-    if (this.move(m, dir, false)) {
-      m.busyUntil = this.now + m.def.walkSpeed;
-      return;
-    }
-    const path = findPath(this, m, t, 200, true);
-    if (path?.[0] !== void 0 && this.move(m, path[0], false)) {
-      m.busyUntil = this.now + m.def.walkSpeed;
-    } else {
-      m.busyUntil = this.now + 500;
-    }
-  }
-  monsterAttack(m, t, ranged = false) {
-    m.dir = dirTo(m, t);
-    if (this.now - m.lastAttack < m.def.attackSpeed) return;
-    m.lastAttack = this.now;
-    const tab = this.actTable(m);
-    const anim = tab ? tab.ActAttack[1] * tab.ActAttack[3] : 600;
-    this.setAction(m, "attack", anim);
-    m.busyUntil = this.now + anim;
-    this.sound(monsterSound(m.def.appr, 2), m.pos);
-    if (ranged) {
-      const d = chebyshev(m, t);
-      const delay = d * 50 + 300;
-      if (m.def.raceImg === 15) {
-        const a16 = Math.atan2((t.x - m.x) * 48, -(t.y - m.y) * 32);
-        const dir162 = (Math.round(a16 / (Math.PI / 8)) % 16 + 16) % 16;
-        this.effects.push({ lib: "mon3", start: 447 + dir162 * 10, frames: 3, frameTime: 60, at: { actor: t.id }, from: m.pos, blend: false, startedAt: this.now, duration: delay });
-      }
-      const power2 = m.dc[0] + random(m.dc[1] - m.dc[0] + 1);
-      this.after(delay, () => {
-        if (t.dead || m.dead) return;
-        const ac = t.kind === "player" ? t.stats.ac : t.kind === "monster" ? t.ac : null;
-        if (!ac) return;
-        const dmg2 = Math.max(0, power2 - (ac[0] + random(Math.abs(ac[1] - ac[0]) + 1)));
-        if (dmg2 > 0) this.applyDamage(t, dmg2, m.id);
-        else this.events.push({ type: "miss", target: t.id });
-      });
-      return;
-    }
-    const power = m.dc[0] + random(m.dc[1] - m.dc[0] + 1);
-    const defense = t.kind === "player" ? t.stats : t.kind === "monster" ? { ac: t.ac, agility: t.agility } : null;
-    if (!defense) return;
-    if (m.hit < random(defense.agility)) {
-      this.events.push({ type: "miss", target: t.id });
-      return;
-    }
-    const armor = defense.ac[0] + random(Math.abs(defense.ac[1] - defense.ac[0]) + 1);
-    const dmg = Math.max(0, power - armor);
-    if (dmg > 0) this.applyDamage(t, dmg, m.id);
-    else this.events.push({ type: "miss", target: t.id });
-  }
   // ---------------- 寻路 ----------------
   pathTo(from, to, adjacent = false) {
     if (samePos(from, to)) return [];
     return findPath(this, from, to, 3e3, adjacent);
   }
+  /** 怪物绕路：走到目标旁边的短路径。 */
+  findPathFor(m, to) {
+    return findPath(this, m, to, 200, true);
+  }
 };
-function isPassive_(d) {
-  return d.race === 51 || d.race === 52 || d.race === 50;
-}
-function isRanged(d) {
-  return d.race === 87 || d.race === 104 || d.race === 112;
-}
-function isGuard(d) {
-  return d.name.includes("\u536B\u58EB") || d.name.includes("\u62A4\u536B") || d.name.includes("\u5B88\u536B");
-}
 function isPassive(skillId) {
   return skillId === 3 || skillId === 4 || skillId === 7 || skillId === 12;
 }
@@ -1843,23 +2352,39 @@ function humanFrame(a, dir, now, dead) {
       return pick(HA.stand, dir, frameOf(HA.stand, a, now, true));
   }
 }
-function monsterFrame(t, a, dir, now, dead) {
+function monsterLook(raceImg) {
+  return {
+    herb: [13, 33, 34, 35].includes(raceImg),
+    deathNoDir: [23, 48, 49].includes(raceImg),
+    criticalAttack: raceImg === 33
+  };
+}
+function monsterFrame(t, look, a, dir, now, dead, stone) {
+  const deathDir = look.deathNoDir ? 0 : dir;
   if (dead) {
     if (a.kind === "die" && !finished(a, now)) return pick(t.ActDie, dir, frameOf(t.ActDie, a, now, false));
     return pick(t.ActDie, dir, t.ActDie[1] - 1);
   }
-  if (finished(a, now) || a.kind === "stand") return pick(t.ActStand, dir, frameOf(t.ActStand, a, now, true));
+  if (stone) return pick(t.ActDeath, deathDir, 0);
+  const stand = () => pick(t.ActStand, look.herb ? 0 : dir, frameOf(t.ActStand, a, now, true));
+  if (finished(a, now) || a.kind === "stand") return stand();
   switch (a.kind) {
     case "walk":
     case "run":
       return t.ActWalk[1] ? pick(t.ActWalk, dir, frameOf(t.ActWalk, a, now, false)) : pick(t.ActStand, dir, 0);
     case "attack":
-    case "heavy":
-      return pick(t.ActAttack, dir, frameOf(t.ActAttack, a, now, false));
+    case "heavy": {
+      const info = look.criticalAttack ? t.ActCritical : t.ActAttack;
+      return pick(info, dir, frameOf(info, a, now, false));
+    }
     case "struck":
-      return t.ActStruck[1] ? pick(t.ActStruck, dir, frameOf(t.ActStruck, a, now, false)) : pick(t.ActStand, dir, 0);
+      return t.ActStruck[1] ? pick(t.ActStruck, dir, frameOf(t.ActStruck, a, now, false)) : stand();
+    case "digup":
+      return look.herb ? pick(t.ActWalk, 0, frameOf(t.ActWalk, a, now, false)) : pick(t.ActDeath, deathDir, frameOf(t.ActDeath, a, now, false));
+    case "digdown":
+      return pick(t.ActDeath, look.herb ? 0 : deathDir, frameOf(t.ActDeath, a, now, false));
     default:
-      return pick(t.ActStand, dir, frameOf(t.ActStand, a, now, true));
+      return stand();
   }
 }
 var WORDER_SRC = [
@@ -1994,8 +2519,8 @@ var Renderer = class {
         if (bx < 0 || by < 0) continue;
         jobs.push(new Promise((res) => {
           const tick = () => {
-            const v = this.ground.get(`${map.id}/${bx}_${by}`);
-            if (v === void 0) this.groundImage(map.id, bx, by);
+            const v = this.ground.get(`${map.asset}/${bx}_${by}`);
+            if (v === void 0) this.groundImage(map.asset, bx, by);
             if (v === "loading" || v === void 0) setTimeout(tick, 50);
             else res();
           };
@@ -2094,14 +2619,14 @@ var Renderer = class {
     for (let by = by0 - 1; by <= by1 + 1; by++) {
       for (let bx = bx0 - 1; bx <= bx1 + 1; bx++) {
         if (bx < 0 || by < 0 || bx * GROUND_BLOCK >= map.width || by * GROUND_BLOCK >= map.height) continue;
-        const img = this.groundImage(map.id, bx, by);
+        const img = this.groundImage(map.asset, bx, by);
         const visible = bx >= bx0 && bx <= bx1 && by >= by0 && by <= by1;
         if (img && visible) this.ctx.drawImage(img, bx * bw - this.camX, by * bh - this.camY, bw + 1, bh + 1);
       }
     }
   }
-  groundImage(map, bx, by) {
-    const key = `${map}/${bx}_${by}`;
+  groundImage(asset, bx, by) {
+    const key = `${asset}/${bx}_${by}`;
     const cur = this.ground.get(key);
     if (cur instanceof HTMLImageElement) return cur;
     if (cur) return null;
@@ -2109,7 +2634,7 @@ var Renderer = class {
     const img = new Image();
     img.onload = () => this.ground.set(key, img);
     img.onerror = () => this.ground.set(key, "none");
-    img.src = assetUrl(`assets/ground/${map}/${bx}_${by}.webp`);
+    img.src = assetUrl(`assets/ground/${asset}/${bx}_${by}.webp`);
     return null;
   }
   /** 前景层某格要画的图（含动画、开门）。 */
@@ -2198,7 +2723,8 @@ var Renderer = class {
   drawMonster(m, now, dx, dy) {
     const t = this.world.actTable(m);
     if (!t) return null;
-    const f = monsterFrame(t, m.action, m.dir, now, m.dead);
+    if (m.cover === "buried" && m.action.kind !== "digdown") return null;
+    const f = monsterFrame(t, monsterLook(m.def.raceImg), m.action, m.dir, now, m.dead, m.cover === "stone");
     const s = this.sprites.get(m.def.lib, m.def.offset + f);
     if (s) this.blit(s, dx + s.ox, dy + s.oy);
     return s;
@@ -2486,7 +3012,7 @@ var Controller = class {
     const t = w.pendingTeleport;
     this.loadingMap = true;
     try {
-      const map = t.map === w.map.id ? w.map : await loadMap(t.map);
+      const map = t.map === w.map.id ? w.map : await loadMap(w.catalog.map(t.map));
       w.pendingTeleport = null;
       w.enterMap(map, t);
       if (this.isTown(t.map)) this.me.home = { map: t.map, x: this.me.x, y: this.me.y };
@@ -4869,7 +5395,7 @@ async function main() {
     }
   }
   status("\u52A0\u8F7D\u5730\u56FE\u2026");
-  const map = await loadMap(player.map).catch(() => loadMap(START.map));
+  const map = await Promise.resolve().then(() => loadMap(catalog.map(player.map))).catch(() => loadMap(catalog.map(START.map)));
   world.enterMap(map, player.map === map.id ? player.pos : START);
   const settings = loadSettings(save?.settings);
   const sprites = new SpriteStore();
