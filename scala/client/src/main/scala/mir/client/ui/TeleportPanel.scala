@@ -7,14 +7,17 @@ import mir.protocol.GameCmd
  * 传送窗口（用户 #1139：任意地方直接传到城中心、打怪地图入口；照 TS 版 ui/classic/teleport.ts）。原版没有，画成同色调的面板。
  * 两层：先选分组（城市、骷髅洞、沃玛、祖玛寺庙……），再选地图；点了就发 Teleport，窗口关掉。目的地来自 game.json teleports。
  */
-final class TeleportPanel(ui: ClassicUi):
+final class TeleportPanel(ui: ClassicUi) extends ToggleWindow:
   import TeleportPanel.*
   import ui.g
 
   /** 选中的分组；None = 在选分组 */
   private var group = Option.empty[String]
 
-  def reset(): Unit = group = None
+  /** 每次打开回到选地区那一页 */
+  override def show(): Unit =
+    super.show()
+    group = None
 
   private final case class Entry(label: String, active: Boolean, onClick: () => Unit)
 
@@ -37,13 +40,13 @@ final class TeleportPanel(ui: ClassicUi):
     val w  = width(cols)
     val hh = Head + rows * (BtnH + Gap) + Pad
     val s  = math.min(want, math.min((ui.W - 8) / w, (ui.H - 8) / hh))
-    val o  = ui.panels.dialogOrigin(w * s, hh * s)
+    val o  = ui.dialogOrigin(w * s, hh * s)
     def toUi(r: Rect) = Rect(o.x + r.x * s, o.y + r.y * s, r.w * s, r.h * s)
     ui.area(toUi(Rect(0, 0, w, hh)))
-    val close = Rect(w - 50, 4, 46, 30)
+    val closeBtn = Rect(w - 50, 4, 46, 30)
     val buttons =
-      List((close, "关闭", () => ui.teleportOpen = false, "#ffe08a")) ++
-        group.map(_ => (Rect(close.x - 52, 4, 46, 30), "返回", () => group = None, "#ffe08a")) ++
+      List((closeBtn, "关闭", () => close(), "#ffe08a")) ++
+        group.map(_ => (Rect(closeBtn.x - 52, 4, 46, 30), "返回", () => group = None, "#ffe08a")) ++
         entries.zipWithIndex.map { (e, i) =>
           (Rect(Pad + (i % cols) * (BtnW + Gap), Head + (i / cols) * (BtnH + Gap), BtnW, BtnH), e.label, e.onClick, if e.active then "#9cff8a" else "#fff")
         }
@@ -61,7 +64,7 @@ final class TeleportPanel(ui: ClassicUi):
   private def go(i: Int, label: String): Unit =
     ui.send(GameCmd.Teleport(TeleportRef(i)))
     ui.message(s"传送到 $label")
-    ui.teleportOpen = false
+    close()
 
 object TeleportPanel:
   val BtnW = 124.0

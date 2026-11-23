@@ -7,6 +7,7 @@ import mir.core.*
 import mir.data.Catalog
 import mir.model.*
 import mir.protocol.*
+import mir.rules.ItemKind
 import mir.view.ViewState
 import org.scalajs.dom
 
@@ -24,10 +25,6 @@ enum Screen:
   case Lobby
   case Select(scene: CharSelect)
   case Game
-
-/** 手机上点了物品弹出的说明 + 操作按钮。keepOpen：做完操作菜单留着（连续买药）。 */
-final case class MenuAction(label: String, run: () => Unit)
-final case class ItemMenu(lines: List[Line], actions: List[MenuAction], anchor: Rect, keepOpen: Boolean = false)
 
 /** 界面外部要的能力（Main 接上）。 */
 final case class UiEnv(
@@ -76,25 +73,29 @@ final class ClassicUi(
   private var problem    = Option.empty[String]
   private var dead       = false
 
-  // 窗口
-  var hand: Option[Hand]          = None
-  var itemMenu: Option[ItemMenu]  = None
-  /** 物品菜单这一帧画在哪（点在里面不关菜单） */
-  private var menuRect            = Option.empty[Rect]
-  var miniMap: Int                = 1
-  var stateOpen                   = false
-  var statePage                   = 0
-  var bagOpen                     = false
-  var settingsOpen                = false
-  var teleportOpen                = false
-  var keyDlg: Option[SkillId]     = None
+  /** 手上拿着的物品（电脑拖物品） */
+  var hand: Option[Hand] = None
 
+  // 常驻 HUD
   val board    = Board(this)
-  val panels   = Panels(this)
-  val merchant = MerchantPanel(this)
-  val teleport = TeleportPanel(this)
-  val quantity = QuantityPanel(this)
+  val miniMap  = MiniMap(this)
   val chatBox  = ChatInput(text => client.send(GameCmd.Say(text)))
+
+  // 窗口
+  val merchant = MerchantPanel(this)
+  val bag      = BagWindow(this)
+  val state    = StateWindow(this)
+  val settings = SettingsWindow(this)
+  val teleport = TeleportPanel(this)
+  val keyDlg   = KeyDialog(this)
+  val quantity = QuantityPanel(this)
+  val itemMenu = ItemMenuWindow(this)
+
+  /**
+   * 全部窗口，从下到上：绘制顺序、点击叠放（后画的盖住先画的）、悬停说明、全部关闭都按它。
+   * 新加窗口只要写一个 Window 实现、在这里排好位置。
+   */
+  val windows: List[Window] = List(merchant, bag, state, settings, teleport, keyDlg, quantity, itemMenu)
 
   def options: ViewOptions = client.options
 
@@ -134,8 +135,8 @@ final class ClassicUi(
     case ChatKind.Shout => push(ChatLine(s"(!)$from：$text", "#ff0", "#00007b"))
   def npcOpened(npc: ActorId, ref: MerchantRef): Unit = catalog.merchant(ref).foreach { d =>
     merchant.open(npc, d)
-    bagOpen = true
-    itemMenu = None
+    bag.show()
+    itemMenu.close()
   }
   /** 升级的提示服务端已经发了（Notice），这里不再重复 */
   def levelUp(level: Int): Unit = ()
@@ -161,38 +162,21 @@ final class ClassicUi(
 
   // ======================= 开关窗口 =======================
 
+  /** 关掉所有窗口并放下手上的物品（Esc、死亡、进图）。 */
   def closeAll(): Unit =
-    merchant.close()
-    stateOpen = false
-    bagOpen = false
-    settingsOpen = false
-    teleportOpen = false
-    keyDlg = None
-    itemMenu = None
+    windows.foreach(_.close())
     hand = None
-    quantity.close()
 
-  def toggleBag(): Unit =
-    bagOpen = !bagOpen
-    itemMenu = None
-
-  def toggleState(page: Int): Unit =
-    itemMenu = None
-    if stateOpen && statePage == page then stateOpen = false
-    else
-      stateOpen = true
-      statePage = page
-
-  def toggleSettings(): Unit = settingsOpen = !settingsOpen
-
-  /** 传送窗口（每次打开回到选地区那一页）。 */
-  def toggleTeleport(): Unit =
-    teleportOpen = !teleportOpen
-    if teleportOpen then
-      teleport.reset()
-      itemMenu = None
-
-  def toggleMiniMap(): Unit = miniMap = (miniMap + 1) % 3
+  /** 底栏按钮和键盘的操作。开关窗口时顺手关掉弹出的说明框。 */
+  def run(a: UiAction): Unit = a match
+    case UiAction.Chat           => openChat()
+    case UiAction.Belt(i)        => client.view.belt.lift(i).flatten.foreach(it => send(GameCmd.UseItem(it.uid)))
+    case UiAction.Bag            => itemMenu.close(); bag.toggle()
+    case UiAction.State(page)    => itemMenu.close(); state.toggle(page)
+    case UiAction.Settings       => itemMenu.close(); settings.toggle()
+    case UiAction.Teleport       => itemMenu.close(); teleport.toggle()
+    case UiAction.MiniMap        => miniMap.cycle()
+    case UiAction.CloseAll       => closeAll()
 
   def logout(): Unit = env.logout()
 
@@ -230,7 +214,7 @@ final class ClassicUi(
 
   /** 点身上一格（包裹、快捷栏、装备位）。 */
   def clickPlace(place: ItemPlace, there: Option[ItemInstance], anchor: Rect): Unit =
-    if touch && hand.isEmpty then panels.openMenu(place, there, anchor)
+    if touch && hand.isEmpty then itemMenu.forItem(place, there, anchor)
     else
       val key = place.toString
       apply(Hand.click(hand, place, there, isDouble(key)))
@@ -239,7 +223,7 @@ final class ClassicUi(
   def askCount(it: ItemInstance, title: String, note: Int => Option[String], ok: Int => Unit): Unit =
     if it.count <= 1 then ok(1)
     else
-      itemMenu = None
+      itemMenu.close()
       quantity.show(QuantityAsk(title, it.count, note, ok))
 
   def apply(step: HandStep): Unit =
@@ -255,7 +239,6 @@ final class ClassicUi(
     H = h
     ctlScale = scale
     hits.reset()
-    menuRect = None
     screen match
       case Screen.Lobby     => ()
       case Screen.Select(s) => s.draw()
@@ -268,22 +251,37 @@ final class ClassicUi(
 
   private def drawGame(m: Me): Unit =
     hand = hand.filter(Hand.valid(m.view, _))
-    if miniMap > 0 then panels.drawMiniMap(m)
+    miniMap.draw(m)
     board.draw(m)
-    merchant.draw(m)
-    if bagOpen then panels.drawBag(m)
-    if stateOpen then panels.drawState(m)
-    if settingsOpen then panels.drawSettings(m)
-    if teleportOpen then teleport.draw(m)
-    keyDlg.foreach(panels.drawKeyDlg(m, _))
-    quantity.draw()
-    itemMenu match
-      case Some(menu) => menuRect = Some(panels.drawItemMenu(menu))
-      case None       => if hand.isEmpty && !touch then panels.drawHover(m)
+    windows.foreach(w => if w.isOpen then w.draw(m))
+    if !itemMenu.isOpen && hand.isEmpty && !touch then drawHover(m)
     hand.foreach { h =>
       catalog.item(h.item.name).foreach(d => g.item(d.look, h.item.count, Rect(mouse.x - 20, mouse.y - 16, 40, 32)))
     }
     if dead && m.actor.dead then drawDeath()
+
+  private def openTop: List[Window] = windows.reverse.filter(_.isOpen)
+
+  /** 鼠标下身上的物品（上层窗口优先，最后是底栏快捷栏）。 */
+  def itemUnder(m: Me): Option[ItemInstance] =
+    openTop.iterator.flatMap(_.itemAt(m, mouse)).nextOption().orElse(board.itemAt(m, mouse))
+
+  /** 一件身上物品的说明（装备和身上同部位的比较）。 */
+  def describe(m: Me, it: ItemInstance): List[Line] = catalog.item(it.name).fold(Nil) { d =>
+    val cur = ItemKind.slots(ItemKind.of(d)).headOption.flatMap(m.view.worn.get).filter(_.uid != it.uid).flatMap(c => catalog.item(c.name))
+    Describe.itemLines(catalog, d, Some(it), m.job, m.stats, cur)
+  }
+
+  /** 电脑悬停说明：身上的物品，否则上层窗口里鼠标下的东西（商品、属性、技能）。 */
+  private def drawHover(m: Me): Unit =
+    val lines = itemUnder(m).map(describe(m, _))
+      .orElse(openTop.iterator.flatMap(_.hover(m, mouse)).nextOption())
+      .getOrElse(Nil)
+    g.hint(lines, mouse.x + 14, mouse.y + 14, W, H)
+
+  /** 居中的对话框（设置、技能快捷键、传送、数量）摆在底栏上方。 */
+  def dialogOrigin(w: Double, h: Double): Pt =
+    Pt(math.round((W - w) / 2).toDouble, math.max(0, math.round((H - Board.Height - h) / 2)).toDouble)
 
   /** 死了：中间一个「复活」框（服务端把人送回城）。 */
   private def drawDeath(): Unit =
@@ -320,12 +318,11 @@ final class ClassicUi(
       true
     else
       // 物品菜单在最上层：点在菜单里只算菜单的按钮；点在外面就关掉它，再照常处理
-      val inMenu = itemMenu.isDefined && menuRect.exists(_.contains(p.x, p.y))
-      if inMenu then
-        hits.buttonAt(p.x, p.y, 0).filter(b => menuRect.exists(_.contains(b.rect.x + 1, b.rect.y + 1))).foreach(b => pressed = Some(b))
+      if itemMenu.contains(p) then
+        hits.buttonAt(p.x, p.y, 0).filter(b => itemMenu.contains(Pt(b.rect.x + 1, b.rect.y + 1))).foreach(b => pressed = Some(b))
         true
       else
-        if itemMenu.isDefined then itemMenu = None
+        itemMenu.close()
         hits.buttonAt(p.x, p.y, slop) match
           case Some(b) =>
             pressed = Some(b)
@@ -369,18 +366,8 @@ final class ClassicUi(
     case _                              => false
 
   private def gameKey(k: String): Boolean =
-    val act: Option[() => Unit] = k match
-      case "Enter" => Some(() => openChat())
-      case "1" | "2" | "3" | "4" | "5" | "6" =>
-        Some(() => client.view.belt.lift(k.toInt - 1).flatten.foreach(it => send(GameCmd.UseItem(it.uid))))
-      case "F9" | "b" | "B" | "i" | "I" => Some(() => toggleBag())
-      case "F10" | "c" | "C"            => Some(() => toggleState(0))
-      case "F11" | "k" | "K"            => Some(() => toggleState(3))
-      case "Tab" | "m" | "M"            => Some(() => toggleMiniMap())
-      case "t" | "T"                    => Some(() => toggleTeleport())
-      case "Escape"                     => Some(() => closeAll())
-      case _                            => None
-    act.foreach(_())
+    val act = UiAction.Keys.get(k)
+    act.foreach(run)
     act.isDefined
 
 object ClassicUi:

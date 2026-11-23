@@ -2,7 +2,7 @@ package mir.client.ui
 
 import mir.client.input.{Joystick, Pt}
 import mir.core.*
-import mir.model.{ItemPlace, Job}
+import mir.model.{ItemInstance, ItemPlace, Job}
 import mir.protocol.{GameCmd, Look}
 import mir.rules.Rates
 import mir.world.Combat
@@ -20,6 +20,10 @@ final class Board(ui: ClassicUi):
 
   /** 快捷栏 6 格 */
   def beltRects: Vector[Rect] = Vector.tabulate(6)(i => Rect(boardX + 285 + 43 * i, boardY + 59, 32, 29))
+
+  /** 鼠标下快捷栏里的物品（悬停说明） */
+  def itemAt(m: Me, p: Pt): Option[ItemInstance] =
+    beltRects.indices.collectFirst { case i if beltRects(i).contains(p.x, p.y) => m.view.belt.lift(i).flatten }.flatten
 
   /** 聊天框（底栏中间黑底那块的上部，9 行） */
   def chatRect: Rect = Rect(boardX + 208, ui.H - 130, 387, ChatLines * 12)
@@ -79,10 +83,10 @@ final class Board(ui: ClassicUi):
     }
     ui.hit(cr)(ui.openChat())
     // 功能按钮：状态、包裹、技能、设置
-    ui.button(Button(Rect(bx + 643, by + 61, 24, 24), () => ui.toggleState(0), img = Some(8)))
-    ui.button(Button(Rect(bx + 682, by + 41, 24, 22), () => ui.toggleBag(), img = Some(9)))
-    ui.button(Button(Rect(bx + 722, by + 21, 24, 23), () => ui.toggleState(3), img = Some(10)))
-    ui.button(Button(Rect(bx + 764, by + 11, 24, 23), () => ui.toggleSettings(), img = Some(11)))
+    ui.button(Button(Rect(bx + 643, by + 61, 24, 24), () => ui.run(UiAction.State(StatePage.Equip)), img = Some(8)))
+    ui.button(Button(Rect(bx + 682, by + 41, 24, 22), () => ui.run(UiAction.Bag), img = Some(9)))
+    ui.button(Button(Rect(bx + 722, by + 21, 24, 23), () => ui.run(UiAction.State(StatePage.Magic)), img = Some(10)))
+    ui.button(Button(Rect(bx + 764, by + 11, 24, 23), () => ui.run(UiAction.Settings), img = Some(11)))
     // 快捷栏（只放药和卷轴，1-6 键或点一下就用）
     beltRects.zipWithIndex.foreach { (r, i) =>
       val place = ItemPlace.Belt(i)
@@ -92,7 +96,7 @@ final class Board(ui: ClassicUi):
       ui.hit(r)(beltClicked(i, r))
     }
     // 底栏小按钮：小地图、交易、行会、组队（还没做，只画样子）、退出
-    ui.button(Button(Rect(bx + 219, by + 104, 28, 13), () => ui.toggleMiniMap(), img = Some(130), always = true))
+    ui.button(Button(Rect(bx + 219, by + 104, 28, 13), () => ui.run(UiAction.MiniMap), img = Some(130), always = true))
     List(132 -> 249, 134 -> 279, 128 -> 309).foreach { (img, dx) =>
       ui.button(Button(Rect(bx + dx, by + 104, 28, 13), () => ui.message("还没有这个功能"), img = Some(img), always = true))
     }
@@ -122,7 +126,7 @@ final class Board(ui: ClassicUi):
   private def beltClicked(i: Int, r: Rect): Unit =
     val place = ItemPlace.Belt(i)
     val there = ui.client.view.belt.lift(i).flatten
-    if ui.hand.isEmpty && !ui.bagOpen then there.foreach(it => ui.send(GameCmd.UseItem(it.uid)))
+    if ui.hand.isEmpty && !ui.bag.isOpen then there.foreach(it => ui.send(GameCmd.UseItem(it.uid)))
     else ui.clickPlace(place, there, r)
 
   /** 原版血蓝球（左半血、右半蓝，按比例从上往下空）。 */
@@ -144,7 +148,7 @@ final class Board(ui: ClassicUi):
       g.text("传送", (52 - g.width("传送")) / 2, 8, "#ffe08a", bold = true)
     }
     ui.area(r)
-    ui.button(Button(r, () => ui.toggleTeleport()))
+    ui.button(Button(r, () => ui.run(UiAction.Teleport)))
 
   // ---------------- 触屏操作件（用户 #1140） ----------------
 
@@ -220,7 +224,7 @@ final class Board(ui: ClassicUi):
           g.text(s"F$k", r.x - 2, r.y - 4, "#ff0", bold = true)
           ui.area(r)
           ui.button(Button(r, () => ui.ctl.castSkill(ls.id), onHold = Some(() =>
-            ui.itemMenu = Some(ItemMenu(Describe.skillLines(ui.catalog, d, ls, m.stats), Nil, r))
+            ui.itemMenu.show(ItemMenu(Describe.skillLines(ui.catalog, d, ls, m.stats), Nil, r))
           )))
         }
       }

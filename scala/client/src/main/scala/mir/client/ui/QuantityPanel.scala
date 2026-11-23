@@ -9,7 +9,7 @@ final case class QuantityAsk(title: String, max: Int, note: Int => Option[String
  * 数量框（#1159，照 TS 版 ui/classic/quantity.ts）：卖、存、取一叠东西时问要几个，默认全部。原版不叠物品，没有这个窗，
  * 画成和传送窗同色调的面板。−10 −1 +1 +10 调数，「1 个」「一半」「全部」一键设；点数字可以直接输入；最下面取消、确定。
  */
-final class QuantityPanel(ui: ClassicUi):
+final class QuantityPanel(ui: ClassicUi) extends Window:
   import QuantityPanel.*
   import ui.g
 
@@ -26,9 +26,9 @@ final class QuantityPanel(ui: ClassicUi):
 
   private def set(n: Int): Unit = ask.foreach(a => value = math.max(1, math.min(a.max, n)))
 
-  def draw(): Unit = ask.foreach { a =>
+  def draw(m: Me): Unit = ask.foreach { a =>
     val s = math.min(ui.ctlScale, math.min((ui.W - 8) / Width, (ui.H - 8) / Height))
-    val o = ui.panels.dialogOrigin(Width * s, Height * s)
+    val o = ui.dialogOrigin(Width * s, Height * s)
     def toUi(r: Rect) = Rect(o.x + r.x * s, o.y + r.y * s, r.w * s, r.h * s)
     ui.area(toUi(Rect(0, 0, Width, Height)))
     val field = Rect(Pad, 32, 110, 22)

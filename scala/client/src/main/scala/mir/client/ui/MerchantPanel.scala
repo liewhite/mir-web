@@ -19,7 +19,7 @@ final case class MenuRow(name: String, col1: String, col2: String, defn: ItemDef
  * 对话框里点「购买 / 出售 / 保管 / 取回」，买和取在商品列表里双击（手机点一下弹菜单）；
  * 卖和存把物品放进出售框再点确定（手机在包裹里点物品选「卖出 / 保管」）。全部发指令给服务端。
  */
-final class MerchantPanel(ui: ClassicUi):
+final class MerchantPanel(ui: ClassicUi) extends Window:
   import MerchantPanel.*
   import ui.{catalog, g}
 
@@ -154,7 +154,7 @@ final class MerchantPanel(ui: ClassicUi):
       ui.hit(rr) {
         if ui.touch then
           menuIndex = i
-          ui.itemMenu = Some(ItemMenu(
+          ui.itemMenu.show(ItemMenu(
             Describe.itemLines(catalog, r.defn, r.item, m.job, m.stats, None),
             List(MenuAction(if store then "取回" else s"购买 ${r.col1}", r.take)),
             rr,
@@ -171,11 +171,11 @@ final class MerchantPanel(ui: ClassicUi):
     ui.button(Button(Rect(x + 291, y, 16, 23), () => mode = MerchantMode.Talk, img = Some(64)))
 
   /** 电脑上鼠标停在商品列表某行：说明。 */
-  def hoverLines(m: Me): Option[List[Line]] =
+  override def hover(m: Me, p: Pt): Option[List[Line]] =
     for
       s <- session
       if mode == MerchantMode.Buy || mode == MerchantMode.GetBack
-      (r, _) <- rows(m, s).zipWithIndex.slice(menuTop, menuTop + MaxMenu).find((_, i) => rowRect(origin, i - menuTop).contains(ui.mouse.x, ui.mouse.y))
+      (r, _) <- rows(m, s).zipWithIndex.slice(menuTop, menuTop + MaxMenu).find((_, i) => rowRect(origin, i - menuTop).contains(p.x, p.y))
     yield Describe.itemLines(catalog, r.defn, r.item, m.job, m.stats, None)
 
   // ---------------- 出售、保管框 ----------------
