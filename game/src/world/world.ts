@@ -11,6 +11,7 @@ import {
 import { EQUIP_SLOTS, type EquipSlot, type ItemInstance, dressSex, itemEffects, itemKind, newItem, requirement } from './items';
 import { computeStats, random, type Stats } from './rules';
 import { findPath } from './path';
+import { S, monsterSound, struckBody, weaponSwing } from './sounds';
 
 export type GameEvent =
   | { type: 'damage'; target: number; amount: number; source: number }
@@ -21,7 +22,7 @@ export type GameEvent =
   | { type: 'levelUp'; level: number }
   | { type: 'mapChange'; map: string; x: number; y: number }
   | { type: 'died' }
-  | { type: 'sound'; name: string };
+  | { type: 'sound'; id: number; at?: Pos };
 
 /** 给渲染器的特效：图库 + 起始帧 + 帧数，放在格子或角色身上，可从 A 飞到 B。 */
 export interface VisualEffect {
@@ -111,6 +112,7 @@ export class World {
       this.spawnTimers[i] = this.now;
     });
     this.events.push({ type: 'mapChange', map: map.id, x: start.x, y: start.y });
+    this.sound(S.spaceIn);
   }
 
   private idx(x: number, y: number): number {
@@ -187,6 +189,16 @@ export class World {
   // ---------------- 时间推进 ----------------
 
   private timers: { at: number; fn: () => void }[] = [];
+  private stepFoot = 0;
+
+  sound(id: number, at?: Pos): void {
+    this.events.push({ type: 'sound', id, at });
+  }
+
+  /** 玩家武器外观（用于挥刀、打中的声音） */
+  weaponShape(p: Player): number | null {
+    return p.equip.weapon ? this.catalog.item(p.equip.weapon.name).shape : null;
+  }
 
   /** 按游戏时间延后执行（飞行技能命中、药效分跳等）。 */
   after(ms: number, fn: () => void): void {
@@ -265,7 +277,12 @@ export class World {
     const dur = a.kind === 'player' ? (run ? RUN_MS : WALK_MS) : this.monsterMoveMs(a as Monster);
     this.setAction(a, run ? 'run' : 'walk', dur, { from });
     a.busyUntil = this.now + dur;
-    if (a.kind === 'player') this.afterPlayerMove(a);
+    if (a.kind === 'player') {
+      const cave = this.map.id.startsWith('D');
+      const pair = run ? (cave ? S.runCave : S.runGround) : cave ? S.walkCave : S.walkGround;
+      this.sound(pair[this.stepFoot++ % 2]!);
+      this.afterPlayerMove(a);
+    }
     return true;
   }
 
@@ -316,6 +333,13 @@ export class World {
     }
     target.hp -= dmg;
     target.lastHitBy = sourceId;
+    const src = this.actors.get(sourceId);
+    if (target.kind === 'monster') {
+      this.sound(struckBody(src?.kind === 'player' ? this.weaponShape(src) : null), target.pos);
+      if (target.hp > 0) this.sound(monsterSound(target.def.appr, 4), target.pos);
+    } else if (target.kind === 'player' && target.hp > 0) {
+      this.sound(target.sex === 1 ? S.womStruck : S.manStruck);
+    }
     this.events.push({ type: 'damage', target: target.id, amount: dmg, source: sourceId });
     if (target.hp <= 0) {
       target.hp = 0;
@@ -340,6 +364,8 @@ export class World {
     target.deadAt = this.now;
     target.poison = null;
     this.setAction(target, 'die', 1200);
+    if (target.kind === 'monster') this.sound(monsterSound(target.def.appr, 5), target.pos);
+    else if (target.kind === 'player') this.sound(target.sex === 1 ? S.womDie : S.manDie);
     if (target.kind === 'monster') {
       this.vacate(target);
       target.removeAt = this.now + CORPSE_MS;
@@ -469,6 +495,7 @@ export class World {
     const here = this.items.filter((i) => i.x === p.x && i.y === p.y);
     let any = false;
     for (const g of here) {
+      this.sound(isGold(g.item) ? S.money : S.itemClick);
       if (isGold(g.item)) {
         p.gold += g.item.gold;
         this.events.push({ type: 'msg', text: `捡到金币 ${g.item.gold}`, color: 'item' });
@@ -515,6 +542,7 @@ export class World {
     switch (k.kind) {
       case 'potion': {
         this.removeOwned(p, uid);
+        this.sound(S.eatDrug);
         if (k.instant) {
           const hp = Math.min(k.hp, p.stats.maxHp - p.hp);
           const mp = Math.min(k.mp, p.stats.maxMp - p.mp);
@@ -657,6 +685,10 @@ export class World {
     else if (p.longHitOn && has(12)) style = 'long';
     this.setAction(p, style === 'normal' ? 'attack' : 'heavy', HIT_ANIM_MS, { hit: style });
     p.busyUntil = this.now + Math.max(HIT_ANIM_MS, p.stats.hitInterval);
+    this.sound(weaponSwing(this.weaponShape(p)));
+    const styleSound = { normal: 0, power: p.sex === 1 ? S.yedoWoman : S.yedoMan, long: 0, wide: S.wideHit, fire: S.fireHit }[style];
+    if (styleSound) this.sound(styleSound);
+    if (style === 'long' && target) this.sound(S.longHit);
     resolvePlayerHit(this, p, dir, style);
   }
 
@@ -685,7 +717,9 @@ export class World {
     }
     if (target) {
       const d = chebyshev(m, target);
-      if (d <= 1) {
+      if (isRanged(m.def) && d <= 7 && d >= 1) {
+        this.monsterAttack(m, target, true);
+      } else if (d <= 1) {
         this.monsterAttack(m, target);
       } else if (!guard) {
         this.monsterStepToward(m, target);
@@ -734,7 +768,7 @@ export class World {
     }
   }
 
-  private monsterAttack(m: Monster, t: Actor): void {
+  private monsterAttack(m: Monster, t: Actor, ranged = false): void {
     m.dir = dirTo(m, t);
     if (this.now - m.lastAttack < m.def.attackSpeed) return;
     m.lastAttack = this.now;
@@ -742,6 +776,27 @@ export class World {
     const anim = tab ? tab.ActAttack[1] * tab.ActAttack[3] : 600;
     this.setAction(m, 'attack', anim);
     m.busyUntil = this.now + anim;
+    this.sound(monsterSound(m.def.appr, 2), m.pos);
+    if (ranged) {
+      // 掷斧骷髅、弓箭手：远程（DualAxeMonster.FlyAxeAttack），伤害按距离延迟到达
+      const d = chebyshev(m, t);
+      const delay = d * 50 + 300;
+      if (m.def.raceImg === 15) {
+        const a16 = Math.atan2((t.x - m.x) * 48, -(t.y - m.y) * 32);
+        const dir16 = ((Math.round(a16 / (Math.PI / 8)) % 16) + 16) % 16;
+        this.effects.push({ lib: 'mon3', start: 447 + dir16 * 10, frames: 3, frameTime: 60, at: { actor: t.id }, from: m.pos, blend: false, startedAt: this.now, duration: delay });
+      }
+      const power = m.dc[0] + random(m.dc[1] - m.dc[0] + 1);
+      this.after(delay, () => {
+        if (t.dead || m.dead) return;
+        const ac = t.kind === 'player' ? t.stats.ac : t.kind === 'monster' ? t.ac : null;
+        if (!ac) return;
+        const dmg = Math.max(0, power - (ac[0] + random(Math.abs(ac[1] - ac[0]) + 1)));
+        if (dmg > 0) this.applyDamage(t, dmg, m.id);
+        else this.events.push({ type: 'miss', target: t.id });
+      });
+      return;
+    }
     const power = m.dc[0] + random(m.dc[1] - m.dc[0] + 1);
     const defense = t.kind === 'player' ? t.stats : t.kind === 'monster' ? { ac: t.ac, agility: t.agility } : null;
     if (!defense) return;
@@ -766,6 +821,11 @@ export class World {
 /** 鸡、鹿等不主动攻击（Race 51/52 动物）。 */
 function isPassive_(d: MonsterDef): boolean {
   return d.race === 51 || d.race === 52 || d.race === 50;
+}
+
+/** 远程怪：掷斧骷髅(87)、弓箭手(104)、弓箭守卫(112)。 */
+function isRanged(d: MonsterDef): boolean {
+  return d.race === 87 || d.race === 104 || d.race === 112;
 }
 
 export function isGuard(d: MonsterDef): boolean {

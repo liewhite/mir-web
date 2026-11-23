@@ -113,6 +113,51 @@ export class Renderer {
     return { x: a.x * UNITX, y: a.y * UNITY };
   }
 
+  /** 进游戏前把玩家周围一屏的地面和物件先下载好，避免一进来画面缺块。 */
+  async preloadAround(center: Pos, onProgress: (done: number, total: number) => void): Promise<void> {
+    const map = this.world.map;
+    const rx = Math.ceil(this.width / UNITX / 2) + 2;
+    const ry = Math.ceil(this.height / UNITY / 2) + 2;
+    const objects = new Map<string, Set<number>>();
+    for (let y = center.y - ry; y <= center.y + ry + LONG_ROWS; y++) {
+      for (let x = center.x - rx - WIDE_COLS; x <= center.x + rx; x++) {
+        if (!map.inside(x, y)) continue;
+        const i = y * map.width + x;
+        const f = map.front[i]!;
+        if (!f) continue;
+        const area = map.area[i]!;
+        const lib = area === 0 ? 'objects' : `objects${area + 1}`;
+        const set = objects.get(lib) ?? new Set<number>();
+        const ani = map.ani[i]! & 0x7f;
+        for (let k = 0; k < Math.max(1, ani); k++) set.add(f - 1 + k);
+        objects.set(lib, set);
+      }
+    }
+    const jobs: Promise<unknown>[] = [];
+    for (const [lib, set] of objects) jobs.push(this.sprites.preload(lib, set));
+    const bw = GROUND_BLOCK * UNITX;
+    const bh = GROUND_BLOCK * UNITY;
+    const cx = center.x * UNITX;
+    const cy = center.y * UNITY;
+    for (let by = Math.floor((cy - this.height) / bh); by <= Math.floor((cy + this.height) / bh); by++) {
+      for (let bx = Math.floor((cx - this.width) / bw); bx <= Math.floor((cx + this.width) / bw); bx++) {
+        if (bx < 0 || by < 0) continue;
+        jobs.push(new Promise<void>((res) => {
+          const tick = (): void => {
+            const v = this.ground.get(`${map.id}/${bx}_${by}`);
+            if (v === undefined) this.groundImage(map.id, bx, by);
+            if (v === 'loading' || v === undefined) setTimeout(tick, 50);
+            else res();
+          };
+          tick();
+        }));
+      }
+    }
+    let done = 0;
+    onProgress(0, jobs.length);
+    await Promise.all(jobs.map((j) => j.then(() => onProgress(++done, jobs.length))));
+  }
+
   float(actor: number, text: string, color: string): void {
     this.floaters.push({ actor, text, color, born: performance.now() });
   }

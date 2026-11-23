@@ -12,7 +12,9 @@ function assetUrl(path) {
 }
 function blockSize(lib) {
   const base = lib.replace(/\d+$/, "");
-  return base === "hum" || base === "weapon" || base === "hair" ? 600 : 200;
+  if (base === "hum" || base === "weapon" || base === "hair") return 600;
+  if (base === "objects" || base === "stateitem" || base === "mmap" || base === "npc") return 10;
+  return 200;
 }
 function loadImage(src) {
   return new Promise((resolve, reject) => {
@@ -644,6 +646,55 @@ function unwind(n) {
   return dirs.reverse();
 }
 
+// src/world/sounds.ts
+var S = {
+  walkGround: [1, 2],
+  runGround: [3, 4],
+  walkCave: [21, 22],
+  runCave: [23, 24],
+  hitFist: 57,
+  money: 106,
+  eatDrug: 107,
+  spaceOut: 109,
+  spaceIn: 110,
+  itemClick: 118,
+  glassButton: 105,
+  yedoMan: 130,
+  yedoWoman: 131,
+  longHit: 132,
+  wideHit: 133,
+  fireHitReady: 136,
+  fireHit: 137,
+  manStruck: 138,
+  womStruck: 139,
+  manDie: 144,
+  womDie: 145
+};
+function weaponSwing(shape) {
+  if (shape === null) return S.hitFist;
+  if ([6, 20].includes(shape)) return 50;
+  if (shape === 1) return 51;
+  if ([2, 13, 9, 5, 14, 22].includes(shape)) return 52;
+  if ([4, 17, 10, 15, 16, 23].includes(shape)) return 53;
+  if ([3, 7, 11].includes(shape)) return 54;
+  if (shape === 24) return 55;
+  if ([8, 12, 18, 21].includes(shape)) return 56;
+  return S.hitFist;
+}
+function struckBody(shape) {
+  if (shape === null) return 73;
+  if ([6, 1, 2, 4, 5, 9, 10, 13, 14, 15, 16, 17].includes(shape)) return 70;
+  if ([3, 11].includes(shape)) return 71;
+  if ([8, 12, 18].includes(shape)) return 72;
+  return 73;
+}
+function monsterSound(appr, k) {
+  return 200 + appr * 10 + k;
+}
+function magicSound(id, k) {
+  return 1e4 + id * 10 + k;
+}
+
 // src/world/combat.ts
 function skillOf(p, id) {
   return p.skills.find((s) => s.id === id);
@@ -678,6 +729,9 @@ function physicalHit(w, p, t, power, ignoreArmor) {
 }
 function resolvePlayerHit(w, p, dir, style) {
   let power = attackPower(p.stats.dc[0], p.stats.dc[1] - p.stats.dc[0]);
+  const luck = p.stats.luck;
+  if (luck > 0 && random(10 - Math.min(9, luck)) === 0) power = p.stats.dc[1];
+  else if (luck < 0 && random(10 - Math.min(9, -luck)) === 0) power = p.stats.dc[0];
   const front = step(p, dir);
   const target = w.occupant(front.x, front.y);
   switch (style) {
@@ -836,7 +890,11 @@ function castSpell(w, p, skillId, tgt) {
       let power = mcPower();
       if (skillId === 11 && t.kind === "monster" && t.def.undead) power = Math.round(power * 1.5);
       const delay = skillId === 11 ? 100 : 80 * chebyshev(p, t);
-      w.after(delay, () => hitMagic(w, p, t, power));
+      w.sound(magicSound(skillId, 1));
+      w.after(delay, () => {
+        w.sound(magicSound(skillId, 2), t.pos);
+        hitMagic(w, p, t, power);
+      });
       if (skillId === 11) {
         fx(w, { lib: "magic2", start: 10, frames: 5, frameTime: 80, at: { actor: t.id } });
       } else {
@@ -923,7 +981,9 @@ function castSpell(w, p, skillId, tgt) {
       const power = attackPower(skillPower(magicBase(def.power), s.level, def.defPower) + SC[0], SC[1] - SC[0] + 1);
       const delay = 80 * chebyshev(p, t);
       fx(w, { lib: "magic", start: 1160 + dir16(p, t) * 10, frames: 3, frameTime: 60, at: { actor: t.id }, from: p.pos, duration: delay });
+      w.sound(magicSound(13, 1));
       w.after(delay, () => {
+        w.sound(magicSound(13, 2), t.pos);
         hitMagic(w, p, t, power);
         fx(w, { lib: "magic", start: 1320, frames: 10, frameTime: 50, at: { actor: t.id } });
       });
@@ -966,6 +1026,7 @@ function castSpell(w, p, skillId, tgt) {
       if (p.fireReady) return { ok: false, why: "\u70C8\u706B\u5DF2\u7ECF\u51C6\u5907\u597D\u4E86" };
       p.fireReady = true;
       p.cooldown.set(26, w.now + 1e4);
+      w.sound(S.fireHitReady);
       w.events.push({ type: "msg", text: "\u70C8\u706B\u5251\u6CD5\u51C6\u5907\u597D\u4E86", color: "system" });
       p.mp -= cost;
       return { ok: true };
@@ -982,6 +1043,7 @@ function castSpell(w, p, skillId, tgt) {
       return { ok: false, why: "\u8FD9\u4E2A\u6280\u80FD\u8FD8\u6CA1\u505A" };
   }
   p.mp -= cost;
+  w.sound(magicSound(skillId, 0));
   castFx(w, p, def);
   p.action = { kind: "spell", startedAt: w.now, duration: SPELL_ANIM_MS, spellEffect: def.effect };
   p.busyUntil = w.now + SPELL_INTERVAL;
@@ -1013,6 +1075,7 @@ var World = class {
     this.nextId = 100;
     // ---------------- 时间推进 ----------------
     this.timers = [];
+    this.stepFoot = 0;
     /** 由游戏控制器在加载完新地图后执行。 */
     this.pendingTeleport = null;
   }
@@ -1062,6 +1125,7 @@ var World = class {
       this.spawnTimers[i] = this.now;
     });
     this.events.push({ type: "mapChange", map: map.id, x: start.x, y: start.y });
+    this.sound(S.spaceIn);
   }
   idx(x, y) {
     return y * this.map.width + x;
@@ -1123,6 +1187,13 @@ var World = class {
       for (let k = alive; k < s.count && k < alive + 40; k++) this.spawnMonster(def, i, s, s.radius);
       this.spawnTimers[i] = this.now + Math.max(1, s.minutes) * 6e4;
     });
+  }
+  sound(id, at) {
+    this.events.push({ type: "sound", id, at });
+  }
+  /** 玩家武器外观（用于挥刀、打中的声音） */
+  weaponShape(p) {
+    return p.equip.weapon ? this.catalog.item(p.equip.weapon.name).shape : null;
   }
   /** 按游戏时间延后执行（飞行技能命中、药效分跳等）。 */
   after(ms, fn) {
@@ -1194,7 +1265,12 @@ var World = class {
     const dur = a.kind === "player" ? run ? RUN_MS : WALK_MS : this.monsterMoveMs(a);
     this.setAction(a, run ? "run" : "walk", dur, { from });
     a.busyUntil = this.now + dur;
-    if (a.kind === "player") this.afterPlayerMove(a);
+    if (a.kind === "player") {
+      const cave = this.map.id.startsWith("D");
+      const pair = run ? cave ? S.runCave : S.runGround : cave ? S.walkCave : S.walkGround;
+      this.sound(pair[this.stepFoot++ % 2]);
+      this.afterPlayerMove(a);
+    }
     return true;
   }
   turn(a, dir) {
@@ -1232,6 +1308,13 @@ var World = class {
     }
     target.hp -= dmg;
     target.lastHitBy = sourceId;
+    const src = this.actors.get(sourceId);
+    if (target.kind === "monster") {
+      this.sound(struckBody(src?.kind === "player" ? this.weaponShape(src) : null), target.pos);
+      if (target.hp > 0) this.sound(monsterSound(target.def.appr, 4), target.pos);
+    } else if (target.kind === "player" && target.hp > 0) {
+      this.sound(target.sex === 1 ? S.womStruck : S.manStruck);
+    }
     this.events.push({ type: "damage", target: target.id, amount: dmg, source: sourceId });
     if (target.hp <= 0) {
       target.hp = 0;
@@ -1255,6 +1338,8 @@ var World = class {
     target.deadAt = this.now;
     target.poison = null;
     this.setAction(target, "die", 1200);
+    if (target.kind === "monster") this.sound(monsterSound(target.def.appr, 5), target.pos);
+    else if (target.kind === "player") this.sound(target.sex === 1 ? S.womDie : S.manDie);
     if (target.kind === "monster") {
       this.vacate(target);
       target.removeAt = this.now + CORPSE_MS;
@@ -1369,6 +1454,7 @@ var World = class {
     const here = this.items.filter((i) => i.x === p.x && i.y === p.y);
     let any = false;
     for (const g of here) {
+      this.sound(isGold(g.item) ? S.money : S.itemClick);
       if (isGold(g.item)) {
         p.gold += g.item.gold;
         this.events.push({ type: "msg", text: `\u6361\u5230\u91D1\u5E01 ${g.item.gold}`, color: "item" });
@@ -1412,6 +1498,7 @@ var World = class {
     switch (k.kind) {
       case "potion": {
         this.removeOwned(p, uid);
+        this.sound(S.eatDrug);
         if (k.instant) {
           const hp = Math.min(k.hp, p.stats.maxHp - p.hp);
           const mp = Math.min(k.mp, p.stats.maxMp - p.mp);
@@ -1547,6 +1634,10 @@ var World = class {
     else if (p.longHitOn && has2(12)) style = "long";
     this.setAction(p, style === "normal" ? "attack" : "heavy", HIT_ANIM_MS, { hit: style });
     p.busyUntil = this.now + Math.max(HIT_ANIM_MS, p.stats.hitInterval);
+    this.sound(weaponSwing(this.weaponShape(p)));
+    const styleSound = { normal: 0, power: p.sex === 1 ? S.yedoWoman : S.yedoMan, long: 0, wide: S.wideHit, fire: S.fireHit }[style];
+    if (styleSound) this.sound(styleSound);
+    if (style === "long" && target) this.sound(S.longHit);
     resolvePlayerHit(this, p, dir, style);
   }
   // ---------------- 怪物 AI ----------------
@@ -1573,7 +1664,9 @@ var World = class {
     }
     if (target) {
       const d = chebyshev(m, target);
-      if (d <= 1) {
+      if (isRanged(m.def) && d <= 7 && d >= 1) {
+        this.monsterAttack(m, target, true);
+      } else if (d <= 1) {
         this.monsterAttack(m, target);
       } else if (!guard) {
         this.monsterStepToward(m, target);
@@ -1617,7 +1710,7 @@ var World = class {
       m.busyUntil = this.now + 500;
     }
   }
-  monsterAttack(m, t) {
+  monsterAttack(m, t, ranged = false) {
     m.dir = dirTo(m, t);
     if (this.now - m.lastAttack < m.def.attackSpeed) return;
     m.lastAttack = this.now;
@@ -1625,6 +1718,26 @@ var World = class {
     const anim = tab ? tab.ActAttack[1] * tab.ActAttack[3] : 600;
     this.setAction(m, "attack", anim);
     m.busyUntil = this.now + anim;
+    this.sound(monsterSound(m.def.appr, 2), m.pos);
+    if (ranged) {
+      const d = chebyshev(m, t);
+      const delay = d * 50 + 300;
+      if (m.def.raceImg === 15) {
+        const a16 = Math.atan2((t.x - m.x) * 48, -(t.y - m.y) * 32);
+        const dir162 = (Math.round(a16 / (Math.PI / 8)) % 16 + 16) % 16;
+        this.effects.push({ lib: "mon3", start: 447 + dir162 * 10, frames: 3, frameTime: 60, at: { actor: t.id }, from: m.pos, blend: false, startedAt: this.now, duration: delay });
+      }
+      const power2 = m.dc[0] + random(m.dc[1] - m.dc[0] + 1);
+      this.after(delay, () => {
+        if (t.dead || m.dead) return;
+        const ac = t.kind === "player" ? t.stats.ac : t.kind === "monster" ? t.ac : null;
+        if (!ac) return;
+        const dmg2 = Math.max(0, power2 - (ac[0] + random(Math.abs(ac[1] - ac[0]) + 1)));
+        if (dmg2 > 0) this.applyDamage(t, dmg2, m.id);
+        else this.events.push({ type: "miss", target: t.id });
+      });
+      return;
+    }
     const power = m.dc[0] + random(m.dc[1] - m.dc[0] + 1);
     const defense = t.kind === "player" ? t.stats : t.kind === "monster" ? { ac: t.ac, agility: t.agility } : null;
     if (!defense) return;
@@ -1645,6 +1758,9 @@ var World = class {
 };
 function isPassive_(d) {
   return d.race === 51 || d.race === 52 || d.race === 50;
+}
+function isRanged(d) {
+  return d.race === 87 || d.race === 104 || d.race === 112;
 }
 function isGuard(d) {
   return d.name.includes("\u536B\u58EB") || d.name.includes("\u62A4\u536B") || d.name.includes("\u5B88\u536B");
@@ -1799,6 +1915,50 @@ var Renderer = class {
       };
     }
     return { x: a.x * UNITX, y: a.y * UNITY };
+  }
+  /** 进游戏前把玩家周围一屏的地面和物件先下载好，避免一进来画面缺块。 */
+  async preloadAround(center, onProgress) {
+    const map = this.world.map;
+    const rx = Math.ceil(this.width / UNITX / 2) + 2;
+    const ry = Math.ceil(this.height / UNITY / 2) + 2;
+    const objects = /* @__PURE__ */ new Map();
+    for (let y = center.y - ry; y <= center.y + ry + LONG_ROWS; y++) {
+      for (let x = center.x - rx - WIDE_COLS; x <= center.x + rx; x++) {
+        if (!map.inside(x, y)) continue;
+        const i = y * map.width + x;
+        const f = map.front[i];
+        if (!f) continue;
+        const area = map.area[i];
+        const lib = area === 0 ? "objects" : `objects${area + 1}`;
+        const set = objects.get(lib) ?? /* @__PURE__ */ new Set();
+        const ani = map.ani[i] & 127;
+        for (let k = 0; k < Math.max(1, ani); k++) set.add(f - 1 + k);
+        objects.set(lib, set);
+      }
+    }
+    const jobs = [];
+    for (const [lib, set] of objects) jobs.push(this.sprites.preload(lib, set));
+    const bw = GROUND_BLOCK * UNITX;
+    const bh = GROUND_BLOCK * UNITY;
+    const cx = center.x * UNITX;
+    const cy = center.y * UNITY;
+    for (let by = Math.floor((cy - this.height) / bh); by <= Math.floor((cy + this.height) / bh); by++) {
+      for (let bx = Math.floor((cx - this.width) / bw); bx <= Math.floor((cx + this.width) / bw); bx++) {
+        if (bx < 0 || by < 0) continue;
+        jobs.push(new Promise((res) => {
+          const tick = () => {
+            const v = this.ground.get(`${map.id}/${bx}_${by}`);
+            if (v === void 0) this.groundImage(map.id, bx, by);
+            if (v === "loading" || v === void 0) setTimeout(tick, 50);
+            else res();
+          };
+          tick();
+        }));
+      }
+    }
+    let done = 0;
+    onProgress(0, jobs.length);
+    await Promise.all(jobs.map((j) => j.then(() => onProgress(++done, jobs.length))));
   }
   float(actor, text, color) {
     this.floaters.push({ actor, text, color, born: performance.now() });
@@ -2120,6 +2280,7 @@ var Controller = class {
     /** 设置改了（存档、刷新显示） */
     this.onSettingsChanged = () => {
     };
+    this.repaths = 0;
   }
   get me() {
     return this.world.player;
@@ -2129,6 +2290,7 @@ var Controller = class {
     this.intent = { kind: "steer", target, run };
   }
   goTo(target, run = true) {
+    this.repaths = 0;
     const path = this.world.pathTo(this.me, target) ?? [];
     this.intent = { kind: "goto", target, path, run };
   }
@@ -2247,8 +2409,16 @@ var Controller = class {
     if (it.kind !== "goto") return;
     const p = this.me;
     const dir = it.path[0];
-    if (dir === void 0 || samePos(p, it.target)) {
+    if (samePos(p, it.target)) {
       this.intent = { kind: "none" };
+      return;
+    }
+    if (dir === void 0) {
+      it.path = this.world.pathTo(p, it.target) ?? [];
+      if (!it.path.length || ++this.repaths > 40) {
+        this.intent = { kind: "none" };
+        this.repaths = 0;
+      }
       return;
     }
     const next2 = it.path[1];
@@ -2477,6 +2647,11 @@ function bindInput(canvas, r2, ctl, ui) {
         e.preventDefault();
         ctl.world.pickUp(ctl.me);
         break;
+      case "tab":
+      case "m":
+        e.preventDefault();
+        ui.toggleMiniMap();
+        break;
       case "escape":
         ui.closeAll();
         break;
@@ -2496,7 +2671,9 @@ var DEFAULT_SETTINGS = {
   autoLongHitPosition: false,
   showHpBars: true,
   showItemNames: true,
-  showMonsterNames: true
+  showMonsterNames: true,
+  soundOn: true,
+  musicOn: false
 };
 function loadSettings(raw) {
   const s = { ...DEFAULT_SETTINGS };
@@ -2517,7 +2694,9 @@ var SETTING_LABELS = [
   { key: "autoFireSword", label: "\u6218\u58EB\uFF1A\u70C8\u706B\u51B7\u5374\u597D\u4E86\u81EA\u52A8\u5F00", kind: "bool" },
   { key: "showHpBars", label: "\u5934\u9876\u663E\u793A\u8840\u6761", kind: "bool" },
   { key: "showItemNames", label: "\u5730\u4E0A\u7269\u54C1\u663E\u793A\u540D\u5B57", kind: "bool" },
-  { key: "showMonsterNames", label: "\u602A\u7269\u663E\u793A\u540D\u5B57", kind: "bool" }
+  { key: "showMonsterNames", label: "\u602A\u7269\u663E\u793A\u540D\u5B57", kind: "bool" },
+  { key: "soundOn", label: "\u97F3\u6548", kind: "bool" },
+  { key: "musicOn", label: "\u80CC\u666F\u97F3\u4E50", kind: "bool" }
 ];
 
 // src/save/save.ts
@@ -2798,6 +2977,8 @@ var ClassicUi = class {
     this.mouse = { x: -1, y: -1 };
     this.pressed = null;
     this.lastClick = { t: 0, key: "" };
+    /** 小地图：0 关，1 半透明，2 不透明（原版 g_nViewMinMapLv） */
+    this.miniMap = 1;
     this.stateOpen = false;
     this.statePage = 0;
     this.magicPage = 0;
@@ -2817,6 +2998,12 @@ var ClassicUi = class {
     this.H = 600;
     /** 触屏设备：在右侧画技能按钮（原版没有，手机上没有 F1-F8） */
     this.touch = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+    /** 退出按钮：存档后回到登录画面 */
+    this.onLogout = () => {
+    };
+    /** 点按钮时（放按钮音效） */
+    this.onButton = () => {
+    };
   }
   get p() {
     return this.world.player;
@@ -2861,6 +3048,7 @@ var ClassicUi = class {
     this.areas = [];
     this.buttons = [];
     this.drawBottom(now);
+    if (this.miniMap) this.drawMiniMap(now);
     if (this.npc) this.drawMerchant();
     if (this.bagOpen) this.drawBag();
     if (this.stateOpen) this.drawState();
@@ -2950,6 +3138,62 @@ var ClassicUi = class {
       }
       g.text(String(i + 1), r2.x + 13, r2.y + 19, "#fff", true);
     }
+    this.button({ img: 130, x: bx + 219, y: by + 104, w: 28, h: 13, always: true, onClick: () => this.toggleMiniMap() });
+    for (const [img, dx] of [[132, 249], [134, 279], [128, 309]]) {
+      this.button({ img, x: bx + dx, y: by + 104, w: 28, h: 13, always: true, onClick: () => this.message("\u5355\u673A\u7248\u6CA1\u6709\u8FD9\u4E2A\u529F\u80FD") });
+    }
+    this.button({ img: 136, x: bx + 530, y: by + 104, w: 28, h: 13, always: true, onClick: () => this.onLogout() });
+    this.button({ img: 138, x: bx + 560, y: by + 104, w: 28, h: 13, always: true, onClick: () => this.onLogout() });
+  }
+  toggleMiniMap() {
+    this.miniMap = (this.miniMap + 1) % 3;
+  }
+  // ---------------- 小地图（PlayScn.DrawMiniMap） ----------------
+  miniRect() {
+    const idx = this.catalog.data.minimaps[this.world.map.id];
+    if (idx === void 0) return null;
+    const s = this.g.sprite("mmap", idx - 1);
+    if (!s) return null;
+    const p = this.p;
+    const mx = Math.floor(p.x * 48 / 32);
+    const my = p.y;
+    const left = Math.max(0, Math.min(s.w - 120, mx - 60));
+    const top = Math.max(0, Math.min(s.h - 120, my - 60));
+    return { idx: idx - 1, rc: { x: left, y: top, w: Math.min(120, s.w), h: Math.min(120, s.h) }, x: this.W - 120, y: 0 };
+  }
+  drawMiniMap(now) {
+    const m = this.miniRect();
+    if (!m) return;
+    const g = this.g;
+    const ctx = g.ctx;
+    ctx.globalAlpha = this.miniMap === 1 ? 0.7 : 1;
+    g.imgPart("mmap", m.idx, m.x, m.y, m.rc.x, m.rc.y, m.rc.w, m.rc.h);
+    ctx.globalAlpha = 1;
+    this.areas.push({ x: m.x, y: m.y, w: m.rc.w, h: m.rc.h });
+    this.buttons.push({
+      x: m.x,
+      y: m.y,
+      w: m.rc.w,
+      h: m.rc.h,
+      img: -1,
+      onClick: () => {
+        const tx = Math.round((this.mouse.x - m.x + m.rc.x) * (32 / 48));
+        const ty = Math.round(this.mouse.y - m.y + m.rc.y);
+        this.ctl.goTo({ x: tx, y: ty });
+      }
+    });
+    const dot = (cx, cy, color, size = 2) => {
+      const px = m.x + Math.floor(cx * 48 / 32) - m.rc.x;
+      const py = m.y + cy - m.rc.y;
+      if (px >= m.x && py >= m.y && px < m.x + m.rc.w && py < m.y + m.rc.h) g.rect(px, py, size, size, color);
+    };
+    for (const a of this.world.actors.values()) {
+      if (a.dead || a === this.p || Math.abs(a.x - this.p.x) > 30 || Math.abs(a.y - this.p.y) > 30) continue;
+      dot(a.x, a.y, a.kind === "npc" ? "#0f0" : a.kind === "monster" && a.master ? "#6cf" : "#f00");
+    }
+    if (Math.floor(now / 300) % 2 === 0) dot(this.p.x, this.p.y, "#fff", 3);
+    const it = this.ctl.intent;
+    if (it.kind === "goto") dot(it.target.x, it.target.y, "#ff0", 3);
   }
   // ---------------- 触屏技能按钮 ----------------
   drawTouchSkills() {
@@ -3284,7 +3528,7 @@ var ClassicUi = class {
     g.text("\u4FBF\u5229\u8BBE\u7F6E", x + 56, y + 10, "#ffe08a", true);
     const s = this.ctl.settings;
     SETTING_LABELS.forEach((item, i) => {
-      const ly = y + 44 + i * 22;
+      const ly = y + 40 + i * 19;
       const v = s[item.key];
       if (item.kind === "bool") {
         const box = { x: x + 30, y: ly, w: 14, h: 14 };
@@ -3453,7 +3697,10 @@ var ClassicUi = class {
   pointerUp(x, y) {
     const b = this.pressed;
     this.pressed = null;
-    if (b && inside(b, x, y)) b.onClick();
+    if (b && inside(b, x, y)) {
+      this.onButton();
+      b.onClick();
+    }
   }
   pointerMove(x, y) {
     this.mouse = { x, y };
@@ -3662,6 +3909,91 @@ var ClassicUi = class {
   }
 };
 
+// src/audio/audio.ts
+var Audio = class {
+  constructor() {
+    this.ctx = null;
+    this.buffers = /* @__PURE__ */ new Map();
+    this.available = /* @__PURE__ */ new Set();
+    this.bgm = null;
+    this.recent = /* @__PURE__ */ new Map();
+    this.soundOn = true;
+    this.musicOn = false;
+  }
+  async init() {
+    try {
+      const r2 = await fetch(assetUrl("assets/sound/index.json"));
+      if (r2.ok) this.available = new Set((await r2.json()).ids);
+    } catch {
+    }
+  }
+  /** 浏览器要求用户操作后才能出声：第一次点击/按键时调用。 */
+  unlock() {
+    if (!this.ctx) {
+      const AC = window.AudioContext ?? window.webkitAudioContext;
+      if (!AC) return;
+      this.ctx = new AC();
+    }
+    if (this.ctx.state === "suspended") void this.ctx.resume();
+    if (this.musicOn) this.playMusic("field");
+  }
+  /** 播放一个音效；at 给出声源格子时按与玩家的距离降低音量。 */
+  play(id, at, listener) {
+    if (!this.soundOn || !this.ctx || !this.available.has(id)) return;
+    const now = performance.now();
+    if (now - (this.recent.get(id) ?? 0) < 60) return;
+    this.recent.set(id, now);
+    let vol = 0.8;
+    if (at && listener) {
+      const d = Math.max(Math.abs(at.x - listener.x), Math.abs(at.y - listener.y));
+      if (d > 12) return;
+      vol *= 1 - d / 14;
+    }
+    const buf = this.buffers.get(id);
+    if (buf instanceof AudioBuffer) {
+      this.start(buf, vol);
+      return;
+    }
+    if (buf) return;
+    this.buffers.set(id, "loading");
+    void this.load(id).then((b) => {
+      this.buffers.set(id, b ?? "none");
+    });
+  }
+  start(buf, vol) {
+    const ctx = this.ctx;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const g = ctx.createGain();
+    g.gain.value = vol;
+    src.connect(g).connect(ctx.destination);
+    src.start();
+  }
+  async load(id) {
+    try {
+      const r2 = await fetch(assetUrl(`assets/sound/${id}.m4a`));
+      if (!r2.ok) return null;
+      const data = await r2.arrayBuffer();
+      return await new Promise((res, rej) => this.ctx.decodeAudioData(data, res, rej));
+    } catch {
+      return null;
+    }
+  }
+  playMusic(name) {
+    if (!this.musicOn) return;
+    if (!this.bgm) {
+      this.bgm = new window.Audio(assetUrl(`assets/sound/bgm_${name}.m4a`));
+      this.bgm.loop = true;
+      this.bgm.volume = 0.35;
+    }
+    void this.bgm.play().catch(() => {
+    });
+  }
+  stopMusic() {
+    this.bgm?.pause();
+  }
+};
+
 // src/main.ts
 var START = { map: "0", x: 333, y: 272 };
 var $ = (sel) => document.querySelector(sel);
@@ -3765,8 +4097,22 @@ async function main() {
     const npc = world.actors.get(id);
     if (npc?.kind === "npc") ui.openNpc(npc);
   };
+  const audio = new Audio();
+  await audio.init();
   const applyView = () => {
     renderer.view = { showHpBars: settings.showHpBars, showItemNames: settings.showItemNames, showMonsterNames: settings.showMonsterNames };
+    audio.soundOn = settings.soundOn;
+    const musicWas = audio.musicOn;
+    audio.musicOn = settings.musicOn;
+    if (settings.musicOn && !musicWas) audio.playMusic("field");
+    if (!settings.musicOn) audio.stopMusic();
+  };
+  const unlock = () => audio.unlock();
+  window.addEventListener("pointerdown", unlock);
+  window.addEventListener("keydown", unlock);
+  ui.onButton = () => audio.play(105);
+  ui.onLogout = () => {
+    void persist().finally(() => location.reload());
   };
   applyView();
   ctl.onSettingsChanged = () => {
@@ -3777,6 +4123,11 @@ async function main() {
   fit();
   window.addEventListener("resize", fit);
   bindInput(canvas, renderer, ctl, ui);
+  await Promise.race([
+    renderer.preloadAround(player.pos, (d, t) => status(`\u52A0\u8F7D\u753B\u9762\u2026 ${d}/${t}`)),
+    new Promise((r2) => setTimeout(r2, 3e4))
+  ]);
+  await sprites.preload("prguse", [1, 3, 370]);
   window.__mir = { world, renderer, ctl, sprites, ui };
   ui.message("\u6B22\u8FCE\u6765\u5230\u739B\u6CD5\u5927\u9646\u3002F9 \u5305\u88F9\uFF0CF10 \u72B6\u6001\uFF0CF11 \u6280\u80FD\uFF0C\u53F3\u4E0B\u89D2\u6309\u94AE\u4E5F\u53EF\u4EE5\u6253\u5F00\u3002", "good");
   status("");
@@ -3816,6 +4167,9 @@ async function main() {
           break;
         case "msg":
           ui.message(ev.text, ev.color);
+          break;
+        case "sound":
+          audio.play(ev.id, ev.at, player.pos);
           break;
         case "levelUp":
           void persist();

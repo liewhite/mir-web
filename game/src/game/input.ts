@@ -98,6 +98,11 @@ export function bindInput(canvas: HTMLCanvasElement, r: Renderer, ctl: Controlle
         e.preventDefault();
         ctl.world.pickUp(ctl.me);
         break;
+      case 'tab':
+      case 'm':
+        e.preventDefault();
+        ui.toggleMiniMap();
+        break;
       case 'escape':
         ui.closeAll();
         break;

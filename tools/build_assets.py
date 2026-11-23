@@ -29,7 +29,14 @@ GROUND_BLOCK = 16  # 每张地面图 16x16 格 = 768x512 像素
 
 
 def block_size(lib: str) -> int:
-    return 600 if lib.rstrip("0123456789") in ("hum", "weapon", "hair") else 200
+    """图集分块大小：人物 600 帧一套；地图物件、大图按 10 帧一块，只下载看得见的；其余 200。
+    改这里要同步 game/src/assets/sprites.ts blockSize。"""
+    base = lib.rstrip("0123456789")
+    if base in ("hum", "weapon", "hair"):
+        return 600
+    if base in ("objects", "stateitem", "mmap", "npc"):
+        return 10
+    return 200
 
 
 def objects_lib(area: int) -> str:

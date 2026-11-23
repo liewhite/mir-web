@@ -60,6 +60,8 @@ export class ClassicUi {
   private pressed: Button | null = null;
   private lastClick = { t: 0, key: '' };
 
+  /** 小地图：0 关，1 半透明，2 不透明（原版 g_nViewMinMapLv） */
+  miniMap = 1;
   stateOpen = false;
   statePage = 0;
   private magicPage = 0;
@@ -139,6 +141,7 @@ export class ClassicUi {
     this.areas = [];
     this.buttons = [];
     this.drawBottom(now);
+    if (this.miniMap) this.drawMiniMap(now);
     if (this.npc) this.drawMerchant();
     if (this.bagOpen) this.drawBag();
     if (this.stateOpen) this.drawState();
@@ -238,8 +241,67 @@ export class ClassicUi {
       }
       g.text(String(i + 1), r.x + 13, r.y + 19, '#fff', true);
     }
-    // 技能快捷键提示（原版没有：F1-F8 对应的技能名，画在底栏左上方）
-    void now;
+    // 底栏小按钮：小地图、交易、行会、组队、能力、退出（后几个单机用不上，只画样子）
+    this.button({ img: 130, x: bx + 219, y: by + 104, w: 28, h: 13, always: true, onClick: () => this.toggleMiniMap() });
+    for (const [img, dx] of [[132, 249], [134, 279], [128, 309]] as const) {
+      this.button({ img, x: bx + dx, y: by + 104, w: 28, h: 13, always: true, onClick: () => this.message('单机版没有这个功能') });
+    }
+    this.button({ img: 136, x: bx + 530, y: by + 104, w: 28, h: 13, always: true, onClick: () => this.onLogout() });
+    this.button({ img: 138, x: bx + 560, y: by + 104, w: 28, h: 13, always: true, onClick: () => this.onLogout() });
+  }
+
+  /** 退出按钮：存档后回到登录画面 */
+  onLogout: () => void = () => {};
+
+  toggleMiniMap(): void {
+    this.miniMap = (this.miniMap + 1) % 3;
+  }
+
+  // ---------------- 小地图（PlayScn.DrawMiniMap） ----------------
+
+  private miniRect(): { idx: number; rc: Rect; x: number; y: number } | null {
+    const idx = this.catalog.data.minimaps[this.world.map.id];
+    if (idx === undefined) return null;
+    const s = this.g.sprite('mmap', idx - 1);
+    if (!s) return null;
+    const p = this.p;
+    const mx = Math.floor((p.x * 48) / 32);
+    const my = p.y;
+    const left = Math.max(0, Math.min(s.w - 120, mx - 60));
+    const top = Math.max(0, Math.min(s.h - 120, my - 60));
+    return { idx: idx - 1, rc: { x: left, y: top, w: Math.min(120, s.w), h: Math.min(120, s.h) }, x: this.W - 120, y: 0 };
+  }
+
+  private drawMiniMap(now: number): void {
+    const m = this.miniRect();
+    if (!m) return;
+    const g = this.g;
+    const ctx = g.ctx;
+    ctx.globalAlpha = this.miniMap === 1 ? 0.7 : 1;
+    g.imgPart('mmap', m.idx, m.x, m.y, m.rc.x, m.rc.y, m.rc.w, m.rc.h);
+    ctx.globalAlpha = 1;
+    this.areas.push({ x: m.x, y: m.y, w: m.rc.w, h: m.rc.h });
+    this.buttons.push({
+      x: m.x, y: m.y, w: m.rc.w, h: m.rc.h, img: -1,
+      onClick: () => {
+        // 点小地图走过去（原版没有，方便）
+        const tx = Math.round((this.mouse.x - m.x + m.rc.x) * (32 / 48));
+        const ty = Math.round(this.mouse.y - m.y + m.rc.y);
+        this.ctl.goTo({ x: tx, y: ty });
+      },
+    });
+    const dot = (cx: number, cy: number, color: string, size = 2): void => {
+      const px = m.x + Math.floor((cx * 48) / 32) - m.rc.x;
+      const py = m.y + cy - m.rc.y;
+      if (px >= m.x && py >= m.y && px < m.x + m.rc.w && py < m.y + m.rc.h) g.rect(px, py, size, size, color);
+    };
+    for (const a of this.world.actors.values()) {
+      if (a.dead || a === this.p || Math.abs(a.x - this.p.x) > 30 || Math.abs(a.y - this.p.y) > 30) continue;
+      dot(a.x, a.y, a.kind === 'npc' ? '#0f0' : a.kind === 'monster' && a.master ? '#6cf' : '#f00');
+    }
+    if (Math.floor(now / 300) % 2 === 0) dot(this.p.x, this.p.y, '#fff', 3);
+    const it = this.ctl.intent;
+    if (it.kind === 'goto') dot(it.target.x, it.target.y, '#ff0', 3);
   }
 
   // ---------------- 触屏技能按钮 ----------------
@@ -565,7 +627,7 @@ export class ClassicUi {
     g.text('便利设置', x + 56, y + 10, '#ffe08a', true);
     const s = this.ctl.settings as unknown as Record<string, number | boolean>;
     SETTING_LABELS.forEach((item, i) => {
-      const ly = y + 44 + i * 22;
+      const ly = y + 40 + i * 19;
       const v = s[item.key];
       if (item.kind === 'bool') {
         const box = { x: x + 30, y: ly, w: 14, h: 14 };
@@ -734,10 +796,16 @@ export class ClassicUi {
     return onUi;
   }
 
+  /** 点按钮时（放按钮音效） */
+  onButton: () => void = () => {};
+
   pointerUp(x: number, y: number): void {
     const b = this.pressed;
     this.pressed = null;
-    if (b && inside(b, x, y)) b.onClick();
+    if (b && inside(b, x, y)) {
+      this.onButton();
+      b.onClick();
+    }
   }
 
   pointerMove(x: number, y: number): void {

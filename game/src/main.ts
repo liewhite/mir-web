@@ -13,6 +13,7 @@ import { loadSettings } from './game/settings';
 import { HttpSaveStore, type SaveData, type SaveStore, fromSave, toSave } from './save/save';
 import { ClassicUi } from './ui/classic/classic';
 import { Gfx } from './ui/classic/gfx';
+import { Audio } from './audio/audio';
 
 const START = { map: '0', x: 333, y: 272 };
 
@@ -122,8 +123,22 @@ async function main(): Promise<void> {
     const npc = world.actors.get(id);
     if (npc?.kind === 'npc') ui.openNpc(npc);
   };
+  const audio = new Audio();
+  await audio.init();
   const applyView = (): void => {
     renderer.view = { showHpBars: settings.showHpBars, showItemNames: settings.showItemNames, showMonsterNames: settings.showMonsterNames };
+    audio.soundOn = settings.soundOn;
+    const musicWas = audio.musicOn;
+    audio.musicOn = settings.musicOn;
+    if (settings.musicOn && !musicWas) audio.playMusic('field');
+    if (!settings.musicOn) audio.stopMusic();
+  };
+  const unlock = (): void => audio.unlock();
+  window.addEventListener('pointerdown', unlock);
+  window.addEventListener('keydown', unlock);
+  ui.onButton = () => audio.play(105);
+  ui.onLogout = () => {
+    void persist().finally(() => location.reload());
   };
   applyView();
   ctl.onSettingsChanged = () => {
@@ -134,6 +149,11 @@ async function main(): Promise<void> {
   fit();
   window.addEventListener('resize', fit);
   bindInput(canvas, renderer, ctl, ui);
+  await Promise.race([
+    renderer.preloadAround(player.pos, (d, t) => status(`加载画面… ${d}/${t}`)),
+    new Promise((r) => setTimeout(r, 30_000)),
+  ]);
+  await sprites.preload('prguse', [1, 3, 370]);
   (window as unknown as Record<string, unknown>).__mir = { world, renderer, ctl, sprites, ui };
   ui.message('欢迎来到玛法大陆。F9 包裹，F10 状态，F11 技能，右下角按钮也可以打开。', 'good');
   status('');
@@ -176,6 +196,9 @@ async function main(): Promise<void> {
           break;
         case 'msg':
           ui.message(ev.text, ev.color);
+          break;
+        case 'sound':
+          audio.play(ev.id, ev.at, player.pos);
           break;
         case 'levelUp':
           void persist();

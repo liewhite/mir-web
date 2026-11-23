@@ -8,6 +8,7 @@ import { itemKind } from './items';
 import {
   afterArmor, afterMagicArmor, attackPower, hits, magicBase, random, rpow, skillPower, skillPower13,
 } from './rules';
+import { S, magicSound } from './sounds';
 import { SPELL_ANIM_MS, SPELL_INTERVAL, type VisualEffect, type World } from './world';
 
 // ---------------- 技能熟练度 ----------------
@@ -230,7 +231,11 @@ export function castSpell(w: World, p: Player, skillId: number, tgt: SpellTarget
       let power = mcPower();
       if (skillId === 11 && t!.kind === 'monster' && t!.def.undead) power = Math.round(power * 1.5);
       const delay = skillId === 11 ? 100 : 80 * chebyshev(p, t!);
-      w.after(delay, () => hitMagic(w, p, t!, power));
+      w.sound(magicSound(skillId, 1));
+      w.after(delay, () => {
+        w.sound(magicSound(skillId, 2), t!.pos);
+        hitMagic(w, p, t!, power);
+      });
       if (skillId === 11) {
         fx(w, { lib: 'magic2', start: 10, frames: 5, frameTime: 80, at: { actor: t!.id } });
       } else {
@@ -317,7 +322,9 @@ export function castSpell(w: World, p: Player, skillId: number, tgt: SpellTarget
       const power = attackPower(skillPower(magicBase(def.power), s.level, def.defPower) + SC[0], SC[1] - SC[0] + 1);
       const delay = 80 * chebyshev(p, t!);
       fx(w, { lib: 'magic', start: 1160 + dir16(p, t!) * 10, frames: 3, frameTime: 60, at: { actor: t!.id }, from: p.pos, duration: delay });
+      w.sound(magicSound(13, 1));
       w.after(delay, () => {
+        w.sound(magicSound(13, 2), t!.pos);
         hitMagic(w, p, t!, power);
         fx(w, { lib: 'magic', start: 1320, frames: 10, frameTime: 50, at: { actor: t!.id } });
       });
@@ -359,6 +366,7 @@ export function castSpell(w: World, p: Player, skillId: number, tgt: SpellTarget
       if (p.fireReady) return { ok: false, why: '烈火已经准备好了' };
       p.fireReady = true;
       p.cooldown.set(26, w.now + 10_000);
+      w.sound(S.fireHitReady);
       w.events.push({ type: 'msg', text: '烈火剑法准备好了', color: 'system' });
       p.mp -= cost;
       return { ok: true }; // 不进入施法动作
@@ -375,6 +383,7 @@ export function castSpell(w: World, p: Player, skillId: number, tgt: SpellTarget
       return { ok: false, why: '这个技能还没做' };
   }
   p.mp -= cost;
+  w.sound(magicSound(skillId, 0));
   castFx(w, p, def);
   p.action = { kind: 'spell', startedAt: w.now, duration: SPELL_ANIM_MS, spellEffect: def.effect };
   p.busyUntil = w.now + SPELL_INTERVAL;

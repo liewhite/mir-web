@@ -20,6 +20,8 @@ export interface Settings {
   showHpBars: boolean;
   showItemNames: boolean;
   showMonsterNames: boolean;
+  soundOn: boolean;
+  musicOn: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -34,6 +36,8 @@ export const DEFAULT_SETTINGS: Settings = {
   showHpBars: true,
   showItemNames: true,
   showMonsterNames: true,
+  soundOn: true,
+  musicOn: false,
 };
 
 export function loadSettings(raw: Record<string, unknown> | undefined): Settings {
@@ -57,4 +61,6 @@ export const SETTING_LABELS: { key: keyof Settings; label: string; kind: 'bool' 
   { key: 'showHpBars', label: '头顶显示血条', kind: 'bool' },
   { key: 'showItemNames', label: '地上物品显示名字', kind: 'bool' },
   { key: 'showMonsterNames', label: '怪物显示名字', kind: 'bool' },
+  { key: 'soundOn', label: '音效', kind: 'bool' },
+  { key: 'musicOn', label: '背景音乐', kind: 'bool' },
 ];

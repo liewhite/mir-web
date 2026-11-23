@@ -45,7 +45,10 @@ export class Controller {
     this.intent = { kind: 'steer', target, run };
   }
 
+  private repaths = 0;
+
   goTo(target: Pos, run = true): void {
+    this.repaths = 0;
     const path = this.world.pathTo(this.me, target) ?? [];
     this.intent = { kind: 'goto', target, path, run };
   }
@@ -178,8 +181,17 @@ export class Controller {
     if (it.kind !== 'goto') return;
     const p = this.me;
     const dir = it.path[0];
-    if (dir === undefined || samePos(p, it.target)) {
+    if (samePos(p, it.target)) {
       this.intent = { kind: 'none' };
+      return;
+    }
+    if (dir === undefined) {
+      // 远路一次寻不完：走到半路再接着寻
+      it.path = this.world.pathTo(p, it.target) ?? [];
+      if (!it.path.length || ++this.repaths > 40) {
+        this.intent = { kind: 'none' };
+        this.repaths = 0;
+      }
       return;
     }
     // 能跑两格就跑

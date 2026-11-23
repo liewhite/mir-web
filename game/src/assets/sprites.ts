@@ -40,8 +40,11 @@ export function assetUrl(path: string): string {
 }
 
 export function blockSize(lib: string): number {
+  // 与 tools/build_assets.py block_size 一致
   const base = lib.replace(/\d+$/, '');
-  return base === 'hum' || base === 'weapon' || base === 'hair' ? 600 : 200;
+  if (base === 'hum' || base === 'weapon' || base === 'hair') return 600;
+  if (base === 'objects' || base === 'stateitem' || base === 'mmap' || base === 'npc') return 10;
+  return 200;
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
