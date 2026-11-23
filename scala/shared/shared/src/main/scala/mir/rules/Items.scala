@@ -70,6 +70,16 @@ object ItemKind:
     case Amulet(_) => List(EquipSlot.BraceletL)
     case _         => Nil
 
+  /**
+   * 同名叠成一格、不设上限（用户 #1159 定，原版不叠）：药、卷轴、技能书、捆装药。
+   * 装备（每件持久不同）、护身符和毒粉（剩余次数记在持久里）、矿石等材料（纯度不同）和其他都不叠。
+   */
+  def stacks(k: ItemKind): Boolean = k match
+    case Potion(_, _, _) | Scroll(_) | Book(_, _) | Bundle(_) => true
+    case Equip(_) | Amulet(_) | Material | Other            => false
+
+  def stacks(d: ItemDef): Boolean = stacks(of(d))
+
 /** 一件装备带来的全部加成，全部是明确含义的字段。 */
 final case class ItemEffects(
     ac: Span = Span.zero,

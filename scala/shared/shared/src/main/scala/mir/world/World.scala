@@ -303,6 +303,7 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
     data.belt.take(Capacity.belt).zipWithIndex.foreach((it, i) => p.belt(i) = it.flatMap(valid))
     data.worn.foreach((s, it) => valid(it).foreach(p.worn(s) = _))
     p.storage ++= data.storage.flatMap(valid)
+    Inventory.normalize(catalog, p) // 旧存档补数量、同名可叠的并成一叠（#1159）
     p.skills ++= data.skills.filter(s => catalog.skill(s.id).isDefined)
     p.settings = data.settings
     p.longHitOn = data.longHitOn
@@ -531,7 +532,13 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
       if d.isGold then
         val g = d.amount / 2 + rng.random(d.amount)
         if g > 0 then dropAt(m.cell, Loot.Coins(Gold(g)))
-      else itemDef.foreach(id => (1 to math.max(1, d.amount)).foreach(_ => dropAt(m.cell, Loot.Item(ItemInstance.fresh(uids.next(), id)))))
+      else
+        itemDef.foreach { id =>
+          val n = math.max(1, d.amount)
+          // 可叠的一次掉多个就掉成一叠（#1159）
+          if ItemKind.stacks(id) then dropAt(m.cell, Loot.Item(ItemInstance.fresh(uids.next(), id).copy(count = n)))
+          else (1 to n).foreach(_ => dropAt(m.cell, Loot.Item(ItemInstance.fresh(uids.next(), id))))
+        }
   }
 
   /** 放到 at 附近没有东西的可走格上。 */
@@ -554,6 +561,8 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
   private[world] def newItem(name: ItemName): Option[ItemInstance] =
     catalog.item(name).map(d => ItemInstance.fresh(uids.next(), d))
 
+  private[world] def newUid(): ItemUid = uids.next()
+
   // ---------------- 玩家属性 ----------------
 
   /** 重算属性：等级 + 身上装备（持久用完的不算；护身符和毒药不加属性）+ 被动技能。 */
@@ -566,7 +575,8 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
     p.hp = math.min(p.hp, p.stats.maxHp)
     p.mp = math.min(p.mp, p.stats.maxMp)
 
-  private[world] def weight(it: ItemInstance): Int = catalog.item(it.name).fold(0)(_.weight)
+  /** 一件（一叠按个数乘）的重量 */
+  private[world] def weight(it: ItemInstance): Int = Inventory.weight(catalog, it)
   private[world] def bagWeight(p: Player): Int     = (p.bag.iterator ++ p.belt.iterator).flatten.map(weight).sum
   private[world] def wearWeight(p: Player): Int    = p.worn.iterator.filter(_._1 != EquipSlot.Weapon).map(e => weight(e._2)).sum
 

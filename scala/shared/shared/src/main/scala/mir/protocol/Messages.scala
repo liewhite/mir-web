@@ -74,11 +74,12 @@ enum GameCmd:
 
   // ---- NPC ----
   case Buy(npc: ActorId, item: ItemName)
-  case Sell(npc: ActorId, uid: ItemUid)
-  /** 存进仓库 */
-  case Deposit(npc: ActorId, uid: ItemUid)
-  /** 从仓库取 */
-  case Withdraw(npc: ActorId, uid: ItemUid)
+  /** 卖出；count 是一叠里卖几个，空为整叠（#1159） */
+  case Sell(npc: ActorId, uid: ItemUid, count: Option[Int] = None)
+  /** 存进仓库；count 同上 */
+  case Deposit(npc: ActorId, uid: ItemUid, count: Option[Int] = None)
+  /** 从仓库取；count 同上 */
+  case Withdraw(npc: ActorId, uid: ItemUid, count: Option[Int] = None)
 
   // ---- 其他 ----
   /** 设技能快捷键：key 1-8 对应 F1-F8，空为取消 */

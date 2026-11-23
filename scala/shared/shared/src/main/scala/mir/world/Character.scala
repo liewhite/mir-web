@@ -48,12 +48,13 @@ object CharacterData:
   val start: Place = Place(MapId("0"), Cell(333, 272))
 
   /**
-   * 新建角色（TS 版 main.ts newPlayer）：300 金币，木剑、布衣，4 瓶小红 2 瓶小蓝放快捷栏，满血满蓝。
+   * 新建角色（TS 版 main.ts newPlayer）：300 金币，木剑、布衣，4 瓶小红 2 瓶小蓝（各叠一格）放快捷栏，满血满蓝。
    * 物品编号由 uids 分配。
    */
   def newbie(catalog: Catalog, name: String, job: Job, sex: Sex, uids: UidSource): CharacterData =
     def item(n: String): Option[ItemInstance] = catalog.item(ItemName(n)).map(d => ItemInstance.fresh(uids.next(), d))
-    val potions = List.fill(4)(item("金创药(小量)")) ++ List.fill(2)(item("魔法药(小量)"))
+    // 同名药叠成一格（#1159）
+    val potions = List(item("金创药(小量)").map(_.copy(count = 4)), item("魔法药(小量)").map(_.copy(count = 2)))
     val worn = List(
       EquipSlot.Weapon -> item("木剑"),
       EquipSlot.Dress  -> item(if sex == Sex.Male then "布衣(男)" else "布衣(女)")

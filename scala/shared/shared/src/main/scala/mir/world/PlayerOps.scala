@@ -46,9 +46,9 @@ object PlayerOps:
     case GameCmd.MoveItem(uid, to)      => result(w, p, moveItem(w, p, uid, to))
     case GameCmd.DropItem(uid)          => result(w, p, dropItem(w, p, uid))
     case GameCmd.Buy(npc, item)         => result(w, p, buy(w, p, npc, item))
-    case GameCmd.Sell(npc, uid)         => result(w, p, sell(w, p, npc, uid))
-    case GameCmd.Deposit(npc, uid)      => result(w, p, deposit(w, p, npc, uid))
-    case GameCmd.Withdraw(npc, uid)     => result(w, p, withdraw(w, p, npc, uid))
+    case GameCmd.Sell(npc, uid, n)      => result(w, p, sell(w, p, npc, uid, n))
+    case GameCmd.Deposit(npc, uid, n)   => result(w, p, deposit(w, p, npc, uid, n))
+    case GameCmd.Withdraw(npc, uid, n)  => result(w, p, withdraw(w, p, npc, uid, n))
     case GameCmd.SetSkillKey(skill, key) => result(w, p, setSkillKey(p, skill, key))
     case GameCmd.UpdateSettings(s) =>
       p.settings = s.copy(autoHpPercent = s.autoHpPercent.max(0).min(100), autoMpPercent = s.autoMpPercent.max(0).min(100))
@@ -82,45 +82,37 @@ object PlayerOps:
 
   private def defOf(w: World, it: ItemInstance): Either[String, ItemDef] = w.catalog.item(it.name).toRight("数据表里没有这件物品")
 
-  /** 包裹或快捷栏里的一件物品和它的位置。 */
-  private def carried(p: Player, uid: ItemUid): Option[(ItemPlace, ItemInstance)] =
-    p.bag.indices.collectFirst { case i if p.bag(i).exists(_.uid == uid) => ItemPlace.Bag(i) -> p.bag(i).get }
-      .orElse(p.belt.indices.collectFirst { case i if p.belt(i).exists(_.uid == uid) => ItemPlace.Belt(i) -> p.belt(i).get })
+  import Inventory.{at, put}
 
   private def carriedOrWhy(p: Player, uid: ItemUid): Either[String, (ItemPlace, ItemInstance)] =
-    carried(p, uid).toRight("包裹里没有这件物品")
-
-  private def at(p: Player, place: ItemPlace): Option[ItemInstance] = place match
-    case ItemPlace.Bag(i)     => p.bag.lift(i).flatten
-    case ItemPlace.Belt(i)    => p.belt.lift(i).flatten
-    case ItemPlace.Worn(slot) => p.worn.get(slot)
-
-  private def put(p: Player, place: ItemPlace, it: Option[ItemInstance]): Unit = place match
-    case ItemPlace.Bag(i)     => p.bag(i) = it
-    case ItemPlace.Belt(i)    => p.belt(i) = it
-    case ItemPlace.Worn(slot) => it.fold(p.worn.remove(slot).foreach(_ => ()))(p.worn(slot) = _)
+    Inventory.carried(p, uid).toRight("包裹里没有这件物品")
 
   private def validPlace(place: ItemPlace): Boolean = place match
     case ItemPlace.Bag(i)  => i >= 0 && i < Capacity.bag
     case ItemPlace.Belt(i) => i >= 0 && i < Capacity.belt
     case ItemPlace.Worn(_) => true
 
-  private def onBelt(k: ItemKind): Boolean = k match
-    case ItemKind.Potion(_, _, _) | ItemKind.Scroll(_) => true
-    case _                                             => false
+  private def onBelt(k: ItemKind): Boolean = Inventory.beltable(k)
 
-  /** 放进包裹；满了返回 false。药品、卷轴优先放快捷栏空位。 */
-  private[world] def addToBag(w: World, p: Player, it: ItemInstance): Boolean =
-    val belt = w.catalog.item(it.name).map(ItemKind.of).exists(onBelt)
-    val slot = Option.when(belt)(p.belt.indexOf(None)).filter(_ >= 0).map(ItemPlace.Belt(_))
-      .orElse(Some(p.bag.indexOf(None)).filter(_ >= 0).map(ItemPlace.Bag(_)))
-    slot.foreach(put(p, _, Some(it)))
-    slot.isDefined
+  /** 放到身上：同名可叠的并进已有的一叠，药品、卷轴优先放快捷栏空位；放不下返回 false。 */
+  private[world] def addToBag(w: World, p: Player, it: ItemInstance): Boolean = Inventory.add(w.catalog, p, it)
 
-  private def fits(w: World, p: Player, d: ItemDef): Result =
-    if w.bagWeight(p) + d.weight > p.stats.maxBagWeight then Left("包裹太重了，拿不动")
-    else if !p.bag.contains(None) && !(onBelt(ItemKind.of(d)) && p.belt.contains(None)) then Left("包裹满了")
+  /** 再拿 count 个这种东西：重量和格子都要够。 */
+  private[world] def fits(w: World, p: Player, d: ItemDef, count: Int = 1): Result =
+    if w.bagWeight(p) + d.weight * count > p.stats.maxBagWeight then Left("包裹太重了，拿不动")
+    else if !Inventory.hasRoom(p, d) then Left("包裹满了")
     else ok
+
+  /** 用掉一个（一叠只减一）。 */
+  private def consumeOne(w: World, p: Player, uid: ItemUid): Unit =
+    Inventory.take(p, uid, Some(1), () => w.newUid()): Unit
+
+  /** 拿走 n 个（None = 整件）。 */
+  private def takeOwned(w: World, p: Player, uid: ItemUid, n: Option[Int]): Either[String, ItemInstance] =
+    Inventory.take(p, uid, n, () => w.newUid()).toRight("包裹里没有这件物品")
+
+  /** 提示里的叫法：一叠写成「金创药(小量) ×5」。 */
+  private def label(it: ItemInstance): String = if it.count > 1 then s"${it.name.value} ×${it.count}" else it.name.value
 
   /** 捡起脚下的东西（金币直接加）。 */
   def pickUp(w: World, p: Player): Boolean =
@@ -135,13 +127,13 @@ object PlayerOps:
           true
         case Loot.Item(it) =>
           w.selfSound(p, Sounds.itemClick)
-          defOf(w, it).flatMap(fits(w, p, _)) match
+          defOf(w, it).flatMap(fits(w, p, _, it.count)) match
             case Left(why) =>
               w.notice(p, why, Tone.Bad)
               false
             case Right(()) =>
               addToBag(w, p, it)
-              w.notice(p, s"捡到 ${it.name.value}", Tone.Item)
+              w.notice(p, s"捡到 ${label(it)}", Tone.Item)
               w.removeGround(g.id)
               true
     } > 0
@@ -154,7 +146,7 @@ object PlayerOps:
       d          <- defOf(w, it)
       r          <- ItemKind.of(d) match
         case ItemKind.Potion(hp, mp, instant) =>
-          put(p, place, None)
+          consumeOne(w, p, uid)
           w.selfSound(p, Sounds.eatDrug)
           if instant then
             val h = math.max(0, math.min(hp, p.stats.maxHp - p.hp))
@@ -176,18 +168,18 @@ object PlayerOps:
           w.catalog.data.items.find(i => i.mode != 31 && i.ani == of) match
             case None => Left("这个包拆不开")
             case Some(one) =>
-              val free = p.bag.count(_.isEmpty) - 1 + p.belt.count(_.isEmpty)
-              if free < 6 then Left("包裹空位不够，拆包需要 6 个空位")
+              // 拆出的 6 个并成一叠：身上已有这种药就并进去；没有就要一个空位（这包是最后一个时它腾出的格子也算）
+              if it.count > 1 && !Inventory.hasRoom(p, one) then Left("包裹满了，拆包需要一个空位")
               else
-                put(p, place, None)
-                (1 to 6).foreach(_ => w.newItem(one.name).foreach(addToBag(w, p, _)))
+                consumeOne(w, p, uid)
+                w.newItem(one.name).foreach(x => addToBag(w, p, x.copy(count = 6)))
                 ok
         case ItemKind.Scroll(ScrollEffect.Town | ScrollEffect.Escape) =>
-          put(p, place, None)
+          consumeOne(w, p, uid)
           w.transfer(p, p.home)
           ok
         case ItemKind.Scroll(ScrollEffect.Random) =>
-          put(p, place, None)
+          consumeOne(w, p, uid)
           val rng = w.rngOf
           Iterator.fill(50)(Cell(rng.random(w.terrain.width), rng.random(w.terrain.height))).find(w.canEnter)
             .foreach(c => w.transfer(p, Place(w.mapId, c)))
@@ -200,7 +192,7 @@ object PlayerOps:
             _     <- Either.cond(p.level >= level, (), s"需要 $level 级才能学")
             _     <- Either.cond(p.skill(skill.id).isEmpty, (), "已经学会了")
           yield
-            put(p, place, None)
+            consumeOne(w, p, uid)
             val key = Option.unless(Combat.isPassive(skill.id))((1 to 8).find(k => !p.skills.exists(_.key.contains(k)))).flatten
             p.skills += LearnedSkill(skill.id, 0, 0, key)
             w.recalc(p)
@@ -277,9 +269,14 @@ object PlayerOps:
                 d          <- defOf(w, it)
                 target      = at(p, to)
                 _          <- swappable(w, from, to, d, target)
-              yield
-                put(p, from, target)
-                put(p, to, Some(it))
+              yield target match
+                // 一叠拖到同名的另一叠上：并成一叠（#1159）
+                case Some(t) if t.uid != it.uid && t.name == it.name && ItemKind.stacks(d) =>
+                  put(p, from, None)
+                  put(p, to, Some(t.copy(count = t.count + it.count)))
+                case _ =>
+                  put(p, from, target)
+                  put(p, to, Some(it))
 
   /** 快捷栏只放药品和卷轴：放上去的和换下来放回快捷栏的都要是。 */
   private def swappable(w: World, from: ItemPlace, to: ItemPlace, d: ItemDef, target: Option[ItemInstance]): Result =
@@ -321,38 +318,39 @@ object PlayerOps:
       p.gold = p.gold - Gold(d.price)
       w.notice(p, s"买了 ${d.name.value}，花费 ${d.price} 金币", Tone.Item)
 
-  def sell(w: World, p: Player, npc: ActorId, uid: ItemUid): Result =
+  /** 卖出一件的 n 个（None = 整叠），每个半价。 */
+  def sell(w: World, p: Player, npc: ActorId, uid: ItemUid, n: Option[Int] = None): Result =
     for
-      n          <- npcFor(w, p, npc, _ == MerchantService.Shop)
-      (place, it) <- carriedOrWhy(p, uid)
+      shop       <- npcFor(w, p, npc, _ == MerchantService.Shop)
+      (_, it)    <- carriedOrWhy(p, uid)
       d          <- defOf(w, it)
-      _          <- Either.cond(n.defn.itemModes.isEmpty || n.defn.itemModes.contains(d.mode), (), s"${n.defn.name}不收这种东西")
+      _          <- Either.cond(shop.defn.itemModes.isEmpty || shop.defn.itemModes.contains(d.mode), (), s"${shop.defn.name}不收这种东西")
+      sold       <- takeOwned(w, p, uid, n)
     yield
-      put(p, place, None)
-      val price = d.price / 2
+      val price = d.price / 2 * sold.count
       p.gold = p.gold + Gold(price)
-      w.notice(p, s"卖出 ${d.name.value}，得到 $price 金币", Tone.Item)
+      w.notice(p, s"卖出 ${label(sold)}，得到 $price 金币", Tone.Item)
 
-  def deposit(w: World, p: Player, npc: ActorId, uid: ItemUid): Result =
-    for
-      _          <- npcFor(w, p, npc, _ == MerchantService.Storage)
-      (place, it) <- carriedOrWhy(p, uid)
-    yield
-      put(p, place, None)
-      p.storage += it
-      w.notice(p, s"保管了 ${it.name.value}", Tone.Item)
-
-  def withdraw(w: World, p: Player, npc: ActorId, uid: ItemUid): Result =
+  /** 存进仓库一件的 n 个（None = 整叠），并进同名一叠。 */
+  def deposit(w: World, p: Player, npc: ActorId, uid: ItemUid, n: Option[Int] = None): Result =
     for
       _  <- npcFor(w, p, npc, _ == MerchantService.Storage)
-      i  <- Some(p.storage.indexWhere(_.uid == uid)).filter(_ >= 0).toRight("仓库里没有这件物品")
-      it  = p.storage(i)
-      d  <- defOf(w, it)
-      _  <- fits(w, p, d)
+      it <- takeOwned(w, p, uid, n)
     yield
-      p.storage.remove(i)
-      addToBag(w, p, it)
-      w.notice(p, s"取回 ${it.name.value}", Tone.Item)
+      Inventory.store(w.catalog, p.storage, it)
+      w.notice(p, s"保管了 ${label(it)}", Tone.Item)
+
+  /** 从仓库取回一件的 n 个（None = 整叠）。 */
+  def withdraw(w: World, p: Player, npc: ActorId, uid: ItemUid, n: Option[Int] = None): Result =
+    for
+      _  <- npcFor(w, p, npc, _ == MerchantService.Storage)
+      it <- p.storage.find(_.uid == uid).toRight("仓库里没有这件物品")
+      d  <- defOf(w, it)
+      _  <- fits(w, p, d, n.fold(it.count)(_.max(1).min(it.count)))
+      got = Inventory.unstore(p.storage, uid, n, () => w.newUid()).get
+    yield
+      addToBag(w, p, got)
+      w.notice(p, s"取回 ${label(got)}", Tone.Item)
 
   // ---------------- 其他 ----------------
 

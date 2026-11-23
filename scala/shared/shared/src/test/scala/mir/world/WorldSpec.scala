@@ -281,7 +281,7 @@ object WorldSpec extends ZIOSpecDefault:
           s.w.groundItems.isEmpty
         )
       },
-      test("在商店买东西：钱够才买，离远了不卖，卖出拿一半价钱") {
+      test("在商店买东西：钱够才买，离远了不卖，卖出拿一半价钱；买的药并进同名一叠，一叠可以只卖一个") {
         val bichi = catalog.map(MapId("0")).get
         val s     = sim(bichi)
         val shopI = catalog.data.merchants.indexWhere(m => m.map == bichi.id && m.goods.exists(_.name == ItemName("金创药(小量)")))
@@ -299,13 +299,17 @@ object WorldSpec extends ZIOSpecDefault:
         s.w.teleportActor(p, shop.cell.step(Dir.Down, 10))
         val far   = s.cmd(p, GameCmd.Buy(shop.id, ItemName("金创药(小量)")))
         s.w.teleportActor(p, shop.cell.step(Dir.Down, 2))
-        val uid   = p.belt.flatten.head.uid
+        val stack = p.belt.flatten.head
+        val uid   = stack.uid
+        s.cmd(p, GameCmd.Sell(shop.id, uid, Some(1)))
+        val sold1 = p.gold == Gold(1000 + price / 2) && p.belt.flatten.head.count == stack.count - 1
         s.cmd(p, GameCmd.Sell(shop.id, uid))
         def refused(r: Vector[ServerMsg]) = r.exists { case ServerMsg.Refused(_) => true; case _ => false }
         assertTrue(
           g1 == g0 - Gold(price),
           refused(notSold), refused(poor), refused(far),
-          p.gold == Gold(1000 + price / 2),
+          sold1,
+          p.gold == Gold(1000 + price / 2 * stack.count),
           !p.belt.flatten.exists(_.uid == uid),
           s.consistent(p)
         )
@@ -327,6 +331,57 @@ object WorldSpec extends ZIOSpecDefault:
           p.storage.isEmpty,
           (p.belt.iterator ++ p.bag.iterator).flatten.contains(it),
           s.consistent(p)
+        )
+      },
+      test("叠放（#1159）：捡、拆包并进同名一叠，喝一个减一，仓库存取几个，装备不叠") {
+        val (m, i) = catalog.data.merchants.zipWithIndex.find(_._1.service == MerchantService.Storage).get
+        val s      = sim(catalog.map(m.map).get)
+        val npc    = s.w.actors.values.collectFirst { case n: Npc if n.ref == MerchantRef(i) => n }.get
+        val p      = join(s.w, "甲", npc.cell.step(Dir.Down, 2))
+        s.flush()
+        val red    = ItemName("金创药(小量)")
+        def reds   = (p.belt.iterator ++ p.bag.iterator).flatten.filter(_.name == red).toList
+        val start  = reds.map(_.count)
+        s.w.newItem(red).foreach(it => PlayerOps.addToBag(s.w, p, it.copy(count = 5)))
+        val merged = reds.map(_.count)
+        val bundle = catalog.data.items.find(d => d.mode == 31 && catalog.data.items.exists(o => o.mode != 31 && o.ani == d.shape && o.name == red)).get
+        s.w.newItem(bundle.name).foreach(it => PlayerOps.addToBag(s.w, p, it.copy(count = 2)))
+        val bUid   = (p.belt.iterator ++ p.bag.iterator).flatten.find(_.name == bundle.name).get.uid
+        s.cmd(p, GameCmd.UseItem(bUid))
+        val opened = reds.map(_.count)
+        val leftB  = (p.belt.iterator ++ p.bag.iterator).flatten.find(_.uid == bUid).map(_.count)
+        p.hp = 1
+        s.cmd(p, GameCmd.UseItem(reds.head.uid))
+        val drank  = reds.map(_.count)
+        s.cmd(p, GameCmd.Deposit(npc.id, reds.head.uid, Some(3)))
+        s.cmd(p, GameCmd.Deposit(npc.id, reds.head.uid, Some(2)))
+        val stored = p.storage.toList.map(x => x.name -> x.count)
+        s.cmd(p, GameCmd.Withdraw(npc.id, p.storage.head.uid, Some(4)))
+        val back   = (reds.map(_.count), p.storage.toList.map(_.count))
+        val sword  = ItemName("木剑")
+        (1 to 2).foreach(_ => s.w.newItem(sword).foreach(PlayerOps.addToBag(s.w, p, _)))
+        val swords = p.bag.flatten.filter(_.name == sword).map(_.count).toList
+        assertTrue(
+          start == List(4), merged == List(9), opened == List(15), leftB.contains(1), drank == List(14),
+          stored == List(red -> 5), back == (List(13), List(1)), swords == List(1, 1),
+          s.w.bagWeight(p) == (p.belt.iterator ++ p.bag.iterator).flatten.map(x => catalog.item(x.name).get.weight * x.count).sum,
+          { s.flush(); s.consistent(p) }
+        )
+      },
+      test("旧存档：没有数量的物品按 1，进图时同名药并成一叠") {
+        import zio.json.*
+        val s    = sim()
+        val base = CharacterData.newbie(catalog, "甲", Job.Warrior, Sex.Male, UidSource.counter(1))
+        val json = base.toJson.replaceAll(",\"count\":\\d+", "")
+        val old  = json.fromJson[CharacterData].fold(e => throw new AssertionError(e), identity)
+        val pot  = old.belt.flatten.head
+        val split = old.copy(belt = old.belt.updated(1, Some(pot.copy(uid = ItemUid(77L)))).updated(2, Some(pot.copy(uid = ItemUid(78L)))))
+        val id   = s.w.join(split.copy(place = Place(s.w.mapId, Cell(30, 30))))
+        val p    = s.w.actor(id).collect { case p: Player => p }.get
+        assertTrue(
+          !json.contains("\"count\""),
+          old.allItems.forall(_.count == 1),
+          p.belt.flatten.filter(_.name == pot.name).map(_.count).toList == List(3)
         )
       },
       test("穿脱装备、挪位置、喝药都由服务端改，副本跟着变") {

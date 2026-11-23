@@ -78,7 +78,7 @@ object AutoPlay:
               case ItemKind.Equip(_) | ItemKind.Book(_, _) | ItemKind.Amulet(_) => true
               case _                                                          => false
             (!p.settings.pickupValuableOnly || valuable) &&
-            w.bagWeight(p) + d.weight <= p.stats.maxBagWeight && p.bag.contains(None)
+            PlayerOps.fits(w, p, d, it.count).isRight
           }
       // 有别人站着的格子捡不了
       worth && p.cell.chebyshev(g.cell) <= radius && w.occupant(g.cell).forall(_.id == p.id)

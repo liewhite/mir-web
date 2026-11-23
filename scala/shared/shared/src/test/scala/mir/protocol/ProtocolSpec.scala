@@ -17,7 +17,7 @@ object ProtocolSpec extends ZIOSpecDefault:
 
   private val c1   = Cell(10, 20)
   private val me   = ActorId(7)
-  private val pot  = ItemInstance(ItemUid(42L), ItemName("金创药(小量)"), 1, 1)
+  private val pot  = ItemInstance(ItemUid(42L), ItemName("金创药(小量)"), 1, 1, 5)
   private val t0   = Millis(123456789L)
   private val act  = ActionView(ActKind.Walk, t0, 600, from = Some(Cell(9, 20)))
   private val sp   = Span(1, 3)
@@ -48,6 +48,7 @@ object ProtocolSpec extends ZIOSpecDefault:
     GameCmd.DropItem(ItemUid(42L)),
     GameCmd.Buy(ActorId(5), ItemName("木剑")),
     GameCmd.Sell(ActorId(5), ItemUid(44L)),
+    GameCmd.Sell(ActorId(5), ItemUid(44L), Some(3)),
     GameCmd.Deposit(ActorId(6), ItemUid(44L)),
     GameCmd.Withdraw(ActorId(6), ItemUid(44L)),
     GameCmd.SetSkillKey(SkillId(2), Some(3)),

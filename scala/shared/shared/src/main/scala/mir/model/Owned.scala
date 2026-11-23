@@ -4,8 +4,12 @@ import mir.core.*
 import mir.data.ItemDef
 import zio.json.*
 
-/** 一件具体的物品。dura：当前持久（药品、卷轴为 1；符和毒是剩余次数×100）。 */
-final case class ItemInstance(uid: ItemUid, name: ItemName, dura: Int, duraMax: Int)
+/**
+ * 一件具体的物品。dura：当前持久（药品、卷轴为 1；符和毒是剩余次数×100）。
+ * count：一格里叠了几个（#1159）——可叠的消耗品（ItemKind.stacks）同名并成一叠，其他永远是 1；
+ * 存档里没有这个字段时按 1。
+ */
+final case class ItemInstance(uid: ItemUid, name: ItemName, dura: Int, duraMax: Int, count: Int = 1)
 
 object ItemInstance:
   given JsonCodec[ItemInstance] = DeriveJsonCodec.gen
