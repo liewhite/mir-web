@@ -1,7 +1,7 @@
 // 传奇 1.76 单机网页版的服务端：发页面和素材、登录、存档。零依赖，Node 18+。
 //
 // 环境变量：
-//   PORT=18176  PUBLIC_DIR=../public  DATA_DIR=./data
+//   PORT=18176  HOST=127.0.0.1  PUBLIC_DIR=../public  DATA_DIR=./data
 //   MIR_PASSWORD_HASH=scrypt$<salt hex>$<hash hex>   （用 `node server.mjs hash <密码>` 生成）
 //   MIR_SESSION_SECRET=<随机串>
 //
@@ -23,6 +23,7 @@ if (process.argv[2] === 'hash') {
 }
 
 const PORT = Number(process.env.PORT ?? 18176);
+const HOST = process.env.HOST ?? '127.0.0.1';
 const PUBLIC_DIR = path.resolve(process.env.PUBLIC_DIR ?? path.join(here, '../public'));
 const DATA_DIR = path.resolve(process.env.DATA_DIR ?? path.join(here, 'data'));
 const PASSWORD_HASH = process.env.MIR_PASSWORD_HASH ?? '';
@@ -218,4 +219,4 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => console.log(`mir176 listening on :${PORT}, public=${PUBLIC_DIR}, data=${DATA_DIR}`));
+server.listen(PORT, HOST, () => console.log(`mir176 listening on ${HOST}:${PORT}, public=${PUBLIC_DIR}, data=${DATA_DIR}`));

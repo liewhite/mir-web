@@ -1,0 +1,20 @@
+[Unit]
+Description=Mir 1.76 web (issue #1137)
+After=network-online.target k3s.service
+Wants=network-online.target
+
+[Service]
+User=mir176
+Group=mir176
+EnvironmentFile=/etc/mir176.env
+ExecStart=/opt/mir176/node/bin/node /opt/mir176/server/server.mjs
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/mir176
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

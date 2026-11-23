@@ -51,6 +51,10 @@ function physicalHit(w: World, p: Player, t: Actor, power: number, ignoreArmor: 
 
 export function resolvePlayerHit(w: World, p: Player, dir: Dir, style: HitStyle): void {
   let power = attackPower(p.stats.dc[0], p.stats.dc[1] - p.stats.dc[0]);
+  // 幸运：有机会直接打出攻击上限；诅咒：有机会只打出下限
+  const luck = p.stats.luck;
+  if (luck > 0 && random(10 - Math.min(9, luck)) === 0) power = p.stats.dc[1];
+  else if (luck < 0 && random(10 - Math.min(9, -luck)) === 0) power = p.stats.dc[0];
   const front = step(p, dir);
   const target = w.occupant(front.x, front.y);
   switch (style) {

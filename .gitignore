@@ -5,3 +5,5 @@ __pycache__/
 *.pyc
 node_modules/
 public/assets/
+deploy/mir176.env
+deploy/node.tar.xz
