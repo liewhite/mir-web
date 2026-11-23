@@ -1169,8 +1169,9 @@ function behavior(m) {
   }
   return b;
 }
+var GUARD_RACES = /* @__PURE__ */ new Set([11, 12, 20, 112]);
 function isGuard(d) {
-  return d.name.includes("\u536B\u58EB") || d.name.includes("\u62A4\u536B") || d.name.includes("\u5B88\u536B");
+  return GUARD_RACES.has(d.race);
 }
 function fixedDir(m) {
   return [33, 34, 35, 43].includes(m.def.raceImg);
