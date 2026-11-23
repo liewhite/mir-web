@@ -3,7 +3,8 @@ package mir.world
 import mir.core.*
 import mir.model.*
 import mir.protocol.*
-import mir.rules.Pace
+import mir.data.MapFlag
+import mir.rules.{Pace, Rng}
 
 /**
  * 占位与移动：谁站在哪一格（一格只站一个活的），以及对象的格子、朝向、动作——这些只在这里改，
@@ -14,6 +15,7 @@ final class Placement(w: World):
   private var stepFoot  = 0
 
   private def idx(c: Cell): Int = c.y * w.terrain.width + c.x
+  private val RandomSpotTries = 300
 
   def occupant(c: Cell): Option[Actor] =
     if !w.terrain.inside(c) then None
@@ -29,6 +31,13 @@ final class Placement(w: World):
 
   /** 地形可走且没人站。 */
   def canEnter(c: Cell): Boolean = w.terrain.walkable(c) && occupant(c).isEmpty
+
+  /** 本图随机一格能站的（MapRandomMove 的取格）；地图带 NORANDOMMOVE 的不许随机传送。 */
+  def randomSpot(using rng: Rng): Either[String, Cell] =
+    if w.mapDef.has(MapFlag.NoRandomMove) then Left("这张地图不能随机传送")
+    else
+      Iterator.fill(RandomSpotTries)(Cell(rng.random(w.terrain.width), rng.random(w.terrain.height)))
+        .find(canEnter).toRight("没找到落脚的地方")
 
   def freeCellNear(p: Cell, radius: Int = 6): Option[Cell] =
     (0 to radius).iterator.flatMap { r =>

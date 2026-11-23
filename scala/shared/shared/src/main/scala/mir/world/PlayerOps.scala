@@ -165,11 +165,11 @@ object PlayerOps:
           w.roster.transfer(p, p.home)
           ok
         case ItemKind.Scroll(ScrollEffect.Random) =>
-          consumeOne(w, p, uid)
-          val rng = w.rngOf
-          Iterator.fill(50)(Cell(rng.random(w.terrain.width), rng.random(w.terrain.height))).find(w.canEnter)
-            .foreach(c => w.roster.transfer(p, Place(w.mapId, c)))
-          ok
+          // EatUseItems 2：带 NORANDOMMOVE 的图用不了，卷轴不消耗
+          w.randomSpot(using w.rngOf).map { c =>
+            consumeOne(w, p, uid)
+            w.roster.transfer(p, Place(w.mapId, c))
+          }
         case ItemKind.Scroll(ScrollEffect.Other) => Left("这个暂时用不了")
         case ItemKind.Book(_, level) =>
           for

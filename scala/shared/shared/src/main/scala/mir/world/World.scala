@@ -67,7 +67,7 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
   private[world] val visibility: Visibility     = Visibility(this)
 
   // 对外（服务端、测试）开放的查询和进出图
-  export grid.{occupant, canEnter, freeCellNear}
+  export grid.{occupant, canEnter, freeCellNear, randomSpot}
   export conditions.activeFields
   export hostility.isEnemy
   export roster.{join, leave, snapshot}

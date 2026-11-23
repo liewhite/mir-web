@@ -320,5 +320,34 @@ object SpellSpec extends ZIOSpecDefault:
         s.cast(p, 27, None, Cell(32, 29))
         assertTrue(walled._1 == Cell(32, 30), walled._2 < 100_000, walled._3, p.cell == Cell(32, 26))
       }
+    ),
+    suite("瞬息移动（#1177）")(
+      test("成功后留在当前地图、换到随机位置，宝宝跟过来（不回城）") {
+        val s   = sim()
+        val p   = caster(s, Job.Wizard, List(21))
+        val pet = put(s, "蛤蟆", Cell(31, 30))
+        pet.master = Some(p.id)
+        p.pets += pet.id
+        val start = p.cell
+        (1 to 10).foreach { _ =>
+          if p.cell == start then
+            s.cast(p, 21, None, p.cell)
+            s.run(2000)
+        }
+        assertTrue(
+          p.home.map != s.w.mapId,
+          s.w.player(p.id).isDefined,
+          p.cell != start,
+          pet.cell.chebyshev(p.cell) <= 6
+        )
+      },
+      test("带 NORANDOMMOVE 的地图放不了，不扣蓝、不动") {
+        val m = testMap.copy(flags = Set(MapFlag.NoRandomMove))
+        val s = Sim(World(catalog, m, Terrain.open(60, 60), Rng.seeded(1), UidSource.counter(1_000_000), Millis(0)))
+        val p = caster(s, Job.Wizard, List(21))
+        s.cast(p, 21, None, p.cell)
+        s.run(2000)
+        assertTrue(p.cell == Cell(30, 30), p.mp == 100_000, s.notices.contains("这张地图不能瞬息移动"))
+      }
     )
   )

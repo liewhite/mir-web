@@ -158,7 +158,7 @@ object SkillInfo:
           Some(s"成功率：低 1 级 ${repelOdds(l, 1)}、低 5 级 ${repelOdds(l, 5)}、低 10 级 ${repelOdds(l, 10)}"),
           Option.when(cells.nonEmpty)(s"推 ${cells.min}-${cells.max} 格（被挡住就停）")
         ).flatten
-      case Skill.SpaceMove => List(s"成功率 ${chance(r => SpellRules.spaceMoveWorks(l)(using r))}，成功后传到回城点那张地图的随机位置")
+      case Skill.SpaceMove => List(s"成功率 ${chance(r => SpellRules.spaceMoveWorks(l)(using r))}，成功后传到当前地图的随机位置（部分地图不能用）")
       case Skill.MagicShield =>
         List(
           s"持续 ${span(r => SpellRules.shieldSecs(d, l, mc)(using r))} 秒，期间挨打的伤害少 ${pct(SpellRules.shieldAbsorb(l))}（每下至少掉 1 点）"

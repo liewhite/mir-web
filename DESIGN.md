@@ -96,4 +96,5 @@
 - [x] 物品叠放（#1159，用户定，原版不叠）：药、卷轴、技能书、捆装药同名叠一格不设上限（`ItemKind.stacks` / items.ts `stacks`），装备、符毒、矿石不叠；`world/inventory.ts` 管并叠、拆分、按格判满、重量按个数；卖/存/取一叠弹数量框（`ui/classic/quantity.ts`，默认全部）；旧存档读档补数量 1 并合并同名。
 - [x] 法师、道士技能实际效果（#1163，Scala 版）：公式在 `mir.rules.SpellRules`（MagicManager.cs，随机数经 Rng，技能说明可求上下限）；施放效果按技能注册在 `mir.world.skills`（#1171）；地上持续法术（火墙、困魔咒光圈）是世界里的 `Field`，按视野发 `FieldAppear/FieldDisappear`，客户端照 ClEvent.pas 画；怪物被定住/发狂、神圣战甲术/幽灵盾都是 `Actor.statuses` 里的状态（#1170），外观 `Look.Monster.mood` 让名字变色。本机 `?local&hero` 新建 40 级满技能角色看效果。
 - [x] 战士野蛮冲撞（#1168）：`world.Rush` 照 DoMotaebo/CharPushed，公式 `SpellRules.rush*`；被推用 `grid.pushBack`（抗拒火环共用），动作 `ActKind.Rush`（from 为空＝撞不动原地冲）/`Backstep`（脸朝推的人倒退），客户端按原版 ActRushLeft/Right、倒放走路帧画。
+- [x] 瞬息移动改传当前地图随机位置（#1177，用户定，原版 MagSaceMove 传回城点那张图）：取格用 `Placement.randomSpot`（随机传送卷共用）；带 NORANDOMMOVE 的图两者都不能用（照原版 EatUseItems 2：卷轴不消耗、技能不扣蓝）。
 - [ ] 门（doorIndex）；按地图回城点（现在一律回比奇）

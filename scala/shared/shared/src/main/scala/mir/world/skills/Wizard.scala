@@ -1,6 +1,7 @@
 package mir.world.skills
 
 import mir.core.*
+import mir.data.MapFlag
 import mir.protocol.Anchor
 import mir.protocol.Tone
 import mir.rules.{Pace, SpellRules}
@@ -109,21 +110,23 @@ object Wizard:
       c.fx("magic", 900, 6, 80, Anchor.OnActor(p.id))
       Effect.Cast
 
-  /** 瞬息移动：成功时回到回城点那张图的随机位置（MagSaceMove → MapRandomMove(HomeMap)）。 */
+  /**
+   * 瞬息移动：成功时传到当前地图的随机位置。
+   * 有意偏离原版（MagSaceMove → MapRandomMove(HomeMap) 是传回回城点那张图，用户 11-24 定，#1177）；
+   * 带 NORANDOMMOVE 的图照随机传送卷的规矩不许用，不扣蓝。
+   */
   object SpaceMove extends SkillHandler:
     override val castFx = fx(1590)
     def cast(c: SpellCtx)(using rng: Rng): Effect =
       import c.*
-      if SpellRules.spaceMoveWorks(lv) then
-        w.afterOn(p, Pace.SpellAnimMs) { p =>
-          val home = p.home
-          val dest =
-            if home.map != w.mapId then Some(home) // 别的图的地形这里不知道：送到回城点，由那张图找空格
-            else Iterator.fill(300)(Cell(rng.random(w.terrain.width), rng.random(w.terrain.height))).find(w.canEnter).map(Place(w.mapId, _))
-          dest.foreach(w.roster.transfer(p, _))
-        }
-      else w.out.notice(p, "瞬息移动失败", Tone.Bad)
-      Effect.Cast
+      if c.w.mapDef.has(MapFlag.NoRandomMove) then Effect.Fail("这张地图不能瞬息移动")
+      else
+        if SpellRules.spaceMoveWorks(lv) then
+          w.afterOn(p, Pace.SpellAnimMs) { p =>
+            w.randomSpot.foreach(cell => w.roster.transfer(p, Place(w.mapId, cell)))
+          }
+        else w.out.notice(p, "瞬息移动失败", Tone.Bad)
+        Effect.Cast
 
   object MagicShield extends SkillHandler:
     override val castFx = Some(CastFx("magic", 3880, 10, 60))
