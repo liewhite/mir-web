@@ -75,6 +75,19 @@ test('祖玛雕像是石像，2 格内醒来并叫醒附近的', () => {
   assert.equal(b.cover, 'open');
 });
 
+test('守卫按 Race 认：沃玛卫士、祖玛卫士能打，卫士打不到（#1157）', () => {
+  const w = setup();
+  const woma = put(w, '沃玛卫士', 31, 30);
+  const guard = put(w, '卫士', 5, 5);
+  assert.equal(w.isEnemy(w.player, woma), true);
+  assert.equal(w.isEnemy(w.player, guard), false);
+  assert.ok(run(w, 3000) > 0, '沃玛卫士会打人');
+  // 祖玛卫士是石像，走近醒来后能打
+  const zuma = put(w, '祖玛卫士', 32, 30);
+  run(w, 3000);
+  assert.equal(w.isEnemy(w.player, zuma), true);
+});
+
 test('洞蛆贴身喷气会打人', () => {
   const w = setup();
   put(w, '洞蛆', 31, 30);

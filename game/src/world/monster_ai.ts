@@ -139,8 +139,14 @@ export function behavior(m: Monster): Behavior {
   return b;
 }
 
+/**
+ * 守卫（不打玩家、玩家打不到，见到怪就打）：按 Race 认（OpenMir2 Race.cs：11 Supreguard、12 Petsupreguard、
+ * 20 ArcherPolice、112 ArcherGuard）。不能按名字认：沃玛卫士、祖玛卫士是普通怪（#1157）。
+ */
+const GUARD_RACES: ReadonlySet<number> = new Set([11, 12, 20, 112]);
+
 export function isGuard(d: MonsterDef): boolean {
-  return d.name.includes('卫士') || d.name.includes('护卫') || d.name.includes('守卫');
+  return GUARD_RACES.has(d.race);
 }
 
 /** 不朝向任何方向的怪（原版客户端 TKillingHerb / TBeeQueen 家族只有一个方向）。 */
