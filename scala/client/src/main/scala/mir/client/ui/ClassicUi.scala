@@ -91,6 +91,7 @@ final class ClassicUi(
   val panels   = Panels(this)
   val merchant = MerchantPanel(this)
   val teleport = TeleportPanel(this)
+  val quantity = QuantityPanel(this)
   val chatBox  = ChatInput(text => client.send(GameCmd.Say(text)))
 
   def options: ViewOptions = client.options
@@ -167,6 +168,7 @@ final class ClassicUi(
     keyDlg = None
     itemMenu = None
     hand = None
+    quantity.close()
 
   def toggleBag(): Unit =
     bagOpen = !bagOpen
@@ -231,6 +233,13 @@ final class ClassicUi(
       val key = place.toString
       apply(Hand.click(hand, place, there, isDouble(key)))
 
+  /** 一叠东西问要几个（默认全部），单个直接按 1。 */
+  def askCount(it: ItemInstance, title: String, note: Int => Option[String], ok: Int => Unit): Unit =
+    if it.count <= 1 then ok(1)
+    else
+      itemMenu = None
+      quantity.show(QuantityAsk(title, it.count, note, ok))
+
   def apply(step: HandStep): Unit =
     hand = step.hand
     step.cmds.foreach(send)
@@ -265,11 +274,12 @@ final class ClassicUi(
     if settingsOpen then panels.drawSettings(m)
     if teleportOpen then teleport.draw(m)
     keyDlg.foreach(panels.drawKeyDlg(m, _))
+    quantity.draw()
     itemMenu match
       case Some(menu) => menuRect = Some(panels.drawItemMenu(menu))
       case None       => if hand.isEmpty && !touch then panels.drawHover(m)
     hand.foreach { h =>
-      catalog.item(h.item.name).foreach(d => g.imgCenter("items", d.look, Rect(mouse.x - 20, mouse.y - 16, 40, 32)))
+      catalog.item(h.item.name).foreach(d => g.item(d.look, h.item.count, Rect(mouse.x - 20, mouse.y - 16, 40, 32)))
     }
     if dead && m.actor.dead then drawDeath()
 

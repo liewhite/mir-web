@@ -47,6 +47,13 @@ final class Gfx(val ctx: dom.CanvasRenderingContext2D, sprites: SpriteStore):
       ctx.drawImage(s.img, s.sx, s.sy, s.w, s.h, math.round(r.x + (r.w - s.w) / 2).toDouble, math.round(r.y + (r.h - s.h) / 2).toDouble, s.w, s.h)
     }
 
+  /** 物品格：图标居中，叠了几个时右上角黄字写数量（#1159）。 */
+  def item(look: Int, count: Int, r: Rect): Unit =
+    imgCenter("items", look, r)
+    if count > 1 then
+      val s = count.toString
+      text(s, r.x + r.w - width(s) - 2, r.y + 1, "#ffe08a", bold = true)
+
   def circle(cx: Double, cy: Double, r: Double, fill: String, stroke: Option[String] = None): Unit =
     ctx.beginPath()
     ctx.arc(cx, cy, r, 0, math.Pi * 2)

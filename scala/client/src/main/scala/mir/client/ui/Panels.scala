@@ -107,7 +107,7 @@ final class Panels(ui: ClassicUi):
       val r = equipRect(slot)
       if !OnFigure(slot) then
         m.view.worn.get(slot).filterNot(_ => ui.handFrom(ItemPlace.Worn(slot))).flatMap(i => catalog.item(i.name))
-          .foreach(d => g.imgCenter("items", d.look, r))
+          .foreach(d => g.item(d.look, 1, r))
       ui.hit(r)(ui.clickPlace(ItemPlace.Worn(slot), ui.client.view.worn.get(slot), r))
     }
 
@@ -179,8 +179,8 @@ final class Panels(ui: ClassicUi):
     g.img(Gfx.Main, 3, o.x, o.y)
     m.view.bag.zipWithIndex.foreach { (slot, i) =>
       val r = gridCell(i)
-      slot.filterNot(_ => ui.handFrom(ItemPlace.Bag(i)) || ui.merchant.holds(ItemPlace.Bag(i))).flatMap(it => catalog.item(it.name))
-        .foreach(d => g.imgCenter("items", d.look, r.moved(-1, 1)))
+      slot.filterNot(_ => ui.handFrom(ItemPlace.Bag(i)) || ui.merchant.holds(ItemPlace.Bag(i)))
+        .foreach(it => catalog.item(it.name).foreach(d => g.item(d.look, it.count, r.moved(-1, 1))))
       ui.hit(r)(ui.clickPlace(ItemPlace.Bag(i), ui.client.view.bag.lift(i).flatten, r))
     }
     g.text(Gfx.gold(m.stats.gold.value), o.x + 64, o.y + 185)

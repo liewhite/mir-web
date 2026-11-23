@@ -117,8 +117,9 @@ final class MerchantPanel(ui: ClassicUi):
           val dura = ItemKind.of(d) match
             case ItemKind.Equip(_) => s"${math.ceil(it.dura / 1000.0).toInt}/${math.ceil(it.duraMax / 1000.0).toInt}"
             case _                 => "-"
-          MenuRow(it.name.value, dura, "", d, Some(it),
-            () => ui.send(GameCmd.Withdraw(s.npc, it.uid)))
+          val label = if it.count > 1 then s"${it.name.value} ×${it.count}" else it.name.value
+          MenuRow(label, dura, "", d, Some(it),
+            () => ui.askCount(it, s"取回 ${it.name.value}", _ => None, n => ui.send(GameCmd.Withdraw(s.npc, it.uid, Some(n)))))
         }
       }
     case _ =>
@@ -189,8 +190,9 @@ final class MerchantPanel(ui: ClassicUi):
     val spot = Rect(x + 27, y + 67, 61, 52)
     ui.hit(spot)(clickSpot())
     sellSpot.flatMap(h => catalog.item(h.item.name)).foreach { d =>
-      g.imgCenter("items", d.look, spot)
-      if !store then g.text(s"${d.price / 2} 金币", x + 30, y + 128, "#ff0")
+      val count = sellSpot.fold(1)(_.item.count)
+      g.item(d.look, count, spot)
+      if !store then g.text(s"${d.price / 2 * count} 金币", x + 30, y + 128, "#ff0")
     }
     ui.button(Button(Rect(x + 85, y + 150, 24, 13), () => confirm(s), img = Some(393), always = true))
     ui.button(Button(Rect(x + 115, y, 16, 23), () => { sellSpot = None; mode = MerchantMode.Talk }, img = Some(64)))
@@ -208,17 +210,27 @@ final class MerchantPanel(ui: ClassicUi):
 
   private def confirm(s: Session): Unit = sellSpot.foreach { h =>
     sellSpot = None
-    ui.send(if mode == MerchantMode.Store then GameCmd.Deposit(s.npc, h.item.uid) else GameCmd.Sell(s.npc, h.item.uid))
+    sellOrStore(s, h.item)
   }
 
   /** 手机上点包裹里的物品：在卖、存页时加「卖出」「保管」。 */
   def bagActions(it: ItemInstance, d: ItemDef): List[MenuAction] =
     session.toList.flatMap { s =>
       mode match
-        case MerchantMode.Sell  => List(MenuAction(s"卖出 ${d.price / 2} 金币", () => ui.send(GameCmd.Sell(s.npc, it.uid))))
-        case MerchantMode.Store => List(MenuAction("保管", () => ui.send(GameCmd.Deposit(s.npc, it.uid))))
+        case MerchantMode.Sell =>
+          val each = d.price / 2
+          List(MenuAction(if it.count > 1 then s"卖出（每个 $each 金币）" else s"卖出 $each 金币", () => sellOrStore(s, it)))
+        case MerchantMode.Store => List(MenuAction("保管", () => sellOrStore(s, it)))
         case _                  => Nil
     }
+
+  /** 卖出 / 保管：一叠先问数量（默认全部）。 */
+  private def sellOrStore(s: Session, it: ItemInstance): Unit =
+    if mode == MerchantMode.Store then
+      ui.askCount(it, s"保管 ${it.name.value}", _ => None, n => ui.send(GameCmd.Deposit(s.npc, it.uid, Some(n))))
+    else
+      val each = catalog.item(it.name).fold(0)(_.price / 2)
+      ui.askCount(it, s"卖出 ${it.name.value}", n => Some(s"得到 ${each * n} 金币"), n => ui.send(GameCmd.Sell(s.npc, it.uid, Some(n))))
 
 object MerchantPanel:
   /** 商品列表行高、一页几行 */

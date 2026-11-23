@@ -88,7 +88,7 @@ final class Board(ui: ClassicUi):
     beltRects.zipWithIndex.foreach { (r, i) =>
       val place = ItemPlace.Belt(i)
       val it    = m.view.belt.lift(i).flatten
-      it.filterNot(_ => ui.handFrom(place)).flatMap(i => ui.catalog.item(i.name)).foreach(d => g.imgCenter("items", d.look, r))
+      it.filterNot(_ => ui.handFrom(place)).foreach(i => ui.catalog.item(i.name).foreach(d => g.item(d.look, i.count, r)))
       g.text((i + 1).toString, r.x + 13, r.y + 19, "#fff", bold = true)
       ui.hit(r)(beltClicked(i, r))
     }
