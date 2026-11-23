@@ -18,6 +18,15 @@ cd "$(dirname "$0")/../.."
 H=kaojiang
 JRE=deploy/jvm/jre.tar.gz
 
+# 只从 master 部署：在 worktree 分支上跑会把没合并的代码推上线，盖掉别人已合进 master 的改动。
+BR=$(git rev-parse --abbrev-ref HEAD)
+[[ $BR == master || ${1:-} == --dry-run ]] || { echo "当前分支是 $BR：先合进 master，再在主仓库 mir/ 里部署"; exit 1; }
+# 几个会话可能同时部署：排队，一个打包上传完下一个再从最新 master 打包（不排队的话后打包的可能缺先合并的提交）。
+LOCK=/tmp/mir176-deploy.lock
+exec 9>"$LOCK"
+/opt/homebrew/bin/flock -w 1800 9 || { echo "等别的部署超过 30 分钟，先看 pgrep -fl deploy/jvm/deploy.sh"; exit 1; }
+echo "== 部署 $(git log --oneline -1)"
+
 echo "== 打包"
 (cd scala && JAVA_HOME=/opt/homebrew/opt/openjdk@21 sbt -batch server/assembly client/fullLinkJS)
 JAR=scala/server/target/scala-3.10.1/mir176.jar
@@ -57,3 +66,9 @@ for i in $(seq 1 30); do curl -sf -m 2 http://10.42.0.1:18176/healthz && break; 
 echo
 systemctl is-active mir176
 R
+
+echo "== 核对线上 jar 与本机一致"
+LOCAL=$(shasum -a 256 "$JAR" | cut -d' ' -f1)
+REMOTE=$(ssh $H 'sha256sum /opt/mir176/app/mir176.jar' | cut -d' ' -f1)
+[[ $LOCAL == "$REMOTE" ]] || { echo "线上 jar 和本机不一致：本机 $LOCAL 线上 $REMOTE"; exit 1; }
+echo "ok $(git log --oneline -1)"
