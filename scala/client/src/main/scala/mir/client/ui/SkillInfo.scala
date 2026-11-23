@@ -166,7 +166,7 @@ object SkillInfo:
       case Skill.Tame =>
         val odds = tameOdds(l)
         List(
-          s"诱惑一只怪（最远 $R 格）当宝宝，最多 ${SpellRules.MaxPets} 只；比你高 2 级以上、${SpellRules.TameLevelLimit} 级以上、不死系的诱惑不了",
+          s"诱惑一只怪（最远 $R 格）当宝宝，最多 ${SpellRules.MaxPets} 只（召唤的骷髅、神兽不算）；比你高 2 级以上、${SpellRules.TameLevelLimit} 级以上、不死系的诱惑不了",
           odds.fold("概率未算出") { m =>
             val order = List("收服", "发狂", "打死")
             val parts = order.map(k => s"$k ${pct(m.getOrElse(k, 0))}") ++
@@ -202,8 +202,10 @@ object SkillInfo:
           s"用 1 张护身符，目标周围 ${w}×$w 格的怪定住 ${span(r => SpellRules.holyCurtainSecs(d, l, sc)(using r))} 秒（挨打会醒）",
           s"怪物 ≤ ${L - 2} 级 ${at(0)}，${L - 1} 级 ${at(1)}，$L 级 ${at(2)}，${L + 1} 级 ${at(3)}，${L + 2} 级 ${at(4)}"
         )
-      case Skill.SummonSkeleton => List("用 1 张护身符召唤，同时只能有 1 只", petLine("变异骷髅", l))
-      case Skill.SummonShinsu => List("用 1 张护身符召唤，同时只能有 1 只", petLine("神兽", l))
+      case Skill.SummonSkeleton =>
+        List(s"用 1 张护身符召唤一只，同时最多 ${SpellRules.SummonsEach} 只（不占诱惑之光的名额）", petLine(SpellRules.SkeletonPet.value, l))
+      case Skill.SummonShinsu =>
+        List(s"用 1 张护身符召唤一只，同时最多 ${SpellRules.SummonsEach} 只（不占诱惑之光的名额）", petLine(SpellRules.ShinsuPet.value, l))
       case Skill.Invisible => List(s"用 1 张护身符隐身 ${span(r => SpellRules.invisibleSecs(d, l, sc)(using r))} 秒，怪物看不见你（打怪或放别的技能就现身）")
       case Skill.GroupInvisible =>
         val w = SpellRules.GroupRadius * 2 + 1

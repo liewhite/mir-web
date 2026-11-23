@@ -144,7 +144,7 @@ object Wizard:
           val t = SpellRules.TameTarget(m.defn.level, m.maxHp, isUndead(m))
           if Behavior.isAnimal(m.defn) then Effect.Fail("鸡、鹿、羊、狼这类动物不能诱惑")
           else
-            run(inReach(m.cell).flatMap(_ => SpellRules.tameBlocker(p.level, t, p.pets.size).map(Effect.Fail(_)).toLeft(())).map { _ =>
+            run(inReach(m.cell).flatMap(_ => SpellRules.tameBlocker(p.level, t, tamedCount(c)).map(Effect.Fail(_)).toLeft(())).map { _ =>
               c.fx("magic", 1570, 10, 80, Anchor.OnActor(m.id))
               val name = displayName(m)
               SpellRules.tame(p.level, lv, t) match
@@ -164,6 +164,12 @@ object Wizard:
                   w.out.notice(p, s"诱惑 $name 没有成功", Tone.System)
             })
         case _ => Effect.Fail("需要选中一只怪")
+
+    /** 诱惑收服的宝宝有几只（召唤的骷髅、神兽另算）。 */
+    private def tamedCount(c: SpellCtx): Int = c.p.pets.flatMap(c.w.actor).count {
+      case m: Monster => !SpellRules.isSummoned(m.defn.name)
+      case _          => false
+    }
 
     /** 诱惑成功：认主、不再算刷怪点的、解除定住发狂、按技能等级加快走路出手。 */
     private def makePet(c: SpellCtx, m: Monster): Unit =

@@ -4,6 +4,7 @@
  */
 import type { Range } from '../data/defs';
 import type { ItemEffects } from './items';
+import { jobRange } from './rates';
 
 export type Job = 0 | 1 | 2; // 战士 法师 道士
 export const JOB_NAME = ['战士', '法师', '道士'] as const;
@@ -143,6 +144,9 @@ export function computeStats(job: Job, level: number, equips: ItemEffects[], pas
   if (passive.powerHit > 0) s.hit += passive.powerHit;
   const hitSpeed = Math.min(15, speed > 0 ? Math.floor(speed / 2) : Math.trunc((speed - 1) / 2));
   s.hitInterval = Math.max(300, 900 - hitSpeed * 60);
+  s.dc = jobRange(job, s.dc);
+  s.ac = jobRange(job, s.ac);
+  s.mac = jobRange(job, s.mac);
   return s;
 }
 

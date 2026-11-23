@@ -102,6 +102,23 @@ object SpellSpec extends ZIOSpecDefault:
         assertTrue(SpellRules.thunderStorm(55, undead = true) == 55, SpellRules.thunderStorm(55, undead = false) == 5)
       }
     ),
+    test("召唤骷髅、神兽同种各最多 3 只（#1176），第 4 只召唤失败并提示") {
+      val s = sim()
+      val p = caster(s, Job.Taoist, List(17, 30), charm = true)
+      def count(n: MonsterName) = p.pets.flatMap(s.w.actor).count {
+        case m: Monster => m.defn.name == n
+        case _          => false
+      }
+      (1 to 4).foreach { _ => s.cast(p, 17, None, p.cell); s.run(3000) }
+      val skeletons = count(SpellRules.SkeletonPet)
+      (1 to 2).foreach { _ => s.cast(p, 30, None, p.cell); s.run(3000) }
+      assertTrue(
+        skeletons == SpellRules.SummonsEach,
+        s.notices.exists(_.contains(s"最多 ${SpellRules.SummonsEach} 只")),
+        count(SpellRules.SkeletonPet) == 3,
+        count(SpellRules.ShinsuPet) == 2
+      )
+    },
     test("火墙：5 格火，怪站在上面掉血，火灭了格子也消失，视野副本跟着出现消失") {
       val s = sim()
       val p = caster(s, Job.Wizard, List(22))

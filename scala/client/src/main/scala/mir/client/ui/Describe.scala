@@ -3,7 +3,7 @@ package mir.client.ui
 import mir.data.{Catalog, ItemDef, SkillDef, Span}
 import mir.model.{EquipSlot, ItemInstance, Job, LearnedSkill, PoisonKind}
 import mir.protocol.SelfStats
-import mir.rules.{SpellRules, Durability, ItemEffects, ItemKind, PotionRules, Pricing, Recovery, Requirement, Rules, ScrollEffect, dressSex}
+import mir.rules.{SpellRules, Durability, Rates, ItemEffects, ItemKind, PotionRules, Pricing, Recovery, Requirement, Rules, ScrollEffect, dressSex}
 
 /**
  * 把物品、属性、技能讲成可量化的说明（用户 #1165：所有效果给精确数值）。纯函数，只出文字。
@@ -155,6 +155,7 @@ object Describe:
       Option.when(has(s.sc))(Line(s"道术 ${r(s.sc)}：道士技能的威力、治疗量、持续时间加成（见技能说明）")),
       Some(Line(s"防御 ${r(s.ac)}：挨物理攻击时伤害减去 ${s.ac.lo}-${s.ac.hi} 间随机值")),
       Some(Line(s"魔防 ${r(s.mac)}：挨魔法攻击时伤害减去 ${s.mac.lo}-${s.mac.hi} 间随机值")),
+      Option.when(job == Job.Warrior)(Line(s"本服战士加强：攻击、防御、魔防（含装备）都 ×${Rates.warriorBody}，上面已算进去", Tint.Good)),
       Some(Line(
         s"准确 ${s.hit}：命中率 =（${s.hit}+1）÷ 目标敏捷，打附近怪（敏捷约 $monsterAgility）${pct(Rules.hitChance(s.hit, monsterAgility))}"
       )),

@@ -1,7 +1,8 @@
 package mir.rules
 
 import mir.core.Exp
-import mir.data.{DropDef, ItemDef}
+import mir.data.{DropDef, ItemDef, Span}
+import mir.model.Job
 
 /**
  * 倍率（用户 11-23 在 #1137 定：大幅降低升级难度、大幅提高爆率、装备爆率至少 20%、每只怪能爆什么不变）。
@@ -17,6 +18,15 @@ object Rates:
   val highEquipLevel: Int  = 20
   /** 诱惑之光收服概率倍数（用户 11-23 在 #1163 要求提升；原版 3 级技能对低级怪约 5%），最高 100% */
   val tame: Int = 10
+  /** 战士的攻击、防御、魔防（上下限都乘，含装备加成，四舍五入）倍数（用户 11-24 在 #1176 定） */
+  val warriorBody: Double = 1.5
+
+  /** 职业倍率作用到一段属性区间上（只有战士有）。 */
+  def jobSpan(job: Job, s: Span): Span = job match
+    case Job.Warrior =>
+      def scale(v: Int) = math.floor(v * warriorBody + 0.5).toInt
+      Span(scale(s.lo), scale(s.hi))
+    case _ => s
 
   /** 一行爆率实际的掉落概率（0..1）。def 为空表示金币。 */
   def dropChance(d: DropDef, item: Option[ItemDef]): Double =

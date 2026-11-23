@@ -87,6 +87,21 @@ object RulesSpec extends ZIOSpecDefault:
           ItemKind.slots(kind("护身符")) == List(EquipSlot.BraceletL)
         )
       },
+      test("战士攻击、防御、魔防（含装备）×1.5 四舍五入，别的职业不变（#1176）") {
+        val e  = ItemEffects.of(catalog.item(ItemName("裁决之杖")).get)
+        val w  = Rules.computeStats(Job.Warrior, 30, List(e), PassiveSkills())
+        val lv = Rules.levelAbility(Job.Warrior, 30)
+        def x(v: Int) = math.floor(v * 1.5 + 0.5).toInt
+        val t  = Rules.computeStats(Job.Taoist, 30, List(e), PassiveSkills())
+        val tl = Rules.levelAbility(Job.Taoist, 30)
+        assertTrue(
+          w.dc == Span(x(lv.dc.lo + e.dc.lo), x(lv.dc.hi + e.dc.hi)),
+          w.ac == Span(x(lv.ac.lo + e.ac.lo), x(lv.ac.hi + e.ac.hi)),
+          w.mac == Span(x(lv.mac.lo + e.mac.lo), x(lv.mac.hi + e.mac.hi)),
+          w.dc.hi > lv.dc.hi + e.dc.hi,
+          t.dc == Span(tl.dc.lo + e.dc.lo, tl.dc.hi + e.dc.hi)
+        )
+      },
       test("穿戴要求按人物当前值判断") {
         val stats = Rules.computeStats(Job.Warrior, 10, Nil, PassiveSkills())
         val dc    = Requirement.Dc(5)

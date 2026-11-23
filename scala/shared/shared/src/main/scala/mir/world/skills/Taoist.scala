@@ -106,17 +106,18 @@ object Taoist:
         else w.out.notice(p, "没有困住怪（要比你低几级的怪才困得住）", Tone.System)
       })
 
-  /** 召唤宝宝：同时只能有一只同名的，按技能等级加血加攻。 */
+  /** 召唤宝宝：同名的最多 SpellRules.SummonsEach 只，按技能等级加血加攻。 */
   final class Summon(pet: MonsterName, override val castFx: Option[CastFx]) extends SkillHandler:
     def cast(c: SpellCtx)(using Rng): Effect =
       import c.*
-      val have = p.pets.flatMap(w.actor).exists {
+      val have = p.pets.flatMap(w.actor).count {
         case m: Monster => m.defn.name == pet
         case _          => false
       }
       charm match
         case Left(fail) => fail
-        case Right(_) if have => Effect.Fail(s"已经有${pet.value}了")
+        case Right(_) if have >= SpellRules.SummonsEach =>
+          Effect.Fail(s"${pet.value}最多 ${SpellRules.SummonsEach} 只")
         case Right(_) =>
           w.catalog.monster(pet) match
             case None => Effect.Fail("召唤失败")
@@ -134,8 +135,8 @@ object Taoist:
               }
               Effect.Cast
 
-  val SummonSkeleton = Summon(MonsterName("变异骷髅"), fx(1500))
-  val SummonShinsu   = Summon(MonsterName("神兽"), None)
+  val SummonSkeleton = Summon(SpellRules.SkeletonPet, fx(1500))
+  val SummonShinsu   = Summon(SpellRules.ShinsuPet, None)
 
   /** 隐身：盯着他的怪（看不穿隐身的）丢掉目标。 */
   private def makeInvisible(w: World, a: Actor, secs: Int): Unit =

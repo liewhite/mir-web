@@ -1,5 +1,6 @@
 package mir.rules
 
+import mir.core.MonsterName
 import mir.data.{SkillDef, Span}
 
 /**
@@ -30,9 +31,15 @@ object SpellRules:
   val DefenceRadius = 3
   /** 群体治疗术、集体隐身术、困魔咒：目标周围几格 */
   val GroupRadius = 1
-  /** 诱惑之光：宝宝上限（MagTammingCount）、怪物等级上限（MagTammingLevel） */
+  /** 诱惑之光：收服的宝宝上限（MagTammingCount，召唤的不算）、怪物等级上限（MagTammingLevel） */
   val MaxPets         = 5
   val TameLevelLimit  = 50
+  /** 召唤骷髅、召唤神兽召出的宝宝，同种各最多几只（原版 1 只，用户 11-24 在 #1176 定 3 只） */
+  val SummonsEach     = 3
+  val SkeletonPet     = MonsterName("变异骷髅")
+  val ShinsuPet       = MonsterName("神兽")
+  /** 是不是召唤出来的宝宝（不占诱惑之光的名额） */
+  def isSummoned(pet: MonsterName): Boolean = pet == SkeletonPet || pet == ShinsuPet
   /** 圣言术：怪物等级上限（MagTurnUndeadLevel） */
   val TurnUndeadLevelLimit = 50
 
