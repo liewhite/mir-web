@@ -28,6 +28,8 @@ export class Controller {
   /** 打开 NPC 对话的回调（UI 实现） */
   onTalk: (npcId: number) => void = () => {};
   onMessage: (text: string, color?: 'system' | 'good' | 'bad' | 'item') => void = () => {};
+  /** 设置改了（存档、刷新显示） */
+  onSettingsChanged: () => void = () => {};
 
   constructor(readonly world: World, public settings: Settings) {}
 

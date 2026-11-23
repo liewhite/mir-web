@@ -156,11 +156,45 @@ def build_ground(maps: list[str]) -> None:
 
 # ---------------- 图集块 ----------------
 
+class _Patched:
+    """素材修补：盛大 WZL 里底栏聊天区是白色(255)，原版是透明/黑底，改成透明（0）。"""
+
+    def __init__(self, lib, name: str):
+        self.lib = lib
+        self.name = name
+        self.palette = lib.palette
+
+    def frame(self, i: int):
+        f = self.lib.frame(i)
+        if self.name == "prguse" and i == 1 and f.index is not None:
+            idx = f.index.copy()
+            area = idx[102:244, 208:595]
+            area[area == 255] = 0
+            from wemade import Frame
+            return Frame(f.w, f.h, f.x, f.y, self.palette[idx], idx)
+        return f
+
+    def __len__(self):
+        return len(self.lib)
+
+
 def _write_lib_block(args):
     lib_name, block = args
-    lib = _lib_cache(lib_name)
+    lib = _Patched(_lib_cache(lib_name), lib_name)
     size = block_size(lib_name)
     return write_block(lib, lib.palette, OUT / "img" / lib_name, block * size, size)
+
+
+def rebuild_block(lib_name: str, frame: int) -> None:
+    """只重建某一帧所在的块（修补素材后用）。"""
+    _write_lib_block((lib_name, frame // block_size(lib_name)))
+    bump_version()
+
+
+def bump_version() -> None:
+    """素材版本号：网页按它给素材 URL 加 ?v=，改了素材浏览器才会重新下载。"""
+    import time
+    (OUT / "version.json").write_text(json.dumps({"v": int(time.time())}))
 
 
 def build_libs(needs: dict[str, set[int]]) -> None:
@@ -215,6 +249,7 @@ def main() -> None:
 
     if args.only in (None, "ground"):
         build_ground(maps)
+    bump_version()
 
 
 if __name__ == "__main__":

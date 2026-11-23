@@ -62,6 +62,8 @@ abstract class ActorBase {
   }
 }
 
+export const BAG_SIZE = 40;
+
 export interface LearnedSkill {
   readonly id: number;
   level: number;
@@ -79,7 +81,8 @@ export class Player extends ActorBase {
   level = 1;
   exp = 0;
   gold = 0;
-  bag: (ItemInstance | null)[] = new Array(46).fill(null);
+  /** 包裹 40 格（原版 8x5；另 6 格是快捷栏 belt） */
+  bag: (ItemInstance | null)[] = new Array(BAG_SIZE).fill(null);
   belt: (ItemInstance | null)[] = new Array(6).fill(null);
   storage: ItemInstance[] = [];
   equip: Record<EquipSlot, ItemInstance | null> = {

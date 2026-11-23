@@ -23,6 +23,22 @@ type Block =
   | { state: 'ready'; sprites: (Sprite | null)[] }
   | { state: 'missing' };
 
+/** 素材版本（assets/version.json），拼在 URL 上让浏览器在素材更新后重新下载。 */
+export let assetVersion = '0';
+
+export async function loadAssetVersion(): Promise<void> {
+  try {
+    const r = await fetch('assets/version.json', { cache: 'no-store' });
+    if (r.ok) assetVersion = String(((await r.json()) as { v: number }).v);
+  } catch {
+    // 拿不到就用默认值，不影响游戏
+  }
+}
+
+export function assetUrl(path: string): string {
+  return `${path}?v=${assetVersion}`;
+}
+
 export function blockSize(lib: string): number {
   const base = lib.replace(/\d+$/, '');
   return base === 'hum' || base === 'weapon' || base === 'hair' ? 600 : 200;
@@ -106,10 +122,10 @@ export class SpriteStore {
   }
 
   private async loadBlock(lib: string, b: number): Promise<(Sprite | null)[]> {
-    const meta = await fetchJsonRetry<BlockJson>(`${this.base}/${lib}/${b}.json`);
+    const meta = await fetchJsonRetry<BlockJson>(assetUrl(`${this.base}/${lib}/${b}.json`));
     const pages: HTMLImageElement[] = [];
     for (let p = 0; p < meta.pages; p++) {
-      pages.push(await loadImage(`${this.base}/${lib}/${b}_${p}.png`));
+      pages.push(await loadImage(assetUrl(`${this.base}/${lib}/${b}_${p}.png`)));
     }
     return meta.frames.map((f) => {
       if (f === 0) return null;

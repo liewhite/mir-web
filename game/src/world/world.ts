@@ -600,7 +600,8 @@ export class World {
     return null;
   }
 
-  equip(p: Player, uid: number): string | null {
+  /** 穿戴；prefer 指定左右手镯/戒指位。 */
+  equip(p: Player, uid: number, prefer?: EquipSlot): string | null {
     const f = this.findOwned(p, uid);
     if (!f) return null;
     const def = this.catalog.item(f.item.name);
@@ -616,7 +617,8 @@ export class World {
       const freeWeight = this.wearWeight(p) - (cur[0] ? this.catalog.item(cur[0].name).weight : 0);
       if (freeWeight + def.weight > p.stats.maxWearWeight) return `穿不动了（负重上限 ${p.stats.maxWearWeight}）`;
     }
-    const slot = slots.find((s) => !p.equip[s]) ?? slots[0]!;
+    if (prefer && !slots.includes(prefer)) return '不能放在这个位置';
+    const slot = prefer ?? slots.find((s) => !p.equip[s]) ?? slots[0]!;
     this.removeOwned(p, uid);
     const old = p.equip[slot];
     p.equip[slot] = f.item;

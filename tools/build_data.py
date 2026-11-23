@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from build_assets import CATALOG, OUT, game_maps
+from build_assets import CATALOG, OUT, bump_version, game_maps
 from monsters import ACT, action_table, monster_lib, monster_offset
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -72,6 +72,7 @@ def main() -> None:
     out = OUT / "data"
     out.mkdir(parents=True, exist_ok=True)
     (out / "game.json").write_text(json.dumps(game, ensure_ascii=False, separators=(",", ":")))
+    bump_version()
     print("game.json", (out / "game.json").stat().st_size, "bytes;",
           {k: len(v) for k, v in game.items() if isinstance(v, (list, dict))})
 

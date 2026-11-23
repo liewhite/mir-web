@@ -1,3 +1,5 @@
+import { assetUrl } from '../assets/sprites';
+
 /** game.json 的类型（tools/build_data.py 生成）。 */
 
 export type Range = readonly [number, number];
@@ -189,7 +191,7 @@ export class Catalog {
 }
 
 export async function loadCatalog(): Promise<Catalog> {
-  const r = await fetch('assets/data/game.json', { cache: 'no-store' });
+  const r = await fetch(assetUrl('assets/data/game.json'));
   if (!r.ok) throw new Error(`game.json ${r.status}`);
   return new Catalog((await r.json()) as GameData);
 }

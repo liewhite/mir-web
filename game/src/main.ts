@@ -1,7 +1,7 @@
 /** 入口：登录 → 读档或建角色 → 主循环。 */
 import { loadCatalog, type Catalog } from './data/defs';
 import { loadMap } from './assets/mapdata';
-import { SpriteStore } from './assets/sprites';
+import { SpriteStore, loadAssetVersion } from './assets/sprites';
 import { Player } from './world/entities';
 import { newItem } from './world/items';
 import { World } from './world/world';
@@ -11,8 +11,8 @@ import { Controller } from './game/controller';
 import { bindInput } from './game/input';
 import { loadSettings } from './game/settings';
 import { HttpSaveStore, type SaveData, type SaveStore, fromSave, toSave } from './save/save';
-import { IconFactory } from './ui/icons';
-import { Ui } from './ui/ui';
+import { ClassicUi } from './ui/classic/classic';
+import { Gfx } from './ui/classic/gfx';
 
 const START = { map: '0', x: 333, y: 272 };
 
@@ -79,6 +79,7 @@ async function main(): Promise<void> {
   status('连接服务器…');
   await ensureLogin();
   status('读取游戏数据…');
+  await loadAssetVersion();
   const catalog = await loadCatalog();
   const store: SaveStore = new HttpSaveStore();
   let save: SaveData | null = null;
@@ -115,9 +116,7 @@ async function main(): Promise<void> {
   const canvas = $<HTMLCanvasElement>('#game');
   const renderer = new Renderer(canvas, sprites, world, catalog);
   const ctl = new Controller(world, settings);
-  const icons = new IconFactory(sprites);
-  const ui = new Ui($('#ui'), world, ctl, catalog, icons);
-  sprites.onLoaded = () => icons.refresh();
+  const ui = new ClassicUi(new Gfx(renderer.context, sprites), world, ctl, catalog);
   ctl.onMessage = (t, c) => ui.message(t, c);
   ctl.onTalk = (id) => {
     const npc = world.actors.get(id);
@@ -127,7 +126,7 @@ async function main(): Promise<void> {
     renderer.view = { showHpBars: settings.showHpBars, showItemNames: settings.showItemNames, showMonsterNames: settings.showMonsterNames };
   };
   applyView();
-  ui.onSettingsChanged = () => {
+  ctl.onSettingsChanged = () => {
     applyView();
     void persist();
   };
@@ -136,6 +135,7 @@ async function main(): Promise<void> {
   window.addEventListener('resize', fit);
   bindInput(canvas, renderer, ctl, ui);
   (window as unknown as Record<string, unknown>).__mir = { world, renderer, ctl, sprites, ui };
+  ui.message('欢迎来到玛法大陆。F9 包裹，F10 状态，F11 技能，右下角按钮也可以打开。', 'good');
   status('');
   $('#loading').classList.add('hidden');
 
@@ -167,7 +167,6 @@ async function main(): Promise<void> {
       switch (ev.type) {
         case 'damage':
           renderer.float(ev.target, `-${ev.amount}`, ev.target === player.id ? '#ff6b6b' : '#ffd166');
-          ui.invalidate();
           break;
         case 'miss':
           renderer.float(ev.target, 'MISS', '#bbb');
@@ -177,13 +176,12 @@ async function main(): Promise<void> {
           break;
         case 'msg':
           ui.message(ev.text, ev.color);
-          ui.invalidate();
           break;
         case 'levelUp':
           void persist();
           break;
         case 'mapChange':
-          ui.closePanels();
+          ui.closeAll();
           void persist();
           break;
         default:
@@ -192,7 +190,7 @@ async function main(): Promise<void> {
     }
     world.events = [];
     renderer.draw();
-    ui.update();
+    ui.draw(renderer.width, renderer.height, world.now);
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);

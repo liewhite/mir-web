@@ -1,6 +1,6 @@
 /** 存档：玩家状态的序列化，和存到哪里（SaveStore 接口，服务端 / 内存两种实现）。 */
 import type { Catalog } from '../data/defs';
-import { Player } from '../world/entities';
+import { BAG_SIZE, Player } from '../world/entities';
 import { EQUIP_SLOTS, type EquipSlot, type ItemInstance, setNextUid } from '../world/items';
 import type { Job } from '../world/rules';
 
@@ -61,7 +61,7 @@ export function fromSave(d: SaveData, catalog: Catalog, id: number, now: number)
   p.hp = s.hp;
   p.mp = s.mp;
   p.home = s.home;
-  p.bag = Array.from({ length: 46 }, (_, i) => valid(s.bag[i]));
+  p.bag = Array.from({ length: BAG_SIZE }, (_, i) => valid(s.bag[i]));
   p.belt = Array.from({ length: 6 }, (_, i) => valid(s.belt[i]));
   p.storage = s.storage.filter((x) => valid(x)) as ItemInstance[];
   for (const k of EQUIP_SLOTS) p.equip[k] = valid(s.equip[k]);

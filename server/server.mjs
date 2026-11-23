@@ -145,7 +145,7 @@ async function serveFile(req, res, urlPath) {
   }
   const ext = path.extname(file).toLowerCase();
   const etag = `"${st.size.toString(36)}-${Math.floor(st.mtimeMs).toString(36)}"`;
-  const isAsset = rel.startsWith('/assets/');
+  const isAsset = rel.startsWith('/assets/') && !rel.endsWith('/version.json');
   const headers = {
     'content-type': TYPES[ext] ?? 'application/octet-stream',
     etag,

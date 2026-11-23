@@ -1,106 +1,15 @@
-// src/data/defs.ts
-var Catalog = class {
-  constructor(data) {
-    this.data = data;
-    this.itemsByName = /* @__PURE__ */ new Map();
-    this.itemsById = /* @__PURE__ */ new Map();
-    this.monstersByName = /* @__PURE__ */ new Map();
-    this.skillsById = /* @__PURE__ */ new Map();
-    this.skillsByName = /* @__PURE__ */ new Map();
-    this.mapsById = /* @__PURE__ */ new Map();
-    for (const it of data.items) {
-      this.itemsByName.set(it.name, it);
-      this.itemsById.set(it.id, it);
-    }
-    for (const m of data.monsters) this.monstersByName.set(m.name, m);
-    for (const s of data.skills) {
-      this.skillsById.set(s.id, s);
-      this.skillsByName.set(s.name, s);
-    }
-    for (const m of data.maps) this.mapsById.set(m.id, m);
-  }
-  item(name) {
-    const it = this.itemsByName.get(name);
-    if (!it) throw new Error(`\u6CA1\u6709\u7269\u54C1 ${name}`);
-    return it;
-  }
-  /** 升到下一级要的经验；满级返回 Infinity。 */
-  expToNext(level) {
-    return this.data.exp[String(level)] ?? Infinity;
-  }
-  displayName(monster) {
-    return this.data.displayNames[monster] ?? monster;
-  }
-};
-async function loadCatalog() {
-  const r2 = await fetch("assets/data/game.json", { cache: "no-store" });
-  if (!r2.ok) throw new Error(`game.json ${r2.status}`);
-  return new Catalog(await r2.json());
-}
-
-// src/assets/mapdata.ts
-var UNITX = 48;
-var UNITY = 32;
-var GROUND_BLOCK = 16;
-var MapData = class _MapData {
-  constructor(id, width, height, flags, front, area, ani, aniTick, doorIndex, doorOffset, light) {
-    this.id = id;
-    this.width = width;
-    this.height = height;
-    this.flags = flags;
-    this.front = front;
-    this.area = area;
-    this.ani = ani;
-    this.aniTick = aniTick;
-    this.doorIndex = doorIndex;
-    this.doorOffset = doorOffset;
-    this.light = light;
-  }
-  inside(x, y) {
-    return x >= 0 && y >= 0 && x < this.width && y < this.height;
-  }
-  /** 地形可走（不看人物占位）。 */
-  walkable(x, y) {
-    return this.inside(x, y) && (this.flags[y * this.width + x] & 1) === 0;
-  }
-  /** 魔法、弓箭能否穿过。 */
-  flyable(x, y) {
-    return this.inside(x, y) && (this.flags[y * this.width + x] & 2) === 0;
-  }
-  static parse(id, buf) {
-    const dv = new DataView(buf);
-    const magic = String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3));
-    if (magic !== "M176") throw new Error(`\u5730\u56FE ${id} \u683C\u5F0F\u4E0D\u5BF9`);
-    const w = dv.getUint16(4, true);
-    const h2 = dv.getUint16(6, true);
-    const n = w * h2;
-    let off = 8;
-    const u8 = () => {
-      const a = new Uint8Array(buf, off, n);
-      off += n;
-      return a;
-    };
-    const flags = u8();
-    const front = new Uint16Array(n);
-    for (let i = 0; i < n; i++) front[i] = dv.getUint16(off + i * 2, true);
-    off += n * 2;
-    return new _MapData(id, w, h2, flags, front, u8(), u8(), u8(), u8(), u8(), u8());
-  }
-};
-async function loadMap(id) {
-  for (let i = 0; ; i++) {
-    try {
-      const r2 = await fetch(`assets/map/${id}.bin`);
-      if (!r2.ok) throw new Error(`\u5730\u56FE ${id}: ${r2.status}`);
-      return MapData.parse(id, await r2.arrayBuffer());
-    } catch (e) {
-      if (i >= 4) throw e;
-      await new Promise((res) => setTimeout(res, 1e3 * (i + 1)));
-    }
-  }
-}
-
 // src/assets/sprites.ts
+var assetVersion = "0";
+async function loadAssetVersion() {
+  try {
+    const r2 = await fetch("assets/version.json", { cache: "no-store" });
+    if (r2.ok) assetVersion = String((await r2.json()).v);
+  } catch {
+  }
+}
+function assetUrl(path) {
+  return `${path}?v=${assetVersion}`;
+}
 function blockSize(lib) {
   const base = lib.replace(/\d+$/, "");
   return base === "hum" || base === "weapon" || base === "hair" ? 600 : 200;
@@ -178,19 +87,121 @@ var SpriteStore = class {
     return loading;
   }
   async loadBlock(lib, b) {
-    const meta = await fetchJsonRetry(`${this.base}/${lib}/${b}.json`);
+    const meta = await fetchJsonRetry(assetUrl(`${this.base}/${lib}/${b}.json`));
     const pages = [];
     for (let p = 0; p < meta.pages; p++) {
-      pages.push(await loadImage(`${this.base}/${lib}/${b}_${p}.png`));
+      pages.push(await loadImage(assetUrl(`${this.base}/${lib}/${b}_${p}.png`)));
     }
     return meta.frames.map((f) => {
       if (f === 0) return null;
-      const [page, sx, sy, w, h2, ox, oy] = f;
+      const [page, sx, sy, w, h, ox, oy] = f;
       const img = pages[page];
-      return img ? { img, sx, sy, w, h: h2, ox, oy } : null;
+      return img ? { img, sx, sy, w, h, ox, oy } : null;
     });
   }
 };
+
+// src/data/defs.ts
+var Catalog = class {
+  constructor(data) {
+    this.data = data;
+    this.itemsByName = /* @__PURE__ */ new Map();
+    this.itemsById = /* @__PURE__ */ new Map();
+    this.monstersByName = /* @__PURE__ */ new Map();
+    this.skillsById = /* @__PURE__ */ new Map();
+    this.skillsByName = /* @__PURE__ */ new Map();
+    this.mapsById = /* @__PURE__ */ new Map();
+    for (const it of data.items) {
+      this.itemsByName.set(it.name, it);
+      this.itemsById.set(it.id, it);
+    }
+    for (const m of data.monsters) this.monstersByName.set(m.name, m);
+    for (const s of data.skills) {
+      this.skillsById.set(s.id, s);
+      this.skillsByName.set(s.name, s);
+    }
+    for (const m of data.maps) this.mapsById.set(m.id, m);
+  }
+  item(name) {
+    const it = this.itemsByName.get(name);
+    if (!it) throw new Error(`\u6CA1\u6709\u7269\u54C1 ${name}`);
+    return it;
+  }
+  /** 升到下一级要的经验；满级返回 Infinity。 */
+  expToNext(level) {
+    return this.data.exp[String(level)] ?? Infinity;
+  }
+  displayName(monster) {
+    return this.data.displayNames[monster] ?? monster;
+  }
+};
+async function loadCatalog() {
+  const r2 = await fetch(assetUrl("assets/data/game.json"));
+  if (!r2.ok) throw new Error(`game.json ${r2.status}`);
+  return new Catalog(await r2.json());
+}
+
+// src/assets/mapdata.ts
+var UNITX = 48;
+var UNITY = 32;
+var GROUND_BLOCK = 16;
+var MapData = class _MapData {
+  constructor(id, width, height, flags, front, area, ani, aniTick, doorIndex, doorOffset, light) {
+    this.id = id;
+    this.width = width;
+    this.height = height;
+    this.flags = flags;
+    this.front = front;
+    this.area = area;
+    this.ani = ani;
+    this.aniTick = aniTick;
+    this.doorIndex = doorIndex;
+    this.doorOffset = doorOffset;
+    this.light = light;
+  }
+  inside(x, y) {
+    return x >= 0 && y >= 0 && x < this.width && y < this.height;
+  }
+  /** 地形可走（不看人物占位）。 */
+  walkable(x, y) {
+    return this.inside(x, y) && (this.flags[y * this.width + x] & 1) === 0;
+  }
+  /** 魔法、弓箭能否穿过。 */
+  flyable(x, y) {
+    return this.inside(x, y) && (this.flags[y * this.width + x] & 2) === 0;
+  }
+  static parse(id, buf) {
+    const dv = new DataView(buf);
+    const magic = String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3));
+    if (magic !== "M176") throw new Error(`\u5730\u56FE ${id} \u683C\u5F0F\u4E0D\u5BF9`);
+    const w = dv.getUint16(4, true);
+    const h = dv.getUint16(6, true);
+    const n = w * h;
+    let off = 8;
+    const u8 = () => {
+      const a = new Uint8Array(buf, off, n);
+      off += n;
+      return a;
+    };
+    const flags = u8();
+    const front = new Uint16Array(n);
+    for (let i = 0; i < n; i++) front[i] = dv.getUint16(off + i * 2, true);
+    off += n * 2;
+    return new _MapData(id, w, h, flags, front, u8(), u8(), u8(), u8(), u8(), u8());
+  }
+};
+async function loadMap(id) {
+  for (let i = 0; ; i++) {
+    try {
+      const r2 = await fetch(assetUrl(`assets/map/${id}.bin`));
+      if (!r2.ok) throw new Error(`\u5730\u56FE ${id}: ${r2.status}`);
+      return MapData.parse(id, await r2.arrayBuffer());
+    } catch (e) {
+      if (i >= 4) throw e;
+      await new Promise((res) => setTimeout(res, 1e3 * (i + 1)));
+    }
+  }
+}
 
 // src/world/entities.ts
 var ActorBase = class {
@@ -219,6 +230,7 @@ var ActorBase = class {
     return { x: this.x, y: this.y };
   }
 };
+var BAG_SIZE = 40;
 var Player = class extends ActorBase {
   constructor(id, name, job, sex, map, x, y, now) {
     super(id, map, x, y, now);
@@ -226,7 +238,8 @@ var Player = class extends ActorBase {
     this.level = 1;
     this.exp = 0;
     this.gold = 0;
-    this.bag = new Array(46).fill(null);
+    /** 包裹 40 格（原版 8x5；另 6 格是快捷栏 belt） */
+    this.bag = new Array(BAG_SIZE).fill(null);
     this.belt = new Array(6).fill(null);
     this.storage = [];
     this.equip = {
@@ -310,16 +323,6 @@ var EQUIP_SLOTS = [
   "ringL",
   "ringR"
 ];
-var SLOT_NAME = {
-  weapon: "\u6B66\u5668",
-  dress: "\u8863\u670D",
-  helmet: "\u5934\u76D4",
-  necklace: "\u9879\u94FE",
-  braceletL: "\u5DE6\u624B\u956F",
-  braceletR: "\u53F3\u624B\u956F",
-  ringL: "\u5DE6\u6212\u6307",
-  ringR: "\u53F3\u6212\u6307"
-};
 function itemKind(d) {
   switch (d.mode) {
     case 0:
@@ -580,8 +583,8 @@ function afterArmor(power, ac) {
 function afterMagicArmor(power, mac) {
   return Math.max(0, power - roll(mac));
 }
-function hitChance(h2, a) {
-  return a <= 0 ? 1 : Math.min(1, (h2 + 1) / a);
+function hitChance(h, a) {
+  return a <= 0 ? 1 : Math.min(1, (h + 1) / a);
 }
 function skillPower(base, level, defPower) {
   return round(base / 4 * (level + 1)) + defPower[0] + random(defPower[1] - defPower[0]);
@@ -604,8 +607,8 @@ function attackPower(base, spread) {
 // src/world/path.ts
 function findPath(map, from, to, maxNodes = 4e3, stopAdjacent = false) {
   const key = (x, y) => y << 16 | x & 65535;
-  const h2 = (x, y) => Math.max(Math.abs(x - to.x), Math.abs(y - to.y));
-  const open = [{ x: from.x, y: from.y, g: 0, f: h2(from.x, from.y), parent: null }];
+  const h = (x, y) => Math.max(Math.abs(x - to.x), Math.abs(y - to.y));
+  const open = [{ x: from.x, y: from.y, g: 0, f: h(from.x, from.y), parent: null }];
   const best = /* @__PURE__ */ new Map([[key(from.x, from.y), 0]]);
   let visited = 0;
   let closest = open[0];
@@ -614,9 +617,9 @@ function findPath(map, from, to, maxNodes = 4e3, stopAdjacent = false) {
     for (let i = 1; i < open.length; i++) if (open[i].f < open[bi].f) bi = i;
     const cur = open.splice(bi, 1)[0];
     visited++;
-    const d = h2(cur.x, cur.y);
+    const d = h(cur.x, cur.y);
     if (d === 0 || stopAdjacent && d === 1) return unwind(cur);
-    if (d < h2(closest.x, closest.y)) closest = cur;
+    if (d < h(closest.x, closest.y)) closest = cur;
     for (const dir of ALL_DIRS) {
       const n = step(cur, dir);
       const isGoal = n.x === to.x && n.y === to.y;
@@ -626,7 +629,7 @@ function findPath(map, from, to, maxNodes = 4e3, stopAdjacent = false) {
       const k = key(n.x, n.y);
       if ((best.get(k) ?? Infinity) <= g) continue;
       best.set(k, g);
-      open.push({ x: n.x, y: n.y, g, f: g + h2(n.x, n.y), parent: cur });
+      open.push({ x: n.x, y: n.y, g, f: g + h(n.x, n.y), parent: cur });
     }
   }
   return closest.parent ? unwind(closest) : null;
@@ -1474,9 +1477,9 @@ var World = class {
     for (let i = 0; i < n; i++) {
       this.after(i * 400, () => {
         if (p.dead) return;
-        const h2 = Math.min(Math.ceil(hp / n), p.stats.maxHp - p.hp);
+        const h = Math.min(Math.ceil(hp / n), p.stats.maxHp - p.hp);
         const m = Math.min(Math.ceil(mp / n), p.stats.maxMp - p.mp);
-        p.hp += Math.max(0, h2);
+        p.hp += Math.max(0, h);
         p.mp += Math.max(0, m);
       });
     }
@@ -1490,7 +1493,8 @@ var World = class {
     if (sex !== null && sex !== p.sex) return "\u6027\u522B\u4E0D\u7B26";
     return null;
   }
-  equip(p, uid) {
+  /** 穿戴；prefer 指定左右手镯/戒指位。 */
+  equip(p, uid, prefer) {
     const f = this.findOwned(p, uid);
     if (!f) return null;
     const def = this.catalog.item(f.item.name);
@@ -1506,7 +1510,8 @@ var World = class {
       const freeWeight = this.wearWeight(p) - (cur[0] ? this.catalog.item(cur[0].name).weight : 0);
       if (freeWeight + def.weight > p.stats.maxWearWeight) return `\u7A7F\u4E0D\u52A8\u4E86\uFF08\u8D1F\u91CD\u4E0A\u9650 ${p.stats.maxWearWeight}\uFF09`;
     }
-    const slot = slots.find((s) => !p.equip[s]) ?? slots[0];
+    if (prefer && !slots.includes(prefer)) return "\u4E0D\u80FD\u653E\u5728\u8FD9\u4E2A\u4F4D\u7F6E";
+    const slot = prefer ?? slots.find((s) => !p.equip[s]) ?? slots[0];
     this.removeOwned(p, uid);
     const old = p.equip[slot];
     p.equip[slot] = f.item;
@@ -1752,9 +1757,12 @@ var Renderer = class {
     if (!ctx) throw new Error("\u6D4F\u89C8\u5668\u4E0D\u652F\u6301 Canvas");
     this.ctx = ctx;
   }
+  get context() {
+    return this.ctx;
+  }
   resize(cssW, cssH) {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    this.zoom = cssW < 800 ? cssW / 800 : cssW > 1400 ? 1.25 : 1;
+    this.zoom = Math.min(cssW / 800, cssH / 600);
     this.width = Math.round(cssW / this.zoom);
     this.height = Math.round(cssH / this.zoom);
     this.canvas.width = Math.round(cssW * dpr);
@@ -1775,8 +1783,8 @@ var Renderer = class {
   /** 逻辑像素下的角色（取最靠前的一个）。 */
   actorAt(lx, ly) {
     let best;
-    for (const h2 of this.hits) {
-      if (lx >= h2.x && lx < h2.x + h2.w && ly >= h2.y && ly < h2.y + h2.h && (!best || h2.row >= best.row)) best = h2;
+    for (const h of this.hits) {
+      if (lx >= h.x && lx < h.x + h.w && ly >= h.y && ly < h.y + h.h && (!best || h.row >= best.row)) best = h;
     }
     return best?.actor;
   }
@@ -1893,7 +1901,7 @@ var Renderer = class {
     const img = new Image();
     img.onload = () => this.ground.set(key, img);
     img.onerror = () => this.ground.set(key, "none");
-    img.src = `assets/ground/${map}/${bx}_${by}.webp`;
+    img.src = assetUrl(`assets/ground/${map}/${bx}_${by}.webp`);
     return null;
   }
   /** 前景层某格要画的图（含动画、开门）。 */
@@ -2106,6 +2114,9 @@ var Controller = class {
     this.onTalk = () => {
     };
     this.onMessage = () => {
+    };
+    /** 设置改了（存档、刷新显示） */
+    this.onSettingsChanged = () => {
     };
   }
   get me() {
@@ -2384,9 +2395,9 @@ function bindInput(canvas, r2, ctl, ui) {
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
   canvas.addEventListener("pointerdown", (e) => {
     e.preventDefault();
-    ui.hideTip();
     const p = logical(e);
     lastMouse = p;
+    if (ui.pointerDown(p.x, p.y, e.button)) return;
     const target = r2.actorAt(p.x, p.y);
     if (target && target.id !== ctl.me.id) {
       ctl.attack(target);
@@ -2394,7 +2405,7 @@ function bindInput(canvas, r2, ctl, ui) {
     }
     const cell = r2.cellAt(p.x, p.y);
     const item = ctl.world.items.find((i) => i.x === cell.x && i.y === cell.y);
-    if (item) {
+    if (item && e.button === 0) {
       ctl.pickup(item);
       return;
     }
@@ -2407,13 +2418,16 @@ function bindInput(canvas, r2, ctl, ui) {
   canvas.addEventListener("pointermove", (e) => {
     const p = logical(e);
     lastMouse = p;
-    if (e.pointerType === "mouse") r2.hoverActor = r2.actorAt(p.x, p.y)?.id ?? 0;
+    ui.pointerMove(p.x, p.y);
+    if (e.pointerType === "mouse") r2.hoverActor = ui.covers(p.x, p.y) ? 0 : r2.actorAt(p.x, p.y)?.id ?? 0;
     if (!held || held.id !== e.pointerId) return;
     held.moved = true;
     const cell = r2.cellAt(p.x, p.y);
     ctl.steer(cell, held.run || held.touch && performance.now() - held.start > 250);
   });
   const release = (e) => {
+    const p = logical(e);
+    ui.pointerUp(p.x, p.y);
     if (!held || held.id !== e.pointerId) return;
     const wasTouchTap = held.touch && !held.moved;
     held = null;
@@ -2422,7 +2436,6 @@ function bindInput(canvas, r2, ctl, ui) {
   canvas.addEventListener("pointerup", release);
   canvas.addEventListener("pointercancel", release);
   window.addEventListener("keydown", (e) => {
-    if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
     const hover = r2.actorAt(lastMouse.x, lastMouse.y);
     const cell = r2.cellAt(lastMouse.x, lastMouse.y);
     const f = /^F([1-8])$/.exec(e.key);
@@ -2436,25 +2449,32 @@ function bindInput(canvas, r2, ctl, ui) {
       if (it) {
         const why = ctl.world.useItem(ctl.me, it.uid);
         if (why) ui.message(why, "bad");
-        ui.invalidate();
       }
       return;
     }
     switch (e.key.toLowerCase()) {
+      case "f9":
       case "b":
       case "i":
-        ui.toggle("bag");
+        e.preventDefault();
+        ui.toggleBag();
         break;
+      case "f10":
+      case "c":
+        e.preventDefault();
+        ui.toggleState(0);
+        break;
+      case "f11":
       case "k":
-        ui.toggle("skills");
+        e.preventDefault();
+        ui.toggleState(3);
         break;
       case " ":
         e.preventDefault();
         ctl.world.pickUp(ctl.me);
-        ui.invalidate();
         break;
       case "escape":
-        ui.closePanels();
+        ui.closeAll();
         break;
     }
   });
@@ -2538,7 +2558,7 @@ function fromSave(d, catalog, id, now) {
   p.hp = s.hp;
   p.mp = s.mp;
   p.home = s.home;
-  p.bag = Array.from({ length: 46 }, (_, i) => valid(s.bag[i]));
+  p.bag = Array.from({ length: BAG_SIZE }, (_, i) => valid(s.bag[i]));
   p.belt = Array.from({ length: 6 }, (_, i) => valid(s.belt[i]));
   p.storage = s.storage.filter((x) => valid(x));
   for (const k of EQUIP_SLOTS) p.equip[k] = valid(s.equip[k]);
@@ -2565,40 +2585,6 @@ var HttpSaveStore = class {
       body: JSON.stringify(d)
     });
     if (!r2.ok) throw new Error(`\u5B58\u6863\u5931\u8D25 ${r2.status}`);
-  }
-};
-
-// src/ui/icons.ts
-var IconFactory = class {
-  constructor(sprites) {
-    this.sprites = sprites;
-    this.pending = /* @__PURE__ */ new Set();
-  }
-  icon(lib, idx, size = 34) {
-    const c = document.createElement("canvas");
-    c.width = size;
-    c.height = size;
-    c.className = "icon";
-    if (!this.paint(c, lib, idx)) this.pending.add({ c, lib, idx });
-    return c;
-  }
-  /** 图集块加载完后补画。 */
-  refresh() {
-    for (const p of [...this.pending]) {
-      if (!p.c.isConnected || this.paint(p.c, p.lib, p.idx)) this.pending.delete(p);
-    }
-  }
-  paint(c, lib, idx) {
-    const s = this.sprites.get(lib, idx);
-    if (s === void 0) return false;
-    if (s === null) return true;
-    const ctx = c.getContext("2d");
-    ctx.clearRect(0, 0, c.width, c.height);
-    const k = Math.min(1, c.width / s.w, c.height / s.h);
-    const w = s.w * k;
-    const h2 = s.h * k;
-    ctx.drawImage(s.img, s.sx, s.sy, s.w, s.h, (c.width - w) / 2, (c.height - h2) / 2, w, h2);
-    return true;
   }
 };
 
@@ -2714,409 +2700,934 @@ function statLines(s, p, typicalMonsterAgility, typicalMonsterHit) {
   return lines;
 }
 
-// src/ui/ui.ts
-var h = (tag, cls = "", text = "") => {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text) e.textContent = text;
-  return e;
+// src/ui/classic/gfx.ts
+var FONT = '12px "SimSun","\u5B8B\u4F53","Songti SC","STSong","PingFang SC",serif';
+var MAIN = "prguse";
+var Gfx = class {
+  constructor(ctx, sprites) {
+    this.ctx = ctx;
+    this.sprites = sprites;
+  }
+  sprite(lib, idx) {
+    return this.sprites.get(lib, idx);
+  }
+  size(lib, idx) {
+    const s = this.sprites.get(lib, idx);
+    return s ? { w: s.w, h: s.h } : null;
+  }
+  /** 按左上角画（界面图）。 */
+  img(lib, idx, x, y) {
+    const s = this.sprites.get(lib, idx);
+    if (s) this.ctx.drawImage(s.img, s.sx, s.sy, s.w, s.h, Math.round(x), Math.round(y), s.w, s.h);
+    return s;
+  }
+  /** 画图的一部分（血球、经验条按比例裁剪）。 */
+  imgPart(lib, idx, x, y, rx, ry, rw, rh) {
+    const s = this.sprites.get(lib, idx);
+    if (!s || rw <= 0 || rh <= 0) return;
+    this.ctx.drawImage(s.img, s.sx + rx, s.sy + ry, rw, rh, Math.round(x), Math.round(y), rw, rh);
+  }
+  /** 居中画在一个矩形里（物品图标）。 */
+  imgCenter(lib, idx, x, y, w, h) {
+    const s = this.sprites.get(lib, idx);
+    if (s) this.ctx.drawImage(s.img, s.sx, s.sy, s.w, s.h, Math.round(x + (w - s.w) / 2), Math.round(y + (h - s.h) / 2), s.w, s.h);
+  }
+  text(s, x, y, color = "#fff", bold = false) {
+    const ctx = this.ctx;
+    ctx.font = FONT;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    if (bold) {
+      ctx.fillStyle = "#000";
+      for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) ctx.fillText(s, x + dx, y + dy);
+    }
+    ctx.fillStyle = color;
+    ctx.fillText(s, x, y);
+    return ctx.measureText(s).width;
+  }
+  width(s) {
+    this.ctx.font = FONT;
+    return this.ctx.measureText(s).width;
+  }
+  rect(x, y, w, h, color) {
+    this.ctx.fillStyle = color;
+    this.ctx.fillRect(x, y, w, h);
+  }
 };
-var Ui = class {
-  constructor(root, world, ctl, catalog, icons) {
+function goldStr(n) {
+  return n.toLocaleString("en-US");
+}
+function inside(r2, x, y) {
+  return x >= r2.x && y >= r2.y && x < r2.x + r2.w && y < r2.y + r2.h;
+}
+
+// src/ui/classic/classic.ts
+var BOARD_W = 800;
+var BOARD_H = 251;
+var LINE_H = 14;
+var MAX_MENU = 10;
+var CHAT_LINES = 9;
+var CHAT_COLOR = {
+  system: ["#fff", "#000"],
+  good: ["#9cff8a", "#000"],
+  bad: ["#fff", "#c00"],
+  item: ["#ff0", "#000"]
+};
+var EQUIP_RECTS = [
+  ["necklace", { x: 168, y: 87, w: 34, h: 31 }],
+  ["helmet", { x: 115, y: 93, w: 18, h: 18 }],
+  ["braceletR", { x: 42, y: 176, w: 34, h: 31 }],
+  ["braceletL", { x: 168, y: 176, w: 34, h: 31 }],
+  ["ringR", { x: 42, y: 215, w: 34, h: 31 }],
+  ["ringL", { x: 168, y: 215, w: 34, h: 31 }],
+  ["weapon", { x: 47, y: 80, w: 47, h: 87 }],
+  ["dress", { x: 96, y: 122, w: 53, h: 112 }]
+];
+var ClassicUi = class {
+  constructor(g, world, ctl, catalog) {
+    this.g = g;
     this.world = world;
     this.ctl = ctl;
     this.catalog = catalog;
-    this.icons = icons;
-    this.hud = h("div", "hud");
-    this.bars = h("div", "bars");
-    this.belt = h("div", "belt");
-    this.skillBar = h("div", "skillbar");
-    this.log = h("div", "log");
-    this.panel = h("div", "panel hidden");
-    this.tip = h("div", "tip hidden");
-    this.deathBox = h("div", "death hidden");
-    this.open = null;
+    this.chat = [];
+    this.hand = null;
+    this.mouse = { x: -1, y: -1 };
+    this.pressed = null;
+    this.lastClick = { t: 0, key: "" };
+    this.stateOpen = false;
+    this.statePage = 0;
+    this.magicPage = 0;
+    this.bagOpen = false;
+    this.settingsOpen = false;
+    this.keyDlg = null;
     this.npc = null;
-    this.lastBeltSig = "";
-    this.lastSkillSig = "";
-    this.dirty = true;
-    this.onSettingsChanged = () => {
-    };
-    this.root = root;
-    const buttons = h("div", "buttons");
-    const btn = (label, fn) => {
-      const b = h("button", "", label);
-      b.onclick = fn;
-      buttons.append(b);
-    };
-    btn("\u5305\u88F9", () => this.toggle("bag"));
-    btn("\u6280\u80FD", () => this.toggle("skills"));
-    btn("\u8BBE\u7F6E", () => this.toggle("settings"));
-    btn("\u6361\u53D6", () => this.world.pickUp(this.world.player));
-    this.hud.append(this.bars, this.belt, this.skillBar, buttons);
-    const revive = h("button", "", "\u56DE\u57CE\u590D\u6D3B");
-    revive.onclick = () => this.world.revive();
-    this.deathBox.append(h("div", "", "\u4F60\u6B7B\u4E86"), revive);
-    root.append(this.log, this.hud, this.panel, this.tip, this.deathBox);
-    this.panel.addEventListener("pointerdown", (e) => e.stopPropagation());
-    this.hud.addEventListener("pointerdown", (e) => e.stopPropagation());
+    this.mode = "talk";
+    this.menuTop = 0;
+    this.menuIndex = -1;
+    this.sellSpot = null;
+    this.links = [];
+    /** 每帧算出的界面占用区域（点在里面就不传给地图） */
+    this.areas = [];
+    this.buttons = [];
+    this.W = 800;
+    this.H = 600;
   }
-  get player() {
+  get p() {
     return this.world.player;
   }
   message(text, color = "system") {
-    const m = h("div", `msg ${color}`, text);
-    this.log.append(m);
-    while (this.log.children.length > 8) this.log.firstChild?.remove();
-    setTimeout(() => m.classList.add("fade"), 6e3);
-  }
-  toggle(p) {
-    this.open = this.open === p ? null : p;
-    if (this.open !== "npc") this.npc = null;
-    this.dirty = true;
+    this.chat.push({ text, color });
+    if (this.chat.length > 200) this.chat.splice(0, this.chat.length - 200);
   }
   openNpc(npc) {
     this.npc = npc;
-    this.open = "npc";
-    this.dirty = true;
+    this.mode = "talk";
+    this.bagOpen = true;
+    this.menuIndex = -1;
+    this.menuTop = 0;
   }
-  closePanels() {
-    this.open = null;
+  closeAll() {
+    this.returnSellSpot();
     this.npc = null;
-    this.hideTip();
-    this.dirty = true;
+    this.stateOpen = false;
+    this.bagOpen = false;
+    this.settingsOpen = false;
+    this.keyDlg = null;
+    this.cancelHand();
   }
-  /** 物品、金币变化时由外部调用，下一帧重画面板。 */
-  invalidate() {
-    this.dirty = true;
+  toggleBag() {
+    this.bagOpen = !this.bagOpen;
   }
-  // ---------------- 每帧 ----------------
-  update() {
-    const p = this.player;
+  toggleState(page) {
+    if (this.stateOpen && this.statePage === page) this.stateOpen = false;
+    else {
+      this.stateOpen = true;
+      this.statePage = page;
+    }
+  }
+  cancelHand() {
+    this.hand = null;
+  }
+  // ======================= 绘制 =======================
+  draw(W, H, now) {
+    this.W = W;
+    this.H = H;
+    this.areas = [];
+    this.buttons = [];
+    this.drawBottom(now);
+    if (this.npc) this.drawMerchant();
+    if (this.bagOpen) this.drawBag();
+    if (this.stateOpen) this.drawState();
+    if (this.settingsOpen) this.drawSettings();
+    if (this.keyDlg) this.drawKeyDlg();
+    this.drawHover();
+    if (this.hand) {
+      const def = this.catalog.item(this.hand.item.name);
+      this.g.imgCenter("items", def.look, this.mouse.x - 20, this.mouse.y - 16, 40, 32);
+    }
+  }
+  button(b) {
+    this.buttons.push(b);
+    if (b.always || this.pressed === b || this.pressed && this.pressed.img === b.img && this.pressed.x === b.x && this.pressed.y === b.y) {
+      this.g.img(MAIN, b.always && this.isPressed(b) ? b.img + 1 : b.img, b.x, b.y);
+    }
+  }
+  isPressed(b) {
+    return !!this.pressed && this.pressed.img === b.img && this.pressed.x === b.x && this.pressed.y === b.y;
+  }
+  // ---------------- 底栏 ----------------
+  boardX() {
+    return Math.round((this.W - BOARD_W) / 2);
+  }
+  drawBottom(now) {
+    const g = this.g;
+    const bx = this.boardX();
+    const by = this.H - BOARD_H;
+    this.areas.push({ x: bx, y: by + 40, w: BOARD_W, h: BOARD_H - 40 }, { x: bx, y: by, w: 190, h: 40 }, { x: bx + 610, y: by, w: 190, h: 40 });
+    g.rect(bx + 208, by + 120, 387, 124, "#000");
+    g.img(MAIN, 1, bx, by);
+    g.img(MAIN, 12, bx + 748, by + 79);
+    const p = this.p;
     const s = p.stats;
-    const need = this.catalog.expToNext(p.level);
-    this.bars.innerHTML = "";
-    const bar = (cls, cur, max, label) => {
-      const b = h("div", `bar ${cls}`);
-      const fill = h("div", "fill");
-      fill.style.width = `${Math.max(0, Math.min(100, cur / max * 100))}%`;
-      b.append(fill, h("span", "", label));
-      this.bars.append(b);
-    };
-    bar("hp", p.hp, s.maxHp, `\u4F53\u529B ${p.hp}/${s.maxHp}`);
-    bar("mp", p.mp, s.maxMp, `\u9B54\u6CD5 ${p.mp}/${s.maxMp}`);
-    bar("exp", p.exp, need, `${p.level} \u7EA7\u3000\u7ECF\u9A8C ${need === Infinity ? "\u6EE1\u7EA7" : `${(p.exp / need * 100).toFixed(1)}%`}`);
-    const beltSig = p.belt.map((x) => x?.uid ?? 0).join(",");
-    if (beltSig !== this.lastBeltSig) {
-      this.lastBeltSig = beltSig;
-      this.belt.innerHTML = "";
-      p.belt.forEach((it, i) => {
-        const slot = h("div", "slot");
-        slot.append(h("span", "key", String(i + 1)));
-        if (it) {
-          slot.append(this.itemIcon(it));
-          slot.onclick = () => this.use(it);
-          this.hoverTip(slot, () => this.itemTip(it));
-        }
-        this.belt.append(slot);
-      });
-    }
-    const skillSig = p.skills.map((x) => `${x.id}:${x.key}:${x.level}`).join(",");
-    if (skillSig !== this.lastSkillSig) {
-      this.lastSkillSig = skillSig;
-      this.skillBar.innerHTML = "";
-      for (let k = 1; k <= 8; k++) {
-        const ls = p.skills.find((x) => x.key === k);
-        const slot = h("div", "slot");
-        slot.append(h("span", "key", `F${k}`));
-        if (ls) {
-          slot.append(this.icons.icon("magicon", ls.id * 2, 30));
-          slot.onclick = () => this.ctl.castByKey(k, void 0, this.player.pos);
-          const def = this.catalog.skillsById.get(ls.id);
-          this.hoverTip(slot, () => [{ text: `${def.name}\u3000${ls.level} \u7EA7`, tone: "title" }, { text: `\u8017\u84DD ${manaCost(def, ls.level)}` }]);
-        }
-        this.skillBar.append(slot);
+    if (p.job === 0 && p.level < 28) {
+      const full = g.size(MAIN, 5);
+      if (full) {
+        g.imgPart(MAIN, 5, bx + 38, by + 90, 0, 0, full.w - 2, full.h);
+        const top = Math.round(full.h / s.maxHp * (s.maxHp - p.hp));
+        g.imgPart(MAIN, 6, bx + 38, by + 90 + top, 0, top, full.w - 2, full.h - top);
       }
-    }
-    this.deathBox.classList.toggle("hidden", !p.dead);
-    if (this.dirty) {
-      this.dirty = false;
-      this.renderPanel();
-    }
-  }
-  itemIcon(it) {
-    return this.icons.icon("items", this.catalog.item(it.name).look);
-  }
-  use(it) {
-    const why = this.world.useItem(this.player, it.uid);
-    if (why) this.message(why, "bad");
-    this.dirty = true;
-    this.lastBeltSig = "";
-  }
-  // ---------------- 提示框 ----------------
-  hoverTip(el, lines) {
-    el.addEventListener("pointerenter", (e) => {
-      if (e.pointerType === "mouse") this.showTip(lines(), el);
-    });
-    el.addEventListener("pointerleave", () => this.hideTip());
-  }
-  showTip(lines, anchor, extra = []) {
-    this.tip.innerHTML = "";
-    for (const l of lines) this.tip.append(h("div", l.tone ?? "", l.text));
-    this.tip.append(...extra);
-    this.tip.classList.remove("hidden");
-    const r2 = anchor.getBoundingClientRect();
-    const root = this.root.getBoundingClientRect();
-    const tw = this.tip.offsetWidth;
-    const th = this.tip.offsetHeight;
-    let x = r2.right + 6 - root.left;
-    if (x + tw > root.width) x = r2.left - tw - 6 - root.left;
-    let y = r2.top - root.top;
-    if (y + th > root.height) y = root.height - th - 4;
-    this.tip.style.left = `${Math.max(4, x)}px`;
-    this.tip.style.top = `${Math.max(4, y)}px`;
-  }
-  hideTip() {
-    this.tip.classList.add("hidden");
-  }
-  itemTip(it) {
-    const def = this.catalog.item(it.name);
-    const k = itemKind(def);
-    let cmp = null;
-    if (k.kind === "equip") {
-      const cur = this.player.equip[k.slots[0]];
-      cmp = cur ? this.catalog.item(cur.name) : null;
-    }
-    return itemLines(def, it, this.player, cmp);
-  }
-  // ---------------- 面板 ----------------
-  renderPanel() {
-    this.panel.innerHTML = "";
-    this.panel.classList.toggle("hidden", !this.open);
-    if (!this.open) return;
-    const head = h("div", "head");
-    const close = h("button", "close", "\xD7");
-    close.onclick = () => this.closePanels();
-    head.append(h("span", "", { bag: "\u5305\u88F9\u4E0E\u88C5\u5907", skills: "\u6280\u80FD", settings: "\u4FBF\u5229\u8BBE\u7F6E", npc: this.npc?.def.name ?? "" }[this.open]), close);
-    this.panel.append(head);
-    switch (this.open) {
-      case "bag":
-        this.renderBag();
-        break;
-      case "skills":
-        this.renderSkills();
-        break;
-      case "settings":
-        this.renderSettings();
-        break;
-      case "npc":
-        this.renderNpc();
-        break;
-    }
-  }
-  renderBag() {
-    const p = this.player;
-    const w = this.world;
-    const equip = h("div", "equip");
-    for (const slot of EQUIP_SLOTS) {
-      const it = p.equip[slot];
-      const cell = h("div", "slot eq");
-      cell.append(h("span", "label", SLOT_NAME[slot]));
-      if (it) {
-        cell.append(this.itemIcon(it));
-        cell.onclick = () => this.menu(cell, [[`\u8131\u4E0B ${it.name}`, () => this.unequip(slot)]]);
-        this.hoverTip(cell, () => itemLines(this.catalog.item(it.name), it, p, null));
-      }
-      equip.append(cell);
-    }
-    const info = h("div", "stats");
-    const nearby = [...w.actors.values()].filter((a) => a.kind === "monster" && !a.master && !a.dead);
-    const avgA = nearby.length ? Math.round(nearby.reduce((s, m) => s + m.agility, 0) / nearby.length) : 15;
-    const avgH = nearby.length ? Math.round(nearby.reduce((s, m) => s + m.hit, 0) / nearby.length) : 8;
-    for (const l of statLines(p.stats, p, avgA, avgH)) info.append(h("div", l.tone ?? "", l.text));
-    const grid = h("div", "grid");
-    p.bag.forEach((it) => {
-      const cell = h("div", "slot");
-      if (it) {
-        cell.append(this.itemIcon(it));
-        cell.onclick = () => this.bagMenu(cell, it);
-        cell.ondblclick = () => this.use(it);
-        this.hoverTip(cell, () => this.itemTip(it));
-      }
-      grid.append(cell);
-    });
-    const foot = h("div", "foot", `\u91D1\u5E01 ${p.gold}\u3000\u5305\u88F9\u91CD\u91CF ${w.bagWeight(p)}/${p.stats.maxBagWeight}\u3000\u7A7F\u6234 ${w.wearWeight(p)}/${p.stats.maxWearWeight}`);
-    this.panel.append(h("div", "cols", ""), foot);
-    const cols = this.panel.querySelector(".cols");
-    const left = h("div", "col");
-    left.append(equip, info);
-    const right = h("div", "col");
-    right.append(grid);
-    cols.append(left, right);
-  }
-  bagMenu(anchor, it) {
-    const def = this.catalog.item(it.name);
-    const k = itemKind(def);
-    const items = [];
-    const useLabel = k.kind === "equip" || k.kind === "amulet" ? "\u7A7F\u4E0A" : k.kind === "book" ? "\u5B66\u4E60" : k.kind === "bundle" ? "\u62C6\u5F00" : "\u4F7F\u7528";
-    if (k.kind !== "material" && k.kind !== "other") items.push([useLabel, () => this.use(it)]);
-    if (this.npc?.def.service === "shop") items.push([`\u5356\u51FA\uFF08${Math.floor(def.price / 2)} \u91D1\u5E01\uFF09`, () => this.sell(it)]);
-    if (this.npc?.def.service === "storage") items.push(["\u5B58\u8FDB\u4ED3\u5E93", () => this.store(it)]);
-    items.push(["\u4E22\u5728\u5730\u4E0A", () => this.drop(it)]);
-    this.menu(anchor, items, this.itemTip(it));
-  }
-  menu(anchor, items, lines = []) {
-    const buttons = items.map(([label, fn]) => {
-      const b = h("button", "act", label);
-      b.onclick = (e) => {
-        e.stopPropagation();
-        this.hideTip();
-        fn();
-      };
-      return b;
-    });
-    this.showTip(lines, anchor, buttons);
-  }
-  unequip(slot) {
-    const why = this.world.unequip(this.player, slot);
-    if (why) this.message(why, "bad");
-    this.dirty = true;
-  }
-  drop(it) {
-    if (this.world.removeOwned(this.player, it.uid)) this.world.dropAt(this.player.pos, it);
-    this.dirty = true;
-    this.lastBeltSig = "";
-  }
-  sell(it) {
-    const def = this.catalog.item(it.name);
-    if (!this.world.removeOwned(this.player, it.uid)) return;
-    this.player.gold += Math.floor(def.price / 2);
-    this.message(`\u5356\u51FA ${def.name}\uFF0C\u5F97\u5230 ${Math.floor(def.price / 2)} \u91D1\u5E01`, "item");
-    this.dirty = true;
-    this.lastBeltSig = "";
-  }
-  store(it) {
-    if (!this.world.removeOwned(this.player, it.uid)) return;
-    this.player.storage.push(it);
-    this.dirty = true;
-    this.lastBeltSig = "";
-  }
-  renderNpc() {
-    const npc = this.npc;
-    if (!npc) return;
-    const p = this.player;
-    if (npc.def.service === "storage") {
-      this.panel.append(h("div", "hint", "\u70B9\u5305\u88F9\u91CC\u7684\u7269\u54C1\u53EF\u4EE5\u5B58\u8FDB\u6765\uFF0C\u70B9\u4E0B\u9762\u7684\u7269\u54C1\u53D6\u56DE\u3002"));
-      const grid2 = h("div", "grid");
-      p.storage.forEach((it, i) => {
-        const cell = h("div", "slot");
-        cell.append(this.itemIcon(it));
-        cell.onclick = () => {
-          if (!this.world.addToBag(p, it)) return this.message("\u5305\u88F9\u6EE1\u4E86", "bad");
-          p.storage.splice(i, 1);
-          this.dirty = true;
-        };
-        this.hoverTip(cell, () => this.itemTip(it));
-        grid2.append(cell);
-      });
-      this.panel.append(grid2);
     } else {
-      this.panel.append(h("div", "hint", `\u70B9\u5546\u54C1\u8D2D\u4E70\uFF1B\u6253\u5F00\u5305\u88F9\u70B9\u7269\u54C1\u53EF\u4EE5\u5356\u7ED9\u6211\u3002\u4F60\u6709 ${p.gold} \u91D1\u5E01\u3002`));
-      const list = h("div", "goods");
-      for (const g of npc.def.goods) {
-        const def = this.catalog.itemsByName.get(g.name);
-        if (!def) continue;
-        const row = h("div", "good");
-        row.append(this.icons.icon("items", def.look, 28), h("span", "name", def.name), h("span", "price", `${def.price} \u91D1\u5E01`));
-        row.onclick = () => this.buy(def);
-        this.hoverTip(row, () => itemLines(def, null, p, null));
-        list.append(row);
+      const d = g.size(MAIN, 4);
+      if (d) {
+        const half = Math.floor(d.w / 2);
+        const top = Math.round(d.h / s.maxHp * (s.maxHp - p.hp));
+        g.imgPart(MAIN, 4, bx + 40, by + 91 + top, 0, top, half - 1, d.h - top);
+        const mtop = Math.round(d.h / Math.max(1, s.maxMp) * (s.maxMp - p.mp));
+        g.imgPart(MAIN, 4, bx + 40 + half + 1, by + 91 + mtop, half + 1, mtop, d.w - half - 2, d.h - mtop);
       }
-      this.panel.append(list);
     }
-    const grid = h("div", "grid");
-    p.bag.forEach((it) => {
-      const cell = h("div", "slot");
-      if (it) {
-        cell.append(this.itemIcon(it));
-        cell.onclick = () => this.bagMenu(cell, it);
-        this.hoverTip(cell, () => this.itemTip(it));
-      }
-      grid.append(cell);
+    const hpText = `${p.hp}/${s.maxHp}`;
+    const mpText = `${p.mp}/${s.maxMp}`;
+    g.text(hpText, bx + 86 - g.width(hpText) / 2, by + 186, "#fff", true);
+    g.text(mpText, bx + 86 - g.width(mpText) / 2, by + 200, "#9fc6ff", true);
+    g.text(String(p.level), bx + 660, this.H - 104, "#fff", true);
+    const bar = g.size(MAIN, 7);
+    if (bar) {
+      const need = this.catalog.expToNext(p.level);
+      const er = need === Infinity ? 1 : p.exp / need;
+      g.imgPart(MAIN, 7, bx + 666, this.H - 73, 0, 0, Math.round(bar.w * Math.min(1, er)), bar.h);
+      const wr = this.world.bagWeight(p) / Math.max(1, s.maxBagWeight);
+      g.imgPart(MAIN, 7, bx + 666, this.H - 40, 0, 0, Math.round(bar.w * Math.min(1, wr)), bar.h);
+    }
+    const lines = this.chat.slice(-CHAT_LINES);
+    lines.forEach((l, i) => {
+      const [fg, bg] = CHAT_COLOR[l.color];
+      const w = g.width(l.text);
+      g.rect(bx + 208, this.H - 130 + i * 12, w, 12, bg);
+      g.text(l.text, bx + 208, this.H - 130 + i * 12, fg);
     });
-    this.panel.append(h("div", "sub", "\u4F60\u7684\u5305\u88F9"), grid);
+    const by0 = by;
+    this.button({ img: 8, x: bx + 643, y: by0 + 61, w: 24, h: 24, onClick: () => this.toggleState(0) });
+    this.button({ img: 9, x: bx + 682, y: by0 + 41, w: 24, h: 22, onClick: () => this.toggleBag() });
+    this.button({ img: 10, x: bx + 722, y: by0 + 21, w: 24, h: 23, onClick: () => this.toggleState(3) });
+    this.button({ img: 11, x: bx + 764, y: by0 + 11, w: 24, h: 23, onClick: () => this.settingsOpen = !this.settingsOpen });
+    for (let i = 0; i < 6; i++) {
+      const r2 = { x: bx + 285 + 43 * i, y: by + 59, w: 32, h: 29 };
+      const it = p.belt[i];
+      if (it && !(this.hand?.src.kind === "belt" && this.hand.src.index === i)) {
+        g.imgCenter("items", this.catalog.item(it.name).look, r2.x, r2.y, r2.w, r2.h);
+      }
+      g.text(String(i + 1), r2.x + 13, r2.y + 19, "#fff", true);
+    }
   }
-  buy(def) {
-    const p = this.player;
+  // ---------------- 状态窗 ----------------
+  stateX() {
+    return this.W - 232;
+  }
+  drawState() {
+    const g = this.g;
+    const x = this.stateX();
+    const y = 0;
+    const p = this.p;
+    this.areas.push({ x, y, w: 232, h: 325 });
+    g.img(MAIN, 370, x, y);
+    const title = `${p.name}`;
+    g.text(title, x + 116 - g.width(title) / 2, y + 23, "#ffe08a", true);
+    switch (this.statePage) {
+      case 0:
+        this.drawEquipPage(x, y);
+        break;
+      case 1: {
+        const s = p.stats;
+        const vals = [s.ac, s.mac, s.dc, s.mc, s.sc].map((r2) => `${r2[0]}-${r2[1]}`);
+        vals.push(`${p.hp}/${s.maxHp}`, `${p.mp}/${s.maxMp}`);
+        vals.forEach((v, i) => g.text(v, x + 112, y + 99 + i * 20, "#fff"));
+        break;
+      }
+      case 2:
+        this.drawAbilityPage(x, y);
+        break;
+      case 3:
+        this.drawMagicPage(x, y);
+        break;
+    }
+    this.button({ img: 371, x: x + 8, y: y + 39, w: 16, h: 23, onClick: () => this.stateOpen = false });
+    this.button({ img: 373, x: x + 7, y: y + 128, w: 24, h: 23, onClick: () => this.statePage = (this.statePage + 3) % 4 });
+    this.button({ img: 372, x: x + 7, y: y + 187, w: 24, h: 23, onClick: () => this.statePage = (this.statePage + 1) % 4 });
+  }
+  drawEquipPage(x, y) {
+    const g = this.g;
+    const p = this.p;
+    g.img(MAIN, p.sex === 1 ? 377 : 376, x + 38, y + 52);
+    const bbx = x + 31;
+    const bby = y + 96;
+    const hairIdx = (p.sex === 1 ? 480 : 440) + p.hair;
+    const hair = g.sprite(MAIN, hairIdx);
+    if (hair) g.img(MAIN, hairIdx, bbx + hair.ox, bby + hair.oy);
+    for (const slot of ["dress", "weapon", "helmet"]) {
+      const it = p.equip[slot];
+      if (!it || this.isHandFrom("equip", slot)) continue;
+      const look = this.catalog.item(it.name).look;
+      const s = g.sprite("stateitem", look);
+      if (s) g.img("stateitem", look, bbx + s.ox, bby + s.oy);
+    }
+    for (const [slot, r2] of EQUIP_RECTS) {
+      if (slot === "dress" || slot === "weapon" || slot === "helmet") continue;
+      const it = p.equip[slot];
+      if (it && !this.isHandFrom("equip", slot)) g.imgCenter("items", this.catalog.item(it.name).look, x + r2.x, y + r2.y, r2.w, r2.h);
+    }
+  }
+  drawAbilityPage(x, y) {
+    const g = this.g;
+    const p = this.p;
+    const s = p.stats;
+    g.img(MAIN, 382, x + 38, y + 52);
+    const bx = x + 58;
+    const by = y + 62;
+    const mx = bx + 85;
+    const need = this.catalog.expToNext(p.level);
+    const rows = [
+      ["\u7ECF\u9A8C", need === Infinity ? "\u6EE1\u7EA7" : `${(100 * p.exp / need).toFixed(2)}%`],
+      ["\u80CC\u5305\u8D1F\u91CD", `${this.world.bagWeight(p)}/${s.maxBagWeight}`, this.world.bagWeight(p) > s.maxBagWeight],
+      ["\u7A7F\u6234\u8D1F\u91CD", `${this.world.wearWeight(p)}/${s.maxWearWeight}`],
+      ["\u8155\u529B", `${p.equip.weapon ? this.catalog.item(p.equip.weapon.name).weight : 0}/${s.maxHandWeight}`],
+      ["\u51C6\u786E", String(s.hit)],
+      ["\u654F\u6377", String(s.agility)],
+      ["\u9B54\u6CD5\u8EB2\u907F", `+${s.magicAvoid * 10}%`],
+      ["\u6BD2\u7269\u8EB2\u907F", `+${s.poisonAvoid * 10}%`],
+      ["\u653B\u51FB\u95F4\u9694", `${s.hitInterval}ms`],
+      ["\u4F53\u529B\u6062\u590D", `+${s.hpRegen * 10}%`],
+      ["\u9B54\u6CD5\u6062\u590D", `+${s.mpRegen * 10}%`]
+    ];
+    rows.forEach(([k, v, bad], i) => {
+      g.text(k, bx, by + 14 * i, "#c0c0c0");
+      g.text(v, mx, by + 14 * i, bad ? "#f00" : "#c0c0c0");
+    });
+  }
+  drawMagicPage(x, y) {
+    const g = this.g;
+    const p = this.p;
+    g.img(MAIN, 383, x + 38, y + 52);
+    const bbx = x + 38;
+    const bby = y + 52;
+    const list = p.skills;
+    const top = this.magicPage * 5;
+    for (let i = top; i < Math.min(top + 5, list.length); i++) {
+      const ls = list[i];
+      const def = this.catalog.skillsById.get(ls.id);
+      const m = i - top;
+      const iconR = { x: bbx + 8, y: bby + 8 + m * 37, w: 31, h: 33 };
+      g.img("magicon", def.effect * 2, iconR.x, iconR.y);
+      this.buttons.push({ ...iconR, img: -1, onClick: () => this.keyDlg = { skill: ls.id } });
+      g.text(def.name, bbx + 48, bby + 8 + m * 37, "#c0c0c0");
+      g.img(MAIN, 112, bbx + 48, bby + 23 + m * 37);
+      g.img(MAIN, 111, bbx + 74, bby + 23 + m * 37);
+      g.text(String(ls.level), bbx + 64, bby + 23 + m * 37, "#c0c0c0");
+      g.text(ls.level < 3 ? `${ls.train}/${def.train[ls.level]}` : "-", bbx + 94, bby + 23 + m * 37, "#c0c0c0");
+      if (ls.key) g.text(`F${ls.key}`, bbx + 145, bby + 8 + m * 37, "#ff0", true);
+    }
+    this.button({ img: 398, x: x + 213, y: y + 113, w: 12, h: 21, always: true, onClick: () => this.magicPage = Math.max(0, this.magicPage - 1) });
+    this.button({
+      img: 396,
+      x: x + 213,
+      y: y + 143,
+      w: 12,
+      h: 21,
+      always: true,
+      onClick: () => this.magicPage = Math.min(Math.max(0, Math.ceil(list.length / 5) - 1), this.magicPage + 1)
+    });
+  }
+  // ---------------- 包裹 ----------------
+  bagX() {
+    return this.npc ? 475 : 0;
+  }
+  gridCell(i) {
+    const x = this.bagX();
+    return { x: x + 20 + i % 8 * 36, y: 13 + Math.floor(i / 8) * 32, w: 36, h: 32 };
+  }
+  drawBag() {
+    const g = this.g;
+    const x = this.bagX();
+    const y = 0;
+    const p = this.p;
+    this.areas.push({ x, y, w: 336, h: 270 });
+    g.img(MAIN, 3, x, y);
+    p.bag.forEach((it2, i) => {
+      if (!it2 || this.isHandFrom("bag", i)) return;
+      const r2 = this.gridCell(i);
+      g.imgCenter("items", this.catalog.item(it2.name).look, r2.x - 1, r2.y + 1, r2.w, r2.h);
+    });
+    g.text(goldStr(p.gold), x + 64, y + 185, "#fff");
+    const it = this.hoverItem();
+    if (it) {
+      const def = this.catalog.item(it.name);
+      const lines = itemLines(def, it, p, null);
+      const n = g.text(def.name, x + 70, y + 215, "#ff0");
+      const why = itemKind(def).kind === "equip" ? this.world.canWear(p, def) : null;
+      const rest = lines.slice(1, 4);
+      g.text(` \u91CD\u91CF${def.weight}`, x + 70 + n, y + 215, "#fff");
+      rest.forEach((l, i) => {
+        if (i < 2) g.text(l.text.split("\u3000")[0], x + 70, y + 229 + i * 14, i === 1 && why ? "#f00" : "#fff");
+      });
+    }
+    this.button({ img: 371, x: x + 309, y: y + 203, w: 14, h: 20, onClick: () => this.bagOpen = false });
+    this.button({
+      img: 26,
+      x: x + 254,
+      y: y + 183,
+      w: 48,
+      h: 22,
+      onClick: () => {
+        if (this.hand) this.useHand();
+      }
+    });
+  }
+  // ---------------- 商人 ----------------
+  npcText() {
+    const n = this.npc;
+    if (n.def.service === "storage") {
+      return `${n.def.name}\uFF1A\\\u6211\u66FF\u4F60\u4FDD\u7BA1\u7269\u54C1\uFF0C\u8981\u5B58\u8FD8\u662F\u8981\u53D6\uFF1F\\ \\<\u4FDD\u7BA1\u7269\u54C1/@store>   <\u53D6\u56DE\u7269\u54C1/@getback>\\ \\<\u79BB\u5F00/@exit>`;
+    }
+    return `${n.def.name}\uFF1A\\\u6B22\u8FCE\u5149\u4E34\uFF0C\u770B\u770B\u6709\u4EC0\u4E48\u9700\u8981\u7684\uFF1F\\ \\<\u8D2D\u4E70\u7269\u54C1/@buy>   <\u51FA\u552E\u7269\u54C1/@sell>\\ \\<\u79BB\u5F00/@exit>`;
+  }
+  drawMerchant() {
+    const g = this.g;
+    this.areas.push({ x: 0, y: 0, w: 416, h: 176 });
+    g.img(MAIN, 384, 0, 0);
+    this.links = [];
+    let ly = 20;
+    for (const raw of this.npcText().split("\\")) {
+      let sx = 30;
+      const re = /<([^/>]+)\/(@\w+)>/g;
+      let last = 0;
+      let m;
+      while (m = re.exec(raw)) {
+        if (m.index > last) sx += g.text(raw.slice(last, m.index), sx, ly, "#fff", true);
+        const label = m[1];
+        const w = g.text(label, sx, ly, this.mode === m[2].slice(1) ? "#f00" : "#ff0", true);
+        g.rect(sx, ly + 13, w, 1, "#ff0");
+        this.links.push({ rect: { x: sx, y: ly, w, h: 14 }, cmd: m[2] });
+        sx += w;
+        last = m.index + m[0].length;
+      }
+      if (last < raw.length) g.text(raw.slice(last), sx, ly, "#fff", true);
+      ly += 16;
+    }
+    this.button({ img: 64, x: 399, y: 1, w: 16, h: 23, onClick: () => this.closeNpc() });
+    if (this.mode === "buy" || this.mode === "getback") this.drawMenu();
+    if (this.mode === "sell" || this.mode === "store") this.drawSell();
+  }
+  menuRows() {
+    const n = this.npc;
+    if (this.mode === "getback") {
+      return this.p.storage.map((it, i) => ({
+        name: it.name,
+        price: "",
+        dura: `${Math.ceil(it.dura / 1e3)}/${Math.ceil(it.duraMax / 1e3)}`,
+        item: it,
+        defName: it.name,
+        onBuy: () => {
+          if (!this.world.addToBag(this.p, it)) return this.message("\u5305\u88F9\u6EE1\u4E86", "bad");
+          this.p.storage.splice(i, 1);
+          this.menuIndex = -1;
+        }
+      }));
+    }
+    return n.def.goods.flatMap((gd) => {
+      const def = this.catalog.itemsByName.get(gd.name);
+      if (!def) return [];
+      return [{
+        name: def.name,
+        price: `${def.price} \u91D1\u5E01`,
+        dura: def.dura > 100 ? String(Math.ceil(def.dura / 1e3)) : "-",
+        item: null,
+        defName: def.name,
+        onBuy: () => this.buy(def.name)
+      }];
+    });
+  }
+  drawMenu() {
+    const g = this.g;
+    const x = 0;
+    const y = 176;
+    this.areas.push({ x, y, w: 308, h: 205 });
+    g.img(MAIN, 385, x, y);
+    const store = this.mode === "getback";
+    g.text(store ? "\u4FDD\u7BA1\u7269\u54C1" : "\u7269\u54C1\u5217\u8868", x + 19, y + 11, "#fff");
+    g.text(store ? "\u6301\u4E45" : "\u4EF7\u683C", x + 156, y + 11, "#fff");
+    if (!store) g.text("\u6301\u4E45", x + 245, y + 11, "#fff");
+    const rows = this.menuRows();
+    for (let i = this.menuTop; i < Math.min(rows.length, this.menuTop + MAX_MENU); i++) {
+      const r2 = rows[i];
+      const m = i - this.menuTop;
+      const color = i === this.menuIndex ? "#f00" : "#fff";
+      if (i === this.menuIndex) g.text("\u2022", x + 10, y + 32 + m * LINE_H, color);
+      g.text(r2.name, x + 19, y + 32 + m * LINE_H, color);
+      g.text(store ? r2.dura : r2.price, x + 156, y + 32 + m * LINE_H, color);
+      if (!store) g.text(r2.dura, x + 245, y + 32 + m * LINE_H, color);
+      this.buttons.push({
+        x: x + 14,
+        y: y + 32 + m * LINE_H,
+        w: 265,
+        h: LINE_H,
+        img: -1,
+        onClick: () => {
+          if (this.menuIndex === i && this.isDouble(`menu${i}`)) r2.onBuy();
+          this.menuIndex = i;
+        }
+      });
+    }
+    this.button({ img: 388, x: x + 43, y: y + 175, w: 24, h: 24, always: true, onClick: () => this.menuTop = Math.max(0, this.menuTop - MAX_MENU) });
+    this.button({
+      img: 387,
+      x: x + 90,
+      y: y + 175,
+      w: 24,
+      h: 24,
+      always: true,
+      onClick: () => {
+        if (this.menuTop + MAX_MENU < rows.length) this.menuTop += MAX_MENU;
+      }
+    });
+    this.button({
+      img: 386,
+      x: x + 215,
+      y: y + 171,
+      w: 44,
+      h: 16,
+      always: true,
+      onClick: () => {
+        const r2 = rows[this.menuIndex];
+        if (r2) r2.onBuy();
+      }
+    });
+    this.button({ img: 64, x: x + 291, y, w: 16, h: 23, onClick: () => this.mode = "talk" });
+  }
+  drawSell() {
+    const g = this.g;
+    const x = 260;
+    const y = 176;
+    this.areas.push({ x, y, w: 140, h: 181 });
+    g.img(MAIN, 392, x, y);
+    const store = this.mode === "store";
+    g.text(store ? "\u653E\u5165\u8981\u4FDD\u7BA1\u7684\u7269\u54C1" : "\u653E\u5165\u8981\u51FA\u552E\u7684\u7269\u54C1", x + 12, y + 30, "#fff");
+    const spot = { x: x + 27, y: y + 67, w: 61, h: 52 };
+    this.buttons.push({ ...spot, img: -1, onClick: () => this.clickSellSpot() });
+    if (this.sellSpot) {
+      const def = this.catalog.item(this.sellSpot.item.name);
+      g.imgCenter("items", def.look, spot.x, spot.y, spot.w, spot.h);
+      if (!store) g.text(`${Math.floor(def.price / 2)} \u91D1\u5E01`, x + 30, y + 128, "#ff0");
+    }
+    this.button({ img: 393, x: x + 85, y: y + 150, w: 24, h: 13, always: true, onClick: () => this.confirmSell() });
+    this.button({ img: 64, x: x + 115, y, w: 16, h: 23, onClick: () => this.closeSell() });
+  }
+  // ---------------- 设置（便利功能） ----------------
+  drawSettings() {
+    const g = this.g;
+    const sz = g.size(MAIN, 204) ?? { w: 608, h: 327 };
+    const x = Math.round((this.W - sz.w) / 2);
+    const y = Math.max(0, Math.round((this.H - BOARD_H - sz.h) / 2));
+    this.areas.push({ x, y, w: sz.w, h: sz.h });
+    g.img(MAIN, 204, x, y);
+    g.rect(x + 50, y + 6, 70, 20, "#2a2a2a");
+    g.text("\u4FBF\u5229\u8BBE\u7F6E", x + 56, y + 10, "#ffe08a", true);
+    const s = this.ctl.settings;
+    SETTING_LABELS.forEach((item, i) => {
+      const ly = y + 44 + i * 22;
+      const v = s[item.key];
+      if (item.kind === "bool") {
+        const box = { x: x + 30, y: ly, w: 14, h: 14 };
+        g.rect(box.x, box.y, box.w, box.h, "#000");
+        g.rect(box.x + 1, box.y + 1, box.w - 2, box.h - 2, "#4a3a20");
+        if (v) g.text("\u2713", box.x + 2, box.y + 1, "#ff0", true);
+        g.text(item.label, x + 52, ly + 1, "#fff");
+        this.buttons.push({ x: box.x, y: ly - 2, w: 400, h: 18, img: -1, onClick: () => {
+          s[item.key] = !v;
+          this.ctl.onSettingsChanged();
+        } });
+      } else {
+        g.text(item.label, x + 52, ly + 1, "#fff");
+        const vx = x + 360;
+        g.text("\u25C0", vx, ly + 1, "#ff0", true);
+        g.text(`${v}%`, vx + 22, ly + 1, "#fff", true);
+        g.text("\u25B6", vx + 62, ly + 1, "#ff0", true);
+        this.buttons.push({ x: vx - 4, y: ly - 2, w: 20, h: 18, img: -1, onClick: () => {
+          s[item.key] = Math.max(0, Number(v) - 5);
+          this.ctl.onSettingsChanged();
+        } });
+        this.buttons.push({ x: vx + 58, y: ly - 2, w: 20, h: 18, img: -1, onClick: () => {
+          s[item.key] = Math.min(95, Number(v) + 5);
+          this.ctl.onSettingsChanged();
+        } });
+      }
+    });
+    g.text("F1-F8 \u6280\u80FD  1-6 \u5FEB\u6377\u680F  \u7A7A\u683C \u6361\u53D6  Esc \u5173\u95ED  \u53F3\u952E\u8DD1\u6B65", x + 30, y + sz.h - 40, "#c0c0c0");
+    this.button({ img: 361, x: x + 514, y: y + 287, w: 80, h: 34, onClick: () => this.settingsOpen = false });
+    this.button({ img: 64, x: x + 584, y: y + 6, w: 16, h: 23, onClick: () => this.settingsOpen = false });
+  }
+  // ---------------- 技能快捷键 ----------------
+  drawKeyDlg() {
+    const g = this.g;
+    const sz = g.size(MAIN, 229) ?? { w: 376, h: 179 };
+    const x = Math.round((this.W - sz.w) / 2);
+    const y = Math.round((this.H - BOARD_H - sz.h) / 2);
+    this.areas.push({ x, y, w: sz.w, h: sz.h });
+    g.img(MAIN, 229, x, y);
+    const id = this.keyDlg.skill;
+    const def = this.catalog.skillsById.get(id);
+    g.img("magicon", def.effect * 2, x + 52, y + 29);
+    g.text(def.name, x + 100, y + 40, "#fff", true);
+    const xs = [34, 66, 98, 130, 171, 203, 235, 267];
+    const ls = this.p.skills.find((s) => s.id === id);
+    xs.forEach((bx, i) => {
+      const k = i + 1;
+      const r2 = { x: x + bx, y: y + 83, w: 32, h: 30 };
+      g.img(MAIN, 232 + i * 2 + (ls?.key === k ? 1 : 0), r2.x, r2.y);
+      this.buttons.push({ ...r2, img: -1, onClick: () => this.setKey(id, k) });
+    });
+    this.buttons.push({ x: x + 299, y: y + 83, w: 40, h: 30, img: -1, onClick: () => this.setKey(id, 0) });
+    g.img(MAIN, 230, x + 299, y + 83);
+    this.button({ img: 62, x: x + 222, y: y + 131, w: 80, h: 34, always: false, onClick: () => this.keyDlg = null });
+  }
+  setKey(id, key) {
+    for (const s of this.p.skills) if (key && s.key === key) s.key = 0;
+    const ls = this.p.skills.find((s) => s.id === id);
+    if (ls) ls.key = key;
+    this.keyDlg = null;
+  }
+  // ---------------- 悬停说明（加强版：把属性讲清楚） ----------------
+  hoverItem() {
+    const { x, y } = this.mouse;
+    const p = this.p;
+    if (this.bagOpen) {
+      for (let i = 0; i < p.bag.length; i++) if (p.bag[i] && inside(this.gridCell(i), x, y)) return p.bag[i];
+    }
+    if (this.stateOpen && this.statePage === 0) {
+      const sx = this.stateX();
+      for (const [slot, r2] of EQUIP_RECTS) {
+        if (p.equip[slot] && inside({ ...r2, x: sx + r2.x }, x, y)) return p.equip[slot];
+      }
+    }
+    const bx = this.boardX();
+    const by = this.H - BOARD_H;
+    for (let i = 0; i < 6; i++) {
+      if (p.belt[i] && inside({ x: bx + 285 + 43 * i, y: by + 59, w: 32, h: 29 }, x, y)) return p.belt[i];
+    }
+    return null;
+  }
+  drawHover() {
+    if (this.hand) return;
+    const it = this.hoverItem();
+    let lines = null;
+    if (it) {
+      const def = this.catalog.item(it.name);
+      const k = itemKind(def);
+      const cur = k.kind === "equip" ? this.p.equip[k.slots[0]] : null;
+      lines = itemLines(def, it, this.p, cur && cur !== it ? this.catalog.item(cur.name) : null);
+    } else if (this.npc && (this.mode === "buy" || this.mode === "getback")) {
+      const rows = this.menuRows();
+      for (let i = this.menuTop; i < Math.min(rows.length, this.menuTop + MAX_MENU); i++) {
+        if (inside({ x: 14, y: 176 + 32 + (i - this.menuTop) * LINE_H, w: 265, h: LINE_H }, this.mouse.x, this.mouse.y)) {
+          const r2 = rows[i];
+          const def = this.catalog.item(r2.defName);
+          lines = itemLines(def, r2.item, this.p, null);
+        }
+      }
+    } else if (this.stateOpen && this.statePage === 1) {
+      const nearby = [...this.world.actors.values()].filter((a) => a.kind === "monster" && !a.master && !a.dead);
+      const avgA = nearby.length ? Math.round(nearby.reduce((s, m) => s + m.agility, 0) / nearby.length) : 15;
+      const avgH = nearby.length ? Math.round(nearby.reduce((s, m) => s + m.hit, 0) / nearby.length) : 8;
+      if (inside({ x: this.stateX() + 40, y: 90, w: 180, h: 150 }, this.mouse.x, this.mouse.y)) {
+        lines = statLines(this.p.stats, this.p, avgA, avgH);
+      }
+    } else if (this.stateOpen && this.statePage === 3) {
+      const top = this.magicPage * 5;
+      for (let i = top; i < Math.min(top + 5, this.p.skills.length); i++) {
+        const m = i - top;
+        if (inside({ x: this.stateX() + 46, y: 60 + m * 37, w: 170, h: 33 }, this.mouse.x, this.mouse.y)) {
+          const ls = this.p.skills[i];
+          const def = this.catalog.skillsById.get(ls.id);
+          lines = [
+            { text: `${def.name}\u3000${ls.level} \u7EA7\u3000${JOB_NAME[def.job]}`, tone: "title" },
+            { text: `\u8017\u9B54\u6CD5 ${manaCost(def, ls.level)}` },
+            { text: ls.level < 3 ? `\u719F\u7EC3\u5EA6 ${ls.train}/${def.train[ls.level]}\uFF0C\u4EBA\u7269 ${def.needLevel[ls.level]} \u7EA7\u540E\u624D\u80FD\u7EE7\u7EED\u6DA8` : "\u5DF2\u7EC3\u6EE1", tone: "dim" },
+            { text: "\u70B9\u56FE\u6807\u8BBE\u7F6E F1-F8 \u5FEB\u6377\u952E", tone: "dim" }
+          ];
+        }
+      }
+    }
+    if (lines) this.hint(lines, this.mouse.x + 14, this.mouse.y + 14);
+  }
+  /** 原版 ShowHint 风格的黑底说明框。 */
+  hint(lines, x, y) {
+    const g = this.g;
+    const w = Math.max(...lines.map((l) => g.width(l.text))) + 10;
+    const h = lines.length * 14 + 6;
+    const hx = Math.min(x, this.W - w - 2);
+    const hy = Math.min(y, this.H - h - 2);
+    g.rect(hx, hy, w, h, "rgba(0,0,0,.85)");
+    const color = { title: "#ff0", good: "#7cff7c", bad: "#f55", dim: "#aaa", gold: "#ffd96b" };
+    lines.forEach((l, i) => g.text(l.text, hx + 5, hy + 3 + i * 14, color[l.tone ?? ""] ?? "#fff"));
+  }
+  // ======================= 输入 =======================
+  /** 点在界面上返回 true（不传给地图）。 */
+  pointerDown(x, y, button) {
+    this.mouse = { x, y };
+    if (button === 2 && this.hand) {
+      this.hand = null;
+      return true;
+    }
+    for (let i = this.buttons.length - 1; i >= 0; i--) {
+      const b = this.buttons[i];
+      if (inside(b, x, y)) {
+        this.pressed = b;
+        return true;
+      }
+    }
+    for (const l of this.links) {
+      if (inside(l.rect, x, y)) {
+        this.runLink(l.cmd);
+        return true;
+      }
+    }
+    if (this.clickSlots(x, y)) return true;
+    const onUi = this.areas.some((r2) => inside(r2, x, y));
+    if (!onUi && this.hand) {
+      const it = this.takeHand();
+      if (it) this.world.dropAt(this.p.pos, it);
+      return true;
+    }
+    return onUi;
+  }
+  pointerUp(x, y) {
+    const b = this.pressed;
+    this.pressed = null;
+    if (b && inside(b, x, y)) b.onClick();
+  }
+  pointerMove(x, y) {
+    this.mouse = { x, y };
+  }
+  /** 鼠标在界面上（地图不处理悬停） */
+  covers(x, y) {
+    return this.areas.some((r2) => inside(r2, x, y));
+  }
+  isDouble(key) {
+    const t = performance.now();
+    const d = this.lastClick.key === key && t - this.lastClick.t < 400;
+    this.lastClick = { t, key };
+    return d;
+  }
+  isHandFrom(kind, at) {
+    const s = this.hand?.src;
+    if (!s || s.kind !== kind) return false;
+    return s.kind === "equip" ? s.slot === at : s.index === at;
+  }
+  clickSlots(x, y) {
+    const p = this.p;
+    if (this.bagOpen) {
+      for (let i = 0; i < p.bag.length; i++) {
+        if (!inside(this.gridCell(i), x, y)) continue;
+        const it = p.bag[i];
+        if (it && this.isDouble(`bag${i}`) && (!this.hand || this.hand.item === it)) {
+          this.hand = null;
+          this.useOrEquip(it);
+          return true;
+        }
+        this.placeIntoBag(i);
+        return true;
+      }
+    }
+    if (this.stateOpen && this.statePage === 0) {
+      const sx = this.stateX();
+      for (const [slot, r2] of EQUIP_RECTS) {
+        if (!inside({ ...r2, x: sx + r2.x }, x, y)) continue;
+        if (this.hand) {
+          if (this.hand.src.kind === "equip") {
+            this.hand = null;
+            return true;
+          }
+          const why = this.world.equip(p, this.hand.item.uid, slot);
+          if (why) this.message(why, "bad");
+          this.hand = null;
+        } else if (p.equip[slot]) {
+          this.hand = { src: { kind: "equip", slot }, item: p.equip[slot] };
+        }
+        return true;
+      }
+    }
+    const bx = this.boardX();
+    const by = this.H - BOARD_H;
+    for (let i = 0; i < 6; i++) {
+      if (!inside({ x: bx + 285 + 43 * i, y: by + 59, w: 32, h: 29 }, x, y)) continue;
+      if (this.hand) this.placeIntoBelt(i);
+      else if (p.belt[i]) {
+        const why = this.world.useItem(p, p.belt[i].uid);
+        if (why) this.message(why, "bad");
+      }
+      return true;
+    }
+    return false;
+  }
+  useOrEquip(it) {
+    const why = this.world.useItem(this.p, it.uid);
+    if (why) this.message(why, "bad");
+  }
+  useHand() {
+    const h = this.hand;
+    this.hand = null;
+    if (h && h.src.kind !== "equip") this.useOrEquip(h.item);
+  }
+  /** 把手上的物品从原处拿走并返回。 */
+  takeHand() {
+    const h = this.hand;
+    this.hand = null;
+    if (!h) return null;
+    const p = this.p;
+    switch (h.src.kind) {
+      case "bag":
+        if (p.bag[h.src.index] !== h.item) return null;
+        p.bag[h.src.index] = null;
+        return h.item;
+      case "belt":
+        if (p.belt[h.src.index] !== h.item) return null;
+        p.belt[h.src.index] = null;
+        return h.item;
+      case "equip":
+        if (p.equip[h.src.slot] !== h.item) return null;
+        p.equip[h.src.slot] = null;
+        this.world.recalc(p);
+        return h.item;
+    }
+  }
+  placeIntoBag(i) {
+    const p = this.p;
+    if (!this.hand) {
+      if (p.bag[i]) this.hand = { src: { kind: "bag", index: i }, item: p.bag[i] };
+      return;
+    }
+    const target = p.bag[i];
+    const src = this.hand.src;
+    if (src.kind === "bag") {
+      p.bag[src.index] = target ?? null;
+      p.bag[i] = this.hand.item;
+      this.hand = null;
+      return;
+    }
+    if (target) {
+      this.message("\u8BF7\u653E\u5230\u7A7A\u683C\u5B50\u91CC", "bad");
+      return;
+    }
+    const it = this.takeHand();
+    if (it) p.bag[i] = it;
+  }
+  placeIntoBelt(i) {
+    const p = this.p;
+    const h = this.hand;
+    const k = itemKind(this.catalog.item(h.item.name)).kind;
+    if (k !== "potion" && k !== "scroll") {
+      this.message("\u5FEB\u6377\u680F\u53EA\u80FD\u653E\u836F\u54C1\u548C\u5377\u8F74", "bad");
+      return;
+    }
+    const target = p.belt[i];
+    if (h.src.kind === "bag") {
+      p.bag[h.src.index] = target ?? null;
+      p.belt[i] = h.item;
+    } else if (h.src.kind === "belt") {
+      p.belt[h.src.index] = target ?? null;
+      p.belt[i] = h.item;
+    }
+    this.hand = null;
+  }
+  // ---------------- 商人动作 ----------------
+  runLink(cmd) {
+    this.returnSellSpot();
+    this.menuIndex = -1;
+    this.menuTop = 0;
+    switch (cmd) {
+      case "@buy":
+        this.mode = "buy";
+        break;
+      case "@sell":
+        this.mode = "sell";
+        break;
+      case "@store":
+        this.mode = "store";
+        break;
+      case "@getback":
+        this.mode = "getback";
+        break;
+      case "@exit":
+        this.closeNpc();
+        break;
+    }
+  }
+  closeNpc() {
+    this.returnSellSpot();
+    this.npc = null;
+  }
+  buy(name) {
+    const def = this.catalog.item(name);
+    const p = this.p;
     if (p.gold < def.price) return this.message("\u91D1\u5E01\u4E0D\u591F", "bad");
     if (this.world.bagWeight(p) + def.weight > p.stats.maxBagWeight) return this.message("\u5305\u88F9\u592A\u91CD\u4E86", "bad");
     if (!this.world.addToBag(p, newItem(def))) return this.message("\u5305\u88F9\u6EE1\u4E86", "bad");
     p.gold -= def.price;
-    this.message(`\u4E70\u4E86 ${def.name}`, "item");
-    this.dirty = true;
-    this.lastBeltSig = "";
+    this.message(`\u4E70\u4E86 ${def.name}\uFF0C\u82B1\u8D39 ${def.price} \u91D1\u5E01`, "item");
   }
-  renderSkills() {
-    const p = this.player;
-    if (!p.skills.length) this.panel.append(h("div", "hint", "\u8FD8\u6CA1\u5B66\u4F1A\u6280\u80FD\u3002\u6280\u80FD\u4E66\u5728\u4E66\u5E97\u4E70\uFF0C\u53CC\u51FB\u5B66\u4E60\u3002"));
-    for (const ls of p.skills) {
-      const def = this.catalog.skillsById.get(ls.id);
-      const row = h("div", "skill");
-      row.append(this.icons.icon("magicon", ls.id * 2, 30));
-      const need = ls.level < 3 ? def.train[ls.level] : 0;
-      const desc = h("div", "desc");
-      desc.append(h("div", "title", `${def.name}\u3000${ls.level} \u7EA7`));
-      desc.append(h("div", "dim", ls.level < 3 ? `\u719F\u7EC3\u5EA6 ${ls.train}/${need}\uFF08${def.needLevel[ls.level]} \u7EA7\u540E\u624D\u80FD\u7EE7\u7EED\u6DA8\uFF09` : "\u5DF2\u6EE1\u7EA7"));
-      row.append(desc);
-      const passive = [3, 4, 7, 12].includes(ls.id);
-      if (passive && ls.id !== 12) {
-        row.append(h("span", "dim", "\u88AB\u52A8"));
-      } else {
-        const sel = h("select");
-        for (let k = 0; k <= 8; k++) {
-          const o = h("option", "", k ? `F${k}` : "\u65E0");
-          o.value = String(k);
-          if (ls.key === k) o.selected = true;
-          sel.append(o);
-        }
-        sel.onchange = () => {
-          const k = Number(sel.value);
-          for (const o of p.skills) if (o.key === k && k) o.key = 0;
-          ls.key = k;
-          this.dirty = true;
-        };
-        row.append(sel);
-      }
-      this.panel.append(row);
+  clickSellSpot() {
+    if (this.hand) {
+      if (this.hand.src.kind === "equip") return this.message("\u5148\u628A\u88C5\u5907\u8131\u4E0B\u6765\u653E\u8FDB\u5305\u88F9", "bad");
+      this.returnSellSpot();
+      this.sellSpot = this.hand;
+      this.hand = null;
+    } else if (this.sellSpot) {
+      this.hand = this.sellSpot;
+      this.sellSpot = null;
     }
   }
-  renderSettings() {
-    const s = this.ctl.settings;
-    for (const item of SETTING_LABELS) {
-      const row = h("label", "setting");
-      const input = h("input");
-      if (item.kind === "bool") {
-        input.type = "checkbox";
-        input.checked = s[item.key];
-        input.onchange = () => {
-          s[item.key] = input.checked;
-          this.onSettingsChanged();
-        };
-        row.append(input, h("span", "", item.label));
-      } else {
-        input.type = "number";
-        input.min = "0";
-        input.max = "95";
-        input.value = String(s[item.key]);
-        input.onchange = () => {
-          s[item.key] = Math.max(0, Math.min(95, Number(input.value) || 0));
-          this.onSettingsChanged();
-        };
-        row.append(h("span", "", item.label), input);
-      }
-      this.panel.append(row);
+  returnSellSpot() {
+    this.sellSpot = null;
+  }
+  closeSell() {
+    this.returnSellSpot();
+    this.mode = "talk";
+  }
+  confirmSell() {
+    const h = this.sellSpot;
+    if (!h) return;
+    this.sellSpot = null;
+    this.hand = h;
+    const it = this.takeHand();
+    if (!it) return;
+    const def = this.catalog.item(it.name);
+    if (this.mode === "store") {
+      this.p.storage.push(it);
+      this.message(`\u4FDD\u7BA1\u4E86 ${def.name}`, "item");
+    } else {
+      const price = Math.floor(def.price / 2);
+      this.p.gold += price;
+      this.message(`\u5356\u51FA ${def.name}\uFF0C\u5F97\u5230 ${price} \u91D1\u5E01`, "item");
     }
-    this.panel.append(h("div", "hint", "\u952E\u76D8\uFF1AF1-F8 \u653E\u6280\u80FD\uFF0C1-6 \u7528\u836F\u54C1\u680F\uFF0CB \u5305\u88F9\uFF0CK \u6280\u80FD\uFF0C\u7A7A\u683C\u6361\u4E1C\u897F\uFF0CEsc \u5173\u95ED\u7A97\u53E3\u3002\u9F20\u6807\uFF1A\u5DE6\u952E\u8D70\u8DEF/\u653B\u51FB/\u5BF9\u8BDD\uFF0C\u53F3\u952E\u8DD1\u6B65\u3002"));
   }
 };
 
@@ -3182,6 +3693,7 @@ async function main() {
   status("\u8FDE\u63A5\u670D\u52A1\u5668\u2026");
   await ensureLogin();
   status("\u8BFB\u53D6\u6E38\u620F\u6570\u636E\u2026");
+  await loadAssetVersion();
   const catalog = await loadCatalog();
   const store = new HttpSaveStore();
   let save = null;
@@ -3216,9 +3728,7 @@ async function main() {
   const canvas = $("#game");
   const renderer = new Renderer(canvas, sprites, world, catalog);
   const ctl = new Controller(world, settings);
-  const icons = new IconFactory(sprites);
-  const ui = new Ui($("#ui"), world, ctl, catalog, icons);
-  sprites.onLoaded = () => icons.refresh();
+  const ui = new ClassicUi(new Gfx(renderer.context, sprites), world, ctl, catalog);
   ctl.onMessage = (t, c) => ui.message(t, c);
   ctl.onTalk = (id) => {
     const npc = world.actors.get(id);
@@ -3228,7 +3738,7 @@ async function main() {
     renderer.view = { showHpBars: settings.showHpBars, showItemNames: settings.showItemNames, showMonsterNames: settings.showMonsterNames };
   };
   applyView();
-  ui.onSettingsChanged = () => {
+  ctl.onSettingsChanged = () => {
     applyView();
     void persist();
   };
@@ -3237,6 +3747,7 @@ async function main() {
   window.addEventListener("resize", fit);
   bindInput(canvas, renderer, ctl, ui);
   window.__mir = { world, renderer, ctl, sprites, ui };
+  ui.message("\u6B22\u8FCE\u6765\u5230\u739B\u6CD5\u5927\u9646\u3002F9 \u5305\u88F9\uFF0CF10 \u72B6\u6001\uFF0CF11 \u6280\u80FD\uFF0C\u53F3\u4E0B\u89D2\u6309\u94AE\u4E5F\u53EF\u4EE5\u6253\u5F00\u3002", "good");
   status("");
   $("#loading").classList.add("hidden");
   let saving = false;
@@ -3265,7 +3776,6 @@ async function main() {
       switch (ev.type) {
         case "damage":
           renderer.float(ev.target, `-${ev.amount}`, ev.target === player.id ? "#ff6b6b" : "#ffd166");
-          ui.invalidate();
           break;
         case "miss":
           renderer.float(ev.target, "MISS", "#bbb");
@@ -3275,13 +3785,12 @@ async function main() {
           break;
         case "msg":
           ui.message(ev.text, ev.color);
-          ui.invalidate();
           break;
         case "levelUp":
           void persist();
           break;
         case "mapChange":
-          ui.closePanels();
+          ui.closeAll();
           void persist();
           break;
         default:
@@ -3290,7 +3799,7 @@ async function main() {
     }
     world.events = [];
     renderer.draw();
-    ui.update();
+    ui.draw(renderer.width, renderer.height, world.now);
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);

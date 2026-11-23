@@ -1,3 +1,5 @@
+import { assetUrl } from './sprites';
+
 /** 地图格子数据：assets/map/<id>.bin（tools/build_assets.py write_map_bin）。行优先 i = y*w + x。 */
 
 export const UNITX = 48;
@@ -60,7 +62,7 @@ export class MapData {
 export async function loadMap(id: string): Promise<MapData> {
   for (let i = 0; ; i++) {
     try {
-      const r = await fetch(`assets/map/${id}.bin`);
+      const r = await fetch(assetUrl(`assets/map/${id}.bin`));
       if (!r.ok) throw new Error(`地图 ${id}: ${r.status}`);
       return MapData.parse(id, await r.arrayBuffer());
     } catch (e) {

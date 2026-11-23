@@ -5,7 +5,7 @@
 import type { Pos } from '../core/geom';
 import type { Catalog } from '../data/defs';
 import { GROUND_BLOCK, type MapData, UNITX, UNITY } from '../assets/mapdata';
-import type { Sprite, SpriteStore } from '../assets/sprites';
+import { type Sprite, type SpriteStore, assetUrl } from '../assets/sprites';
 import { type Actor, type GroundItem, type Monster, type Player, isGold } from '../world/entities';
 import { itemKind } from '../world/items';
 import type { VisualEffect, World } from '../world/world';
@@ -52,6 +52,10 @@ export class Renderer {
   hoverItem: GroundItem | null = null;
   view: ViewOptions = { showHpBars: true, showItemNames: true, showMonsterNames: true };
 
+  get context(): CanvasRenderingContext2D {
+    return this.ctx;
+  }
+
   constructor(
     private readonly canvas: HTMLCanvasElement,
     private readonly sprites: SpriteStore,
@@ -65,7 +69,8 @@ export class Renderer {
 
   resize(cssW: number, cssH: number): void {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    this.zoom = cssW < 800 ? cssW / 800 : cssW > 1400 ? 1.25 : 1;
+    // 按原版 800x600 的比例缩放：至少看到 800 宽、600 高
+    this.zoom = Math.min(cssW / 800, cssH / 600);
     this.width = Math.round(cssW / this.zoom);
     this.height = Math.round(cssH / this.zoom);
     this.canvas.width = Math.round(cssW * dpr);
@@ -224,7 +229,7 @@ export class Renderer {
     const img = new Image();
     img.onload = () => this.ground.set(key, img);
     img.onerror = () => this.ground.set(key, 'none');
-    img.src = `assets/ground/${map}/${bx}_${by}.webp`;
+    img.src = assetUrl(`assets/ground/${map}/${bx}_${by}.webp`);
     return null;
   }
 
