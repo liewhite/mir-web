@@ -42,7 +42,14 @@
       - 视野：flush 时按切比雪夫 14 格算每个玩家的出现/消失，对象的动作/血量/外观按「和上次发出去的比，变了才发」，特效声音飘字只发给附近的人，自己的属性背包等变了才发。
       - 守卫按 Race 认（11/12/20/112），不再按名字（TS 版把沃玛卫士、祖玛卫士当成了守卫）。
     - `mir.view.ViewState`：客户端的视野副本，`apply(ServerMsg)` 纯函数折叠；测试里每一步都和世界对照。
-  - `server/`（JVM，#1154）。
+  - `server/`（JVM，#1154；包 `mir.server`）：
+    - `http/HttpServer`（zio-http）：`POST api/login {account,password}` 设 cookie `mir_sess`（HMAC 签名、90 天，换 MIR_SESSION_SECRET 全部失效；同 IP 10 分钟失败 10 次 429）、`GET api/me`、`POST api/logout`、`GET ws`（cookie 有效才升级，一帧一条 JSON：客户端 ClientCmd、服务端 ServerMsg；连上先发 LoggedIn）；`assets/…` 登录后才给（缓存一周，version.json 除外），其余路径是 WEB_DIR 的客户端页面；ETag/304、文本类 gzip。
+    - `game/GameServer`：一个游戏线程每 50ms 一步（网络线程只投事件）：会话指令（列/建/删角色、进游戏、对时）自己办，游戏指令交给角色所在图的 World；推进有人的图 → flush → 按对象编号发给连接 → 换图的人交给目的地图（`game/Maps` 按需开图，开过的留着）。同一角色再登录踢旧连接（Kicked）、接着用在线状态；断线、换图、升级、每 30 秒、停服时存档；进不了存档里的图就回城、再不行回新手村。
+    - `store/`：SQLite（DATA_DIR/mir.db，WAL）：accounts（scrypt，与旧 Node 版同参数）、characters（存档是 CharacterData JSON；每号最多 2 个，名字全服唯一、GBK 不超过 14 字节，删除只做标记）、counters（全服物品编号按 1000 一块领，服务端和命令行同时发也不撞）；每天备份 backup/mir-日期.db 留 30 份。
+    - 命令行（`Main`）：`account add|passwd <账号>`（密码从标准输入读）、`account list`、`migrate <账号> <save.json> [角色名]`（旧单机存档导成角色，物品重新编号）。
+    - 环境变量：PORT、HOST、ASSETS_DIR（public/assets）、WEB_DIR（scala/client/web）、DATA_DIR、MIR_SESSION_SECRET。本机：`cd scala && ASSETS_DIR=../public/assets WEB_DIR=client/web DATA_DIR=/tmp/mir-data MIR_SESSION_SECRET=<16位以上> sbt "server/run account add 名字"` 再 `sbt server/run`。
+    - 测试 `ServerSpec`：真起服务，两个机器人账号 HTTP 登录 + WebSocket：开号命令、素材要登录、建角色规则、互相看见、走和打、断线重连、踢旧连接、换图（含图上只剩一人时传走）、迁移命令。
+    - 部署 `deploy/jvm/deploy.sh`（sbt-assembly 打成 mir176.jar；JRE 21 放 /opt/mir176/jre；systemd 单元仍叫 mir176、端口和 Ingress 不变；服务器上命令行 `/opt/mir176/bin/mir176ctl`）。从 Node 版切过来在 #1148 做。
   - `client/`（Scala.js，#1155；照 TS 版 assets/render/audio/input/joystick/viewport 移植，画面与 TS 版逐像素对得上）：
     - 构建：`sbt client/fastLinkJS`（开发）/ `client/fullLinkJS`（发布，约 5MB）产物在 `client/web/js/main.js`（不进 git）；`client/web/` 是服务端在 `/` 提供的静态目录（index.html、style.css、图标）。
     - 本机看：`client/dev-serve.sh [端口]`（默认 18190，只听 127.0.0.1）后开 `http://127.0.0.1:18190/?local`：`net.LocalServer` 在浏览器里跑共用的世界当服务端（同一协议，指令消息都过 JSON），不用起服务端。`window.__mir` 给 browser-cli 测试：`state()`、`stick(方向,跑)`、`release()`、`tap(对象)`、`attack()`、`teleport(下标)`。
