@@ -42,7 +42,7 @@ final class Controller(client: GameClient):
   def tapActor(id: ActorId): Unit = client.actor(id).foreach { a =>
     a.look match
       case Look.Npc(_) => intent = Intent.Talk(id)
-      case Look.Monster(_, _, _) =>
+      case _: Look.Monster =>
         client.locked = Some(id)
         intent match
           case Intent.Fight(_) if client.isEnemy(a) => intent = Intent.Fight(id)
@@ -84,12 +84,13 @@ final class Controller(client: GameClient):
 
   def pickUpHere(): Unit = client.send(GameCmd.PickUp)
 
-  /** 锁定的目标还能打且不太远就是它，否则 10 格内最近的怪。 */
+  /** 锁定的目标还能打且在技能范围内就是它，否则范围内最近的怪（范围 = 原版魔法锁定范围 8 格，服务端同样判）。 */
   private def autoTarget(): Option[ActorId] =
     client.self.flatMap { me =>
-      val locked = client.locked.flatMap(client.actor).filter(a => client.isEnemy(a) && a.cell.chebyshev(me.cell) <= 12)
+      val range  = mir.rules.SpellRules.CastRange
+      val locked = client.locked.flatMap(client.actor).filter(a => client.isEnemy(a) && a.cell.chebyshev(me.cell) <= range)
       locked.orElse(
-        client.actors.filter(a => client.isEnemy(a) && a.cell.chebyshev(me.cell) <= 10).minByOption(_.cell.chebyshev(me.cell))
+        client.actors.filter(a => client.isEnemy(a) && a.cell.chebyshev(me.cell) <= range).minByOption(_.cell.chebyshev(me.cell))
       ).map(_.id)
     }
 

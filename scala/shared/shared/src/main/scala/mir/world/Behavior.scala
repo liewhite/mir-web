@@ -107,6 +107,9 @@ object Behavior:
    */
   def isGuard(d: MonsterDef): Boolean = Set(11, 12, 20, 112).contains(d.race)
 
+  /** 动物：鸡（51）、鹿羊（52）、狼（53），原版 Animal = true，诱惑之光对它们无效（WorldServer.MonGen.cs）。 */
+  def isAnimal(d: MonsterDef): Boolean = Set(51, 52, 53).contains(d.race)
+
   /** 不朝向任何方向的怪（原版客户端 TKillingHerb / TBeeQueen 家族只有一个方向）。 */
   def fixedDir(d: MonsterDef): Boolean = Set(33, 34, 35, 43).contains(d.raceImg)
 

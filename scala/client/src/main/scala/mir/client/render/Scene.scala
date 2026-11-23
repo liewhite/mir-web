@@ -2,7 +2,7 @@ package mir.client.render
 
 import mir.client.assets.MapData
 import mir.core.*
-import mir.protocol.{ActorView, GroundView}
+import mir.protocol.{ActorView, FieldView, GroundView}
 
 /** 画面上的显示开关（只在本机，存 localStorage；界面在 #1156 的设置窗口里改）。 */
 final case class ViewOptions(
@@ -25,6 +25,8 @@ final case class Scene(
     me: ActorId,
     actors: Iterable[ActorView],
     ground: Iterable[GroundView],
+    /** 地上持续的法术（火墙、困魔咒） */
+    fields: Iterable[FieldView],
     fx: Transients,
     /** 锁定的目标：脚下画红圈 */
     target: Option[ActorId],

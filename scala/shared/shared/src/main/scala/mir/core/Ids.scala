@@ -30,6 +30,13 @@ object GroundId:
   extension (id: GroundId) def value: Int     = id
   given JsonCodec[GroundId]                   = JsonCodec.int
 
+/** 地上持续法术（火墙一格、困魔咒光圈一格）的编号（世界分配）。 */
+opaque type FieldId = Int
+object FieldId:
+  def apply(n: Int): FieldId                  = n
+  extension (id: FieldId) def value: Int      = id
+  given JsonCodec[FieldId]                    = JsonCodec.int
+
 /** 物品种类：数据表里的物品名（爆率、商品、存档都按名字引用）。 */
 opaque type ItemName = String
 object ItemName:

@@ -29,6 +29,10 @@ object MonsterAi:
     val rng = w.rngOf
     if w.now >= m.nextThink && w.now >= m.busyUntil then
       if m.dead then tryRevive(w, m)
+      else if m.seizedUntil > w.now then
+        // 被定住（诱惑之光、困魔咒）：站着不动不打
+        m.nextThink = w.now + 200
+        if m.action.kind != ActKind.Stand && w.now >= m.action.startedAt + m.action.duration then w.setAction(m, ActKind.Stand, 0)
       else
         m.nextThink = w.now + 100 + rng.random(100)
         if m.action.kind != ActKind.Stand && w.now >= m.action.startedAt + m.action.duration then w.setAction(m, ActKind.Stand, 0)

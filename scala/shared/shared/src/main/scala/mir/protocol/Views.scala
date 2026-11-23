@@ -11,8 +11,8 @@ import zio.json.*
 enum Look:
   /** 玩家：名字、职业、性别、发型，武器和衣服（物品名，客户端查数据表取外观图号） */
   case Human(name: String, job: Job, sex: Sex, hair: Int, weapon: Option[ItemName], dress: Option[ItemName])
-  /** 怪物（含守卫、宝宝）：种类、藏身状态；master 是宝宝的主人 */
-  case Monster(kind: MonsterName, cover: Cover, master: Option[ActorId])
+  /** 怪物（含守卫、宝宝）：种类、藏身状态；master 是宝宝的主人；mood 是被定住/发狂（名字变色） */
+  case Monster(kind: MonsterName, cover: Cover, master: Option[ActorId], mood: Mood = Mood.Calm)
   /** NPC：merchant 是 game.json merchants 里的下标（客户端据此取名字、外观、商品） */
   case Npc(merchant: MerchantRef)
 
@@ -50,6 +50,12 @@ final case class GroundView(id: GroundId, cell: Cell, thing: GroundThing)
 
 object GroundView:
   given JsonCodec[GroundView] = DeriveJsonCodec.gen
+
+/** 地上持续的法术一格（火墙、困魔咒光圈）：进视野时发，没了发消失（原版 ClEvent）。 */
+final case class FieldView(id: FieldId, cell: Cell, kind: FieldKind)
+
+object FieldView:
+  given JsonCodec[FieldView] = DeriveJsonCodec.gen
 
 /** 特效放在哪：某一格，或跟着某个对象。 */
 enum Anchor:
@@ -117,13 +123,15 @@ final case class SelfStats(
 object SelfStats:
   given JsonCodec[SelfStats] = DeriveJsonCodec.gen
 
-/** 自己身上的状态：中毒、魔法盾、隐身、麻痹的结束时刻（没有为空）。 */
+/** 自己身上的状态：中毒、魔法盾、隐身、麻痹、神圣战甲术（加防御）、幽灵盾（加魔防）的结束时刻（没有为空）。 */
 final case class SelfStatus(
     poison: Option[PoisonKind] = None,
     poisonUntil: Option[Millis] = None,
     shieldUntil: Option[Millis] = None,
     invisibleUntil: Option[Millis] = None,
-    paralyzedUntil: Option[Millis] = None
+    paralyzedUntil: Option[Millis] = None,
+    acUpUntil: Option[Millis] = None,
+    macUpUntil: Option[Millis] = None
 )
 
 object SelfStatus:

@@ -65,6 +65,20 @@ enum Cover:
 object Cover:
   given JsonCodec[Cover] = EnumCodec.byName(values, _.toString)
 
+/** 怪物被法术弄成的状态（名字变色）：平常；被定住（诱惑之光、困魔咒，不动不打，挨打解除）；发狂（诱惑之光惹怒，见谁打谁）。 */
+enum Mood:
+  case Calm, Seized, Crazy
+
+object Mood:
+  given JsonCodec[Mood] = EnumCodec.byName(values, _.toString)
+
+/** 地上持续的法术：火墙（踩上掉血）、困魔咒的光圈（只是样子）。 */
+enum FieldKind:
+  case Fire, HolyCurtain
+
+object FieldKind:
+  given JsonCodec[FieldKind] = EnumCodec.byName(values, _.toString)
+
 /** 中毒：绿毒掉血、红毒降防。 */
 enum PoisonKind:
   case Green, Red

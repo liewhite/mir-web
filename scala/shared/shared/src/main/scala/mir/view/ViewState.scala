@@ -14,6 +14,7 @@ final case class ViewState(
     map: Option[MapId] = None,
     actors: Map[ActorId, ActorView] = Map.empty,
     ground: Map[GroundId, GroundView] = Map.empty,
+    fields: Map[FieldId, FieldView] = Map.empty,
     stats: Option[SelfStats] = None,
     bag: Vector[Option[ItemInstance]] = Vector.fill(Capacity.bag)(None),
     belt: Vector[Option[ItemInstance]] = Vector.fill(Capacity.belt)(None),
@@ -32,7 +33,7 @@ final case class ViewState(
 
   def apply(msg: ServerMsg): ViewState = msg match
     case ServerMsg.EnterMap(you, map, _, _, now) =>
-      copy(me = Some(you), map = Some(map), actors = Map.empty, ground = Map.empty, serverNow = Some(now))
+      copy(me = Some(you), map = Some(map), actors = Map.empty, ground = Map.empty, fields = Map.empty, serverNow = Some(now))
     case ServerMsg.Appear(a)       => copy(actors = actors.updated(a.id, a))
     case ServerMsg.Disappear(id)   => copy(actors = actors - id)
     case ServerMsg.Act(id, cell, dir, action) =>
@@ -41,6 +42,8 @@ final case class ViewState(
     case ServerMsg.LookChanged(id, look)    => update(id)(_.copy(look = look))
     case ServerMsg.GroundAppear(g)          => copy(ground = ground.updated(g.id, g))
     case ServerMsg.GroundDisappear(id)      => copy(ground = ground - id)
+    case ServerMsg.FieldAppear(f)           => copy(fields = fields.updated(f.id, f))
+    case ServerMsg.FieldDisappear(id)       => copy(fields = fields - id)
     case ServerMsg.Stats(s)                 => copy(stats = Some(s))
     case ServerMsg.Bag(b, t)                => copy(bag = b, belt = t)
     case ServerMsg.Equipment(w)             => copy(worn = w)

@@ -3,7 +3,7 @@ package mir.world
 import mir.core.*
 import mir.data.{MerchantDef, MonsterDef, Span}
 import mir.model.*
-import mir.protocol.{ActionView, GroundThing, GroundView, Look}
+import mir.protocol.{ActionView, FieldView, GroundThing, GroundView, Look}
 import mir.rules.Stats
 
 import scala.collection.mutable
@@ -15,6 +15,10 @@ import scala.collection.mutable
 
 /** 中毒：绿毒每 2 秒掉 power 血，红毒降防（只记状态）。by：下毒的对象（经验归属）。 */
 final case class Poison(kind: PoisonKind, until: Millis, power: Int, nextTick: Millis, by: ActorId)
+
+/** 加属性的法术效果：加多少、到什么时候。 */
+final case class Buff(amount: Int, until: Millis):
+  def on(span: Span): Span = Span(span.lo, math.min(255, span.hi + amount))
 
 sealed abstract class Actor(val id: ActorId, initCell: Cell, initDir: Dir, now: Millis):
   private[world] var cell: Cell           = initCell
@@ -32,6 +36,9 @@ sealed abstract class Actor(val id: ActorId, initCell: Cell, initDir: Dir, now: 
   private[world] var paralyzedUntil: Millis = Millis.zero
   /** 最近打过我的对象（还手、经验归属） */
   private[world] var lastHitBy: Option[ActorId] = None
+  /** 神圣战甲术（防御上限 +）、幽灵盾（魔防上限 +） */
+  private[world] var acUp: Option[Buff]  = None
+  private[world] var macUp: Option[Buff] = None
 
   def maxHp: Int
   def look: Look
@@ -95,8 +102,13 @@ enum Intent:
   case Fetch(item: GroundId)
 
 /** 怪物（含守卫、宝宝）。 */
-final class Monster(id: ActorId, val defn: MonsterDef, val behavior: Behavior, val spawn: Option[Int], cell: Cell, dir: Dir, now: Millis)
+final class Monster(id: ActorId, val defn: MonsterDef, val behavior: Behavior, initSpawn: Option[Int], cell: Cell, dir: Dir, now: Millis)
     extends Actor(id, cell, dir, now):
+  /** 刷怪点（被诱惑收服后不再算它的，刷怪点会补一只） */
+  private[world] var spawn: Option[Int] = initSpawn
+  /** 被定住（不动不打，挨打解除）、发狂（见谁打谁）到什么时候 */
+  private[world] var seizedUntil: Millis = Millis.zero
+  private[world] var crazyUntil: Millis  = Millis.zero
   private[world] var maxHpNow: Int  = defn.hp
   private[world] var dc: Span       = defn.dc
   private[world] var target: Option[ActorId] = None
@@ -127,12 +139,19 @@ final class Monster(id: ActorId, val defn: MonsterDef, val behavior: Behavior, v
   hp = defn.hp
 
   def maxHp: Int   = maxHpNow
-  def ac: Span     = defn.ac
-  def mac: Span    = defn.mac
+  def ac: Span     = acUp.fold(defn.ac)(_.on(defn.ac))
+  def mac: Span    = macUp.fold(defn.mac)(_.on(defn.mac))
   def agility: Int = defn.speed
   def hit: Int     = defn.hit
   def isGuard: Boolean = Behavior.isGuard(defn)
-  def look: Look   = Look.Monster(defn.name, cover, master)
+  /** 此刻的状态（定住优先；宝宝不会发狂） */
+  def moodAt(now: Millis): Mood =
+    if seizedUntil > now then Mood.Seized
+    else if crazyUntil > now && master.isEmpty then Mood.Crazy
+    else Mood.Calm
+  /** 外观里的 mood 取最近一次 World 更新的（到期由 World 在 tick 里改回） */
+  private[world] var mood: Mood = Mood.Calm
+  def look: Look   = Look.Monster(defn.name, cover, master, mood)
 
 enum Rage:
   case Calm, Ready, Crazy
@@ -154,6 +173,19 @@ enum Loot:
   def thing: GroundThing = this match
     case Item(it)  => GroundThing.Item(it.name)
     case Coins(g)  => GroundThing.Coins(g)
+
+/** 地上持续法术的作用：火墙（谁放的、每跳威力，按魔防减）；困魔咒光圈（只是样子，困住怪靠 Monster.seizedUntil）。 */
+enum FieldEffect:
+  case Fire(owner: ActorId, damage: Int)
+  case HolyCurtain
+
+  def kind: FieldKind = this match
+    case Fire(_, _)  => FieldKind.Fire
+    case HolyCurtain => FieldKind.HolyCurtain
+
+/** 地上持续法术的一格：到 until 消失；火墙在 nextBurn 烧下一次。 */
+final case class Field(id: FieldId, cell: Cell, effect: FieldEffect, until: Millis, nextBurn: Millis):
+  def view: FieldView = FieldView(id, cell, effect.kind)
 
 final case class GroundItem(id: GroundId, cell: Cell, loot: Loot, droppedAt: Millis):
   def view: GroundView = GroundView(id, cell, loot.thing)

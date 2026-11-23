@@ -136,7 +136,7 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
 
   /** 能打的：活着、露在外面的野怪（不是守卫、不是宝宝）。 */
   def isEnemy(a: ActorView): Boolean = !a.dead && (a.look match
-    case Look.Monster(kind, cover, master) =>
+    case Look.Monster(kind, cover, master, _) =>
       cover == mir.model.Cover.Open && master.isEmpty && catalog.monster(kind).forall(d => !Behavior.isGuard(d))
     case _ => false)
 
@@ -156,7 +156,7 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
       val now = clock.now(local)
       fx = fx.prune(now, local)
       Scene(
-        md, me, actors, view.ground.values, fx, locked,
+        md, me, actors, view.ground.values, view.fields.values, fx, locked,
         myShield = view.status.shieldUntil.exists(_ > now),
         meInvisible = view.status.invisibleUntil.exists(_ > now),
         server = now, local = local, options = options

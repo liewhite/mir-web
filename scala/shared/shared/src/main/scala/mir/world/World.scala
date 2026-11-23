@@ -51,9 +51,11 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
 
   private[world] val actors = mutable.LinkedHashMap.empty[ActorId, Actor]
   private[world] val ground = mutable.LinkedHashMap.empty[GroundId, GroundItem]
+  private[world] val fields = mutable.LinkedHashMap.empty[FieldId, Field]
   private val occupancy     = new Array[Int](terrain.width * terrain.height)
   private var nextActor     = 1
   private var nextGround    = 1
+  private var nextField     = 1
 
   // ---------------- 生成 NPC、守卫，排上刷怪 ----------------
 
@@ -69,6 +71,7 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
   def actor(id: ActorId): Option[Actor] = actors.get(id)
   def player(id: ActorId): Option[Player] = actors.get(id).collect { case p: Player => p }
   def groundItems: Iterable[GroundItem] = ground.values
+  def activeFields: Iterable[Field]     = fields.values
   private[world] def rngOf: Rng = rng
   /** 此刻全部对象的快照（遍历时可以增删） */
   private[world] def actorsNow: Vector[Actor] = actors.values.toVector
@@ -81,6 +84,9 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
   /** 某玩家此刻能看到的对象和地上物品。 */
   def visibleTo(p: Player): (Iterable[Actor], Iterable[GroundItem]) =
     (actors.values.filter(a => sees(p, a.cell)), ground.values.filter(g => sees(p, g.cell)))
+
+  /** 某玩家此刻能看到的地上法术。 */
+  def fieldsVisibleTo(p: Player): Iterable[Field] = fields.values.filter(f => sees(p, f.cell))
 
   private def sees(p: Player, c: Cell): Boolean = p.cell.chebyshev(c) <= ViewRange
 
@@ -164,7 +170,8 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
   def tick(to: Millis): Unit =
     if to > clock then clock = to
     if hasPlayers then
-      fighters = actors.values.filter(a => side(a).exists(_ != Side.Wild)).toVector
+      // 发狂的怪不算：野怪不会主动去找它，只在挨了它的打时还手
+      fighters = actors.values.filter(a => side(a).exists(s => s != Side.Wild && s != Side.Crazy)).toVector
       val due = timers.filter(_.at <= clock).sortBy(t => (t.at.value, t.seq))
       timers.filterInPlace(_.at > clock)
       due.foreach(_.run())
@@ -176,6 +183,7 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
             case _          => ()
           tickStatus(a)
       }
+      tickFields()
       players.toVector.foreach { p =>
         regen(p)
         AutoPlay.run(this, p)
@@ -186,13 +194,76 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
       }
       ground.values.toVector.foreach(g => if clock - g.droppedAt > ItemKeepMs then ground.remove(g.id): Unit)
 
-  private def tickStatus(a: Actor): Unit = a.poison match
-    case Some(p) if !a.dead =>
-      if clock >= p.until then a.poison = None
-      else if p.kind == PoisonKind.Green && clock >= p.nextTick then
-        a.poison = Some(p.copy(nextTick = clock + 2000))
-        applyDamage(a, math.max(1, p.power), Some(p.by), interrupt = false)
-    case _ => ()
+  private def tickStatus(a: Actor): Unit =
+    a.poison match
+      case Some(p) if !a.dead =>
+        if clock >= p.until then a.poison = None
+        else if p.kind == PoisonKind.Green && clock >= p.nextTick then
+          a.poison = Some(p.copy(nextTick = clock + 2000))
+          applyDamage(a, math.max(1, p.power), Some(p.by), interrupt = false, struck = false)
+      case _ => ()
+    // 神圣战甲术、幽灵盾到期
+    val acEnd  = a.acUp.exists(_.until <= clock)
+    val macEnd = a.macUp.exists(_.until <= clock)
+    if acEnd then a.acUp = None
+    if macEnd then a.macUp = None
+    a match
+      case p: Player if acEnd || macEnd =>
+        recalc(p)
+        if acEnd then notice(p, "防御力回复正常", Tone.System)
+        if macEnd then notice(p, "魔法防御力回复正常", Tone.System)
+      case m: Monster => m.mood = m.moodAt(clock)
+      case _          => ()
+
+  /** 给对象加上神圣战甲术（acUp）或幽灵盾；再放一次不会把还没到期的时间缩短。 */
+  private[world] def defenceUp(a: Actor, magic: Boolean, amount: Int, secs: Int): Unit =
+    val until = clock + secs * 1000L
+    def merge(old: Option[Buff]) = Some(Buff(amount, old.fold(until)(o => if o.until > until then o.until else until)))
+    if magic then a.macUp = merge(a.macUp) else a.acUp = merge(a.acUp)
+    a match
+      case p: Player =>
+        recalc(p)
+        notice(p, s"${if magic then "魔法防御" else "防御"}上限 +$amount，$secs 秒", Tone.Good)
+      case _ => ()
+
+  /** 怪物被定住 / 发狂。 */
+  private[world] def seize(m: Monster, secs: Int): Unit =
+    m.seizedUntil = clock + secs * 1000L
+    m.target = None
+    m.mood = m.moodAt(clock)
+
+  private[world] def enrage(m: Monster, secs: Int): Unit =
+    m.crazyUntil = clock + secs * 1000L
+    m.target = None
+    m.mood = m.moodAt(clock)
+
+  // ---------------- 地上持续的法术 ----------------
+
+  /** 放一格地上法术；这格已有的不重叠（原版 GetEvent == null 才放）。放了返回 true。 */
+  private[world] def addField(cell: Cell, effect: FieldEffect, ms: Long): Boolean =
+    if !terrain.inside(cell) || fields.valuesIterator.exists(_.cell == cell) then false
+    else
+      val f = Field(FieldId(nextField), cell, effect, clock + ms, clock)
+      nextField += 1
+      fields(f.id) = f
+      true
+
+  /** 到期的去掉；火墙每 3 秒烧一次站在上面的敌人（放下就烧第一次，按魔防减，经验归放火的人）。 */
+  private def tickFields(): Unit =
+    fields.values.toVector.foreach { f =>
+      if clock >= f.until then fields.remove(f.id): Unit
+      else
+        f.effect match
+          case FieldEffect.Fire(owner, damage) if clock >= f.nextBurn =>
+            fields(f.id) = f.copy(nextBurn = clock + mir.rules.SpellRules.FireWallTickMs)
+            for
+              o <- actors.get(owner)
+              t <- occupant(f.cell) if isEnemy(o, t)
+            do
+              val dmg = Rules.afterMagicArmor(damage, t.mac)
+              if dmg > 0 then applyDamage(t, dmg, Some(owner), interrupt = false) else miss(t)
+          case _ => ()
+    }
 
   /** 自然回复（规则见 Recovery）。 */
   private def regen(p: Player): Unit =
@@ -378,13 +449,15 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
 
   // ---------------- 战斗结算 ----------------
 
+  /** 阵营：玩家和宝宝、野怪、守卫、发狂的怪（和谁都是敌人，原版 CrazyMode）。 */
   private enum Side:
-    case Players, Wild, Guards
+    case Players, Wild, Guards, Crazy
 
   private def side(a: Actor): Option[Side] = a match
     case _: Player                        => Some(Side.Players)
     case m: Monster if m.master.isDefined => Some(Side.Players)
     case m: Monster if m.isGuard          => Some(Side.Guards)
+    case m: Monster if m.mood == Mood.Crazy => Some(Side.Crazy)
     case _: Monster                       => Some(Side.Wild)
     case _: Npc                           => None
 
@@ -424,16 +497,18 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
     p.worn.get(EquipSlot.Weapon).flatMap(it => catalog.item(it.name)).map(_.shape)
 
   /** 伤害结算：魔法盾减伤、被打动作、死亡、经验。 */
-  private[world] def applyDamage(target: Actor, amount: Int, source: Option[ActorId], interrupt: Boolean = true): Unit =
+  private[world] def applyDamage(target: Actor, amount: Int, source: Option[ActorId], interrupt: Boolean = true, struck: Boolean = true): Unit =
     target match
       case _: Npc => ()
       case _ if target.dead => ()
       case _ =>
+        // 中红毒的挨打 ×1.2（绿毒自己掉的血不算挨打）
+        val poisoned = if struck && target.poison.exists(_.kind == PoisonKind.Red) then mir.rules.SpellRules.redPoisonDamage(amount) else amount
         val dmg = target match
           case _: Player if target.shieldUntil > clock =>
             val absorb = Vector(0.3, 0.4, 0.5, 0.6).lift(target.shieldLevel).getOrElse(0.3)
-            math.max(1, math.round(amount * (1 - absorb)).toInt)
-          case _ => amount
+            math.max(1, math.round(poisoned * (1 - absorb)).toInt)
+          case _ => poisoned
         target.hp -= dmg
         target.lastHitBy = source
         val src = source.flatMap(actors.get)
@@ -451,6 +526,10 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
         else
           target match
             case m: Monster if interrupt =>
+              // 被定住的挨打就醒（AnimalObject 收到 RM_STRUCK 时 BreakHolySeizeMode）
+              if m.seizedUntil > clock then
+                m.seizedUntil = Millis.zero
+                m.mood = m.moodAt(clock)
               val dur = actTable(m).fold(200)(t => math.max(200, t.struck.frames * t.struck.frameTime))
               if m.action.kind == ActKind.Stand || m.action.kind == ActKind.Struck then
                 setAction(m, ActKind.Struck, dur)
@@ -571,7 +650,8 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
       catalog.item(it.name).filter(d => it.dura > 0 && !ItemKind.of(d).isInstanceOf[ItemKind.Amulet]).map(ItemEffects.of)
     }
     def lv(id: Int): Option[Int] = p.skill(SkillId(id)).map(_.level)
-    p.stats = Rules.computeStats(p.job, p.level, effects, PassiveSkills(oneSword = lv(3), spiritSword = lv(4), powerHit = lv(7)))
+    val base = Rules.computeStats(p.job, p.level, effects, PassiveSkills(oneSword = lv(3), spiritSword = lv(4), powerHit = lv(7)))
+    p.stats = base.copy(ac = p.acUp.fold(base.ac)(_.on(base.ac)), mac = p.macUp.fold(base.mac)(_.on(base.mac)))
     p.hp = math.min(p.hp, p.stats.maxHp)
     p.mp = math.min(p.mp, p.stats.maxMp)
 
@@ -595,6 +675,7 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
   private final class Viewer:
     val actors = mutable.Set.empty[ActorId]
     val ground = mutable.Set.empty[GroundId]
+    val fields = mutable.Set.empty[FieldId]
     var self   = Option.empty[SelfView]
 
   private val viewers = mutable.Map.empty[ActorId, Viewer]
@@ -611,7 +692,9 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
         poison = p.poison.map(_.kind), poisonUntil = p.poison.map(_.until),
         shieldUntil = Option.when(p.shieldUntil > clock)(p.shieldUntil),
         invisibleUntil = Option.when(p.invisibleUntil > clock)(p.invisibleUntil),
-        paralyzedUntil = Option.when(p.paralyzedUntil > clock)(p.paralyzedUntil)
+        paralyzedUntil = Option.when(p.paralyzedUntil > clock)(p.paralyzedUntil),
+        acUpUntil = p.acUp.map(_.until),
+        macUpUntil = p.macUp.map(_.until)
       ),
       sword = SwordState(p.longHitOn, p.wideHitOn, p.fireReady),
       settings = p.settings
@@ -655,6 +738,12 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
       seenGround.filterNot(g => v.ground.contains(g.id)).foreach(g => buf += ServerMsg.GroundAppear(g.view))
       v.ground.clear()
       v.ground ++= gIds
+      val seenFields = fieldsVisibleTo(p)
+      val fIds       = seenFields.map(_.id).toSet
+      v.fields.diff(fIds).foreach(id => buf += ServerMsg.FieldDisappear(id))
+      seenFields.filterNot(f => v.fields.contains(f.id)).foreach(f => buf += ServerMsg.FieldAppear(f.view))
+      v.fields.clear()
+      v.fields ++= fIds
       local.foreach((c, m) => if sees(p, c) then buf += m)
       val sv = selfView(p)
       buf ++= SelfView.diff(v.self, sv)

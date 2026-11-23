@@ -61,7 +61,9 @@ final class LocalServer(catalog: Catalog, assets: Assets, listener: LinkEvent =>
     case SessionCmd.ListChars         => deliver(ServerMsg.CharList(chars.map(_._1).toList))
     case SessionCmd.CreateChar(name, job, sex) =>
       val id = CharId(chars.size + 1L)
-      chars :+= CharSummary(id, name, job, sex, 1) -> CharacterData.newbie(catalog, name, job, sex, uids)
+      val base = CharacterData.newbie(catalog, name, job, sex, uids)
+      val data = if hero then heroOf(base) else base
+      chars :+= CharSummary(id, name, job, sex, data.level) -> data
       deliver(ServerMsg.CharList(chars.map(_._1).toList))
     case SessionCmd.DeleteChar(id) =>
       chars = chars.filterNot(_._1.id == id)
@@ -74,6 +76,16 @@ final class LocalServer(catalog: Catalog, assets: Assets, listener: LinkEvent =>
           here = None
           enter(chars.find(_._1.id == id).fold(data)(_._2), Nil)
     case SessionCmd.Ping(ms) => deliver(ServerMsg.Pong(ms, clock))
+
+  /** 地址带 &hero：新建的角色 40 级、学会本职业全部技能（3 级，前 8 个按 F1–F8）、左手镯戴护身符（本机看技能效果用）。 */
+  private def hero: Boolean = dom.window.location.search.contains("hero")
+
+  private def heroOf(d: CharacterData): CharacterData =
+    val skills = catalog.data.skills.filter(_.job == d.job).zipWithIndex.map { (s, i) =>
+      mir.model.LearnedSkill(s.id, 3, 0, Option.when(i < 8)(i + 1))
+    }
+    val charm = catalog.item(ItemName("护身符")).map(it => mir.model.ItemInstance(uids.next(), it.name, 100_000, 100_000))
+    d.copy(level = 40, hp = Hp(99_999), mp = Mp(99_999), skills = skills.toList, worn = d.worn ++ charm.map(mir.model.EquipSlot.BraceletL -> _))
 
   private def enter(data: CharacterData, pets: List[PetData]): Unit =
     world(data.place.map).recoverWith(_ => world(CharacterData.start.map)).foreach { w =>

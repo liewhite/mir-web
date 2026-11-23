@@ -151,6 +151,10 @@ object DebugHandle:
       attack = () => ctl.attack(),
       goTo = (x: Int, y: Int) => ctl.goTo(Cell(x, y)),
       teleport = (i: Int) => client.send(mir.protocol.GameCmd.Teleport(TeleportRef(i))),
+      cast = (skill: Int) => ctl.castSkill(SkillId(skill)),
+      newChar = (name: String, job: Int) =>
+        client.send(mir.protocol.SessionCmd.CreateChar(name, mir.model.Job.fromOrdinal(job), mir.model.Sex.Male)),
+      enter = (id: Int) => client.enterGame(CharId(id.toLong)),
       cam = () => js.Array(renderer.camX, renderer.camY, renderer.zoom),
       screen = () => ui.screen.toString.takeWhile(_ != '('),
       chat = () => js.Array(ui.chat.map(_.text)*),

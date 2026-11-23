@@ -120,6 +120,10 @@ enum ServerMsg:
   case GroundAppear(item: GroundView)
   case GroundDisappear(id: GroundId)
 
+  // ---- 地上持续的法术（火墙、困魔咒） ----
+  case FieldAppear(field: FieldView)
+  case FieldDisappear(id: FieldId)
+
   // ---- 特效、声音、飘字（只发给附近的人） ----
   case Effect(effect: EffectView)
   case Sound(id: Int, at: Option[Cell])

@@ -4,7 +4,7 @@ import mir.client.assets.{Assets, MapData, Sprite, SpriteStore}
 import mir.client.assets.MapData.{GroundBlock, UnitX, UnitY}
 import mir.core.*
 import mir.data.Catalog
-import mir.model.{ActKind, Cover}
+import mir.model.{ActKind, Cover, FieldKind, Mood}
 import mir.protocol.*
 import mir.rules.ItemKind
 import org.scalajs.dom
@@ -162,6 +162,7 @@ final class Renderer(canvas: dom.HTMLCanvasElement, sprites: SpriteStore, assets
 
     val actorsByRow = s.actors.groupBy(a => math.round(actorPixel(a, now).y / UnitY).toInt)
     val itemsByRow  = s.ground.groupBy(_.cell.y)
+    val fieldsByRow = s.fields.groupBy(_.cell.y)
 
     // 第一遍：48×32 的平铺物件（地面装饰）
     for
@@ -184,6 +185,7 @@ final class Renderer(canvas: dom.HTMLCanvasElement, sprites: SpriteStore, assets
         else if sp.w != UnitX || sp.h != UnitY then blit(sp, sx, (y + 1) * UnitY - sp.h - camY)
       if y <= bottom + 2 then
         itemsByRow.getOrElse(y, Nil).foreach(drawGroundItem)
+        fieldsByRow.getOrElse(y, Nil).foreach(drawField(_, s.local))
         // 尸体先画
         actorsByRow.getOrElse(y, Nil).toList.sortBy(a => !a.dead).foreach { a =>
           drawActor(a, s, y).foreach(newHits += _)
@@ -227,6 +229,16 @@ final class Renderer(canvas: dom.HTMLCanvasElement, sprites: SpriteStore, assets
       val cx = g.cell.x * UnitX - camX + UnitX / 2
       val cy = g.cell.y * UnitY - camY + UnitY / 2
       blit(sp, math.round(cx - sp.w / 2.0).toDouble, math.round(cy - sp.h / 2.0).toDouble)
+    }
+
+  /** 地上持续的法术（原版 ClEvent.pas：帧每 20 毫秒进一；火墙 1630 起 6 张、两帧换一张，困魔咒光圈 1390 起 10 张；都是叠加混合）。 */
+  private def drawField(f: FieldView, local: Double): Unit =
+    val tick = (local / 20).toLong
+    val idx = f.kind match
+      case FieldKind.Fire        => 1630 + ((tick / 2) % 6).toInt
+      case FieldKind.HolyCurtain => 1390 + (tick % 10).toInt
+    sprites.sprite("magic", idx).foreach { sp =>
+      lighter(blit(sp, f.cell.x * UnitX - camX + sp.ox, f.cell.y * UnitY - camY + sp.oy))
     }
 
   // ---------------- 角色 ----------------
@@ -338,7 +350,7 @@ final class Renderer(canvas: dom.HTMLCanvasElement, sprites: SpriteStore, assets
           ctx.fillStyle = "rgba(0,0,0,.6)"
           ctx.fillRect(x - 16, y - 62, 32, 4)
           ctx.fillStyle = a.look match
-            case Look.Monster(_, _, None) => "#e74c3c"
+            case Look.Monster(_, _, None, _) => "#e74c3c"
             case _                        => "#2ecc71"
           ctx.fillRect(x - 16, y - 62, math.round(32 * ratio).toDouble, 4)
     }
@@ -374,8 +386,14 @@ final class Renderer(canvas: dom.HTMLCanvasElement, sprites: SpriteStore, assets
   private def nameOf(a: ActorView, targeted: Boolean, o: ViewOptions): Option[(String, String)] = a.look match
     case h: Look.Human => Some(h.name -> "#ffffff")
     case Look.Npc(ref) => catalog.merchant(ref).map(_.name -> "#7fdcff")
-    case Look.Monster(kind, _, master) =>
-      Option.when(targeted || o.showMonsterNames)(catalog.displayName(kind).value -> (if master.isDefined then "#9cff8a" else "#ffffff"))
+    case Look.Monster(kind, _, master, mood) =>
+      // 名字颜色：宝宝绿、发狂红（原版 0xF9）、被定住蓝紫（原版 0x7D，MonsterObject.GetChrColor）
+      val color = (master, mood) match
+        case (Some(_), _)        => "#9cff8a"
+        case (None, Mood.Crazy)  => "#ff4040"
+        case (None, Mood.Seized) => "#a8a0ff"
+        case (None, Mood.Calm)   => "#ffffff"
+      Option.when(targeted || o.showMonsterNames || mood != Mood.Calm)(catalog.displayName(kind).value -> color)
 
   private def text(str: String, x: Double, y: Double, color: String): Unit =
     ctx.fillStyle = "#000"

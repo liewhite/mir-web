@@ -1,0 +1,244 @@
+package mir.world
+
+import mir.core.*
+import mir.data.*
+import mir.model.*
+import mir.protocol.*
+import mir.rules.{Rng, SpellRules}
+import mir.rules.SpellRules.{TameOutcome, TameTarget}
+import mir.testkit.TestFiles
+import mir.view.ViewState
+import zio.test.*
+
+/** 法师、道士技能的实际效果（#1163）：公式按 MagicManager.cs，世界里放出来看结果。 */
+object SpellSpec extends ZIOSpecDefault:
+  private lazy val catalog: Catalog =
+    Catalog.decode(TestFiles.gameJson).fold(e => throw new AssertionError(e), identity)
+
+  private val testMap = MapDef(MapId("T"), "T", "测试", Set.empty, 60, 60)
+
+  private final class Sim(val w: World):
+    var view = ViewState()
+    var notices = Vector.empty[String]
+    var me: Option[ActorId] = None
+
+    def flush(): Unit =
+      val out = w.flush()
+      me.foreach { id =>
+        val got = out.messages.getOrElse(id, Vector.empty)
+        view = view.applyAll(got)
+        notices ++= got.collect { case ServerMsg.Notice(t, _) => t; case ServerMsg.Refused(t) => t }
+      }
+
+    def run(ms: Int): Unit = (0 until ms by 50).foreach { _ =>
+      w.tick(w.now + 50)
+      flush()
+    }
+
+    def cast(p: Player, skill: Int, target: Option[Actor], cell: Cell): Unit =
+      w.handle(p.id, GameCmd.Cast(SkillId(skill), target.map(_.id), cell))
+      flush()
+
+  private def sim(seed: Long = 1): Sim =
+    Sim(World(catalog, testMap, Terrain.open(testMap.width, testMap.height), Rng.seeded(seed), UidSource.counter(1_000_000), Millis(0)))
+
+  /** 放一个高等级、血蓝很多、学会了这些技能（3 级）的角色。 */
+  private def caster(s: Sim, job: Job, skills: List[Int], at: Cell = Cell(30, 30), level: Int = 40, charm: Boolean = false): Player =
+    val d  = CharacterData.newbie(catalog, "甲", job, Sex.Male, UidSource.counter(5000))
+    val id = s.w.join(d.copy(place = Place(s.w.mapId, at), level = level))
+    val p  = s.w.player(id).get
+    p.skills ++= skills.map(k => LearnedSkill(SkillId(k), 3, 0, None))
+    if charm then p.worn(EquipSlot.BraceletL) = ItemInstance(ItemUid(77L), ItemName("护身符"), 100_000, 100_000)
+    s.w.recalc(p)
+    p.stats = p.stats.copy(maxHp = 100_000, maxMp = 100_000)
+    p.hp = 100_000
+    p.mp = 100_000
+    s.me = Some(id)
+    s.flush()
+    p
+
+  private def put(s: Sim, name: String, at: Cell): Monster =
+    s.w.spawnMonster(catalog.monster(MonsterName(name)).getOrElse(throw new AssertionError(name)), None, at, 0).get
+
+  /** 把怪钉住不动（测试用：远远地定住，免得乱跑） */
+  private def pin(m: Monster): Unit = m.seizedUntil = Millis(Long.MaxValue / 2)
+
+  def spec = suite("技能效果（#1163）")(
+    suite("公式")(
+      test("诱惑之光：3 级必起作用；一半机会定住 25 秒；一路过关就收服") {
+        val t = TameTarget(level = 5, maxHp = 20, undead = false)
+        assertTrue(
+          SpellRules.tame(10, 3, t)(using Rng.sequence(0, 1)) == TameOutcome.Seized(25),
+          SpellRules.tame(10, 3, t)(using Rng.sequence(0, 0, 0, 40, 0)) == TameOutcome.Tamed,
+          SpellRules.tame(10, 3, t)(using Rng.sequence(0, 0, 1, 7)) == TameOutcome.Crazy(17),
+          SpellRules.tame(10, 0, t)(using Rng.sequence(1)) == TameOutcome.NoEffect
+        )
+      },
+      test("诱惑之光：一定不行的情况放之前就说明") {
+        def b(t: TameTarget, pets: Int = 0) = SpellRules.tameBlocker(20, t, pets)
+        assertTrue(
+          b(TameTarget(10, 100, undead = true)).isDefined,
+          b(TameTarget(23, 100, undead = false)).isDefined,
+          b(TameTarget(22, 100, undead = false)).isEmpty,
+          b(TameTarget(10, 100, undead = false), pets = 5).isDefined
+        )
+      },
+      test("火墙持续秒数：GetPower(10) + 魔法随机值/2") {
+        val d = catalog.skill(SkillId(22)).get
+        assertTrue(
+          SpellRules.fireWallSecs(d, 0, Span(0, 0))(using Rng.sequence(0)) == 3 + 3,
+          SpellRules.fireWallSecs(d, 3, Span(10, 20))(using Rng.sequence(0)) == 10 + 3 + 5
+        )
+      },
+      test("地狱雷光对非不死系只有十分之一") {
+        assertTrue(SpellRules.thunderStorm(55, undead = true) == 55, SpellRules.thunderStorm(55, undead = false) == 5)
+      }
+    ),
+    test("火墙：5 格火，怪站在上面掉血，火灭了格子也消失，视野副本跟着出现消失") {
+      val s = sim()
+      val p = caster(s, Job.Wizard, List(22))
+      val m = put(s, "蛤蟆", Cell(33, 30))
+      pin(m)
+      m.maxHpNow = 100_000
+      m.hp = 100_000
+      s.cast(p, 22, Some(m), m.cell)
+      val placed = s.w.activeFields.map(_.cell).toSet
+      val seen   = s.view.fields.values.map(_.cell).toSet
+      s.run(7000)
+      val burnt = m.hp < 100_000
+      s.run(60_000)
+      assertTrue(
+        placed == Set(Cell(33, 29), Cell(32, 30), Cell(33, 30), Cell(34, 30), Cell(33, 31)),
+        seen == placed,
+        s.view.fields.values.forall(_.kind == FieldKind.Fire),
+        burnt,
+        s.w.activeFields.isEmpty,
+        s.view.fields.isEmpty
+      )
+    },
+    test("诱惑之光：反复放能收服，宝宝认主、看得出是宝宝；定住、发狂、失败都有提示") {
+      val s = sim(seed = 11)
+      val p = caster(s, Job.Wizard, List(20), level = 30)
+      var m = put(s, "蛤蟆", Cell(32, 30))
+      var tries = 0
+      while m.master.isEmpty && tries < 400 do
+        if m.dead then m = put(s, "蛤蟆", Cell(32, 30))
+        if m.cell.chebyshev(p.cell) > 6 then s.w.teleportActor(m, Cell(32, 30))
+        s.cast(p, 20, Some(m), m.cell)
+        s.run(1000)
+        tries += 1
+      val shown = s.view.actors.get(m.id).map(_.look)
+      assertTrue(
+        m.master.contains(p.id),
+        p.pets.contains(m.id),
+        m.spawn.isEmpty,
+        shown.exists { case Look.Monster(_, _, Some(owner), _) => owner == p.id; case _ => false },
+        s.notices.exists(_.contains("成了你的宝宝")),
+        s.notices.exists(n => n.contains("定住") || n.contains("没有成功") || n.contains("发狂"))
+      )
+    },
+    test("诱惑之光：动物、不死系、等级太高的直接说明，不扣蓝") {
+      val s  = sim()
+      val p  = caster(s, Job.Wizard, List(20), level = 8)
+      val ck = put(s, "鸡", Cell(31, 30))
+      val sc = put(s, "稻草人", Cell(29, 30))
+      val mp = p.mp
+      s.cast(p, 20, Some(ck), ck.cell)
+      s.run(1000)
+      s.cast(p, 20, Some(sc), sc.cell)
+      assertTrue(p.mp == mp, s.notices.exists(_.contains("动物")), s.notices.exists(_.contains("不死系")))
+    },
+    test("困魔咒：目标周围比自己低的怪被定住、不动，四周 8 格光圈；挨打就醒") {
+      val s = sim()
+      val p = caster(s, Job.Taoist, List(16), charm = true)
+      val m = put(s, "蛤蟆", Cell(34, 30))
+      s.cast(p, 16, Some(m), m.cell)
+      val held  = m.seizedUntil > s.w.now && m.look.asInstanceOf[Look.Monster].mood == Mood.Seized
+      val at    = m.cell
+      s.run(5000)
+      val still = m.cell == at
+      val rings = s.w.activeFields.count(_.effect == FieldEffect.HolyCurtain)
+      s.w.applyDamage(m, 1, Some(p.id))
+      assertTrue(held, still, rings == 8, m.seizedUntil == Millis.zero, s.view.fields.size == 8)
+    },
+    test("神圣战甲术、幽灵盾：没选自己人就加在自己身上，防御/魔防上限 + 等级/7+1，到时恢复") {
+      val s   = sim()
+      val p   = caster(s, Job.Taoist, List(14, 15), charm = true)
+      val ac0 = p.stats.ac
+      val mc0 = p.stats.mac
+      s.cast(p, 15, None, p.cell)
+      s.run(1000)
+      s.cast(p, 14, None, p.cell)
+      val up = p.stats.ac.hi == ac0.hi + 40 / 7 + 1 && p.stats.mac.hi == mc0.hi + 40 / 7 + 1
+      val status = s.view.status.acUpUntil.isDefined && s.view.status.macUpUntil.isDefined
+      s.run(400_000)
+      assertTrue(up, status, p.stats.ac == ac0, p.stats.mac == mc0, s.view.status.acUpUntil.isEmpty)
+    },
+    test("圣言术：不死系有机会直接打死，不是不死系的不让放") {
+      val s  = sim(seed = 5)
+      val p  = caster(s, Job.Wizard, List(32), level = 40)
+      val hm = put(s, "蛤蟆", Cell(28, 30))
+      pin(hm)
+      val mp = p.mp
+      s.cast(p, 32, Some(hm), hm.cell)
+      val refused = p.mp == mp && s.notices.exists(_.contains("只对不死系"))
+      val sc = put(s, "稻草人", Cell(32, 30))
+      pin(sc)
+      (1 to 40).foreach { _ =>
+        if !sc.dead then
+          s.cast(p, 32, Some(sc), sc.cell)
+          s.run(1500)
+      }
+      assertTrue(refused, sc.dead, p.exp.value > 0)
+    },
+    test("疾光电影：一条线上的怪都打到") {
+      val s = sim()
+      val p = caster(s, Job.Wizard, List(10))
+      p.stats = p.stats.copy(mc = Span(200, 200))
+      val a = put(s, "蛤蟆", Cell(32, 30))
+      val b = put(s, "蛤蟆", Cell(36, 30))
+      pin(a)
+      pin(b)
+      s.cast(p, 10, Some(b), b.cell)
+      s.run(500)
+      assertTrue(a.dead, b.dead)
+    },
+    test("群体治疗术：中心周围 1 格的自己人（含宝宝）回血") {
+      val s   = sim()
+      val p   = caster(s, Job.Taoist, List(29))
+      val pet = put(s, "蛤蟆", Cell(31, 30))
+      pet.master = Some(p.id)
+      p.pets += pet.id
+      p.hp = 10
+      pet.hp = 1
+      s.cast(p, 29, None, p.cell)
+      assertTrue(p.hp > 10, pet.hp > 1)
+    },
+    test("红毒：中毒期间挨打伤害 ×1.2") {
+      val s = sim()
+      val p = caster(s, Job.Taoist, Nil)
+      val m = put(s, "蛤蟆", Cell(31, 30))
+      pin(m)
+      m.maxHpNow = 10_000
+      m.hp = 10_000
+      s.w.applyDamage(m, 100, Some(p.id))
+      val plain = 10_000 - m.hp
+      m.poison = Some(Poison(PoisonKind.Red, s.w.now + 60_000, 0, s.w.now + 2000, p.id))
+      s.w.applyDamage(m, 100, Some(p.id))
+      assertTrue(plain == 100, 10_000 - plain - m.hp == 120)
+    },
+    test("地狱雷光、爆裂火焰打到范围里的怪") {
+      val s = sim()
+      val p = caster(s, Job.Wizard, List(23, 24))
+      p.stats = p.stats.copy(mc = Span(300, 300))
+      val a = put(s, "蛤蟆", Cell(32, 31))
+      val b = put(s, "蛤蟆", Cell(36, 30))
+      val c = put(s, "蛤蟆", Cell(37, 31))
+      List(a, b, c).foreach(pin)
+      s.cast(p, 24, None, p.cell)
+      s.run(1000)
+      s.cast(p, 23, Some(b), b.cell)
+      s.run(1000)
+      assertTrue(a.dead, b.dead, c.dead)
+    }
+  )

@@ -53,7 +53,7 @@ final class Panels(ui: ClassicUi):
       if !a.dead && a.id != m.actor.id && a.cell.chebyshev(me) <= 30 then
         dot(a.cell, a.look match
           case Look.Npc(_)                  => "#0f0"
-          case Look.Monster(_, _, Some(_))  => "#6cf"
+          case Look.Monster(_, _, Some(_), _) => "#6cf"
           case _                            => "#f00"
         )
     }
@@ -325,7 +325,7 @@ final class Panels(ui: ClassicUi):
   private def statLines(m: Me): List[Line] =
     val mons = ui.client.actors.flatMap { a =>
       a.look match
-        case Look.Monster(kind, _, None) if !a.dead => catalog.monster(kind)
+        case Look.Monster(kind, _, None, _) if !a.dead => catalog.monster(kind)
         case _                                     => None
     }.toList
     val avgA = if mons.isEmpty then 15 else math.round(mons.map(_.speed).sum.toDouble / mons.size).toInt
