@@ -19,10 +19,10 @@ H=kaojiang
 JRE=deploy/jvm/jre.tar.gz
 
 echo "== 打包"
-(cd scala && JAVA_HOME=/opt/homebrew/opt/openjdk@21 sbt -batch server/assembly)
+(cd scala && JAVA_HOME=/opt/homebrew/opt/openjdk@21 sbt -batch server/assembly client/fullLinkJS)
 JAR=scala/server/target/scala-3.10.1/mir176.jar
 test -f "$JAR"
-test -f scala/client/web/index.html || { echo "缺客户端页面 scala/client/web/index.html（先构建客户端）"; exit 1; }
+test -f scala/client/web/index.html && test -f scala/client/web/js/main.js || { echo "缺客户端页面 scala/client/web/"; exit 1; }
 if [[ ! -f $JRE ]]; then
   echo "== 下载 JRE 21（linux x64）"
   curl -fL --retry 5 -A mir176-deploy -o $JRE.tmp 'https://api.adoptium.net/v3/binary/latest/21/ga/linux/x64/jre/hotspot/normal/eclipse'
