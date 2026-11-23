@@ -71,7 +71,8 @@
 - [x] 界面：用户要求「尽量接近原版 UI」→ ui/classic 照 FState.pas 移植（底栏、状态窗4页、包裹、商人、菜单、出售/保管、快捷键、设置）
 - [x] 服务端 server/server.mjs（登录、存档、ETag 缓存）；本机 dev：`set -a; . server/dev.env` 后 node server.mjs，密码 test
 - [x] 技能特效校准（tools/sheet.py 出帧号对照图）、骷髅洞、触屏技能按钮
-- [x] 部署 kaojiang：`mir/deploy/deploy.sh`（--init 首次）；systemd mir176（/opt/mir176，监听 cni0 10.42.0.1:18176），k3s ns mir176 Ingress；存档 /var/lib/mir176；密码 vault MIR176_PASSWORD
+- [x] 部署 kaojiang（Node 单机版，已停用）：systemd mir176（/opt/mir176，监听 cni0 10.42.0.1:18176），k3s ns mir176 Ingress；存档 /var/lib/mir176；密码 vault MIR176_PASSWORD
+- [x] 11-23 线上换成 Scala 多人版（#1148）：部署只用 `deploy/jvm/deploy.sh`（旧 deploy/deploy.sh 已停用）；用户账号 liewhite（密码 vault MIR176_PASSWORD），旧单机存档已导成角色；给朋友开号在服务器上 `/opt/mir176/bin/mir176ctl account add <账号>`。Node 版最后的存档留在 /var/lib/mir176/backup/save-node-final-pre-jvm.json。TS 版 game/ 不再上线，改玩法只改 scala/（TS 版只留作规则对照，scala/testdata/gen-golden.sh 用它算对照值）。
 - [x] 小地图、音效（tools/build_sounds.py → assets/sound/*.m4a）、远程怪、首屏预加载、物件 10 帧分块
 - [x] 手机布局（#1140，用户定）：`ui/viewport.ts` 按屏幕选布局——电脑/平板用原版底栏（`ui/classic/layout.ts` BoardLayout），触屏且短边 < 600 用手机布局（`ui/classic/touch.ts`）：界面与地图分开缩放、左半屏虚拟摇杆（`game/joystick.ts`）、点怪锁定并显示怪物信息、攻击键+F1–F8 技能环、物品点一下弹说明和操作菜单；安全区、添加到主屏幕全屏
 - [x] 第二阶段地图（#1139）：从比奇沿传送点走得到的 188 张地图全上（毒蛇山谷、盟重、沃玛森林/寺庙、石墓、祖玛、矿区、地牢等）；内容相同的地图共用素材（MapDef.asset），素材约 2.4G。
