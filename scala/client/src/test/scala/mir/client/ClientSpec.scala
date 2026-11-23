@@ -190,5 +190,84 @@ object ClientSpec extends ZIOSpecDefault:
         r.world.actor(chick.id).forall(_.isDead),
         r.client.view.stats.exists(_.exp.value > 0)
       )
+    },
+    test("点小地图走过去：寻路走到那一格停下") {
+      val r = Rig(blocked = (8 to 14).map(y => Cell(12, y)).toSet)
+      r.join(Cell(10, 10))
+      r.ctl.goTo(Cell(16, 11))
+      r.run(8000)
+      assertTrue(r.serverCell == Cell(16, 11), r.ctl.intent == mir.client.game.Intent.Idle)
+    },
+    test("拖物品：脱下武器放进包裹、双击穿回、扔掉快捷栏的药，都以服务端的结果为准") {
+      import mir.client.ui.{Hand, HandStep}
+      val r = Rig()
+      r.join(Cell(10, 10))
+      def view = r.client.view
+      def apply(step: HandStep): Option[Hand] =
+        step.cmds.foreach(r.client.send)
+        r.run(100)
+        step.hand
+      // 关掉自动捡物，扔下的药才留在地上
+      r.client.send(GameCmd.UpdateSettings(CharSettings(autoPickup = false)))
+      val sword = view.worn.get(EquipSlot.Weapon)
+      // 拿起武器（只是界面状态，还穿着），放到包裹第 3 格
+      val held   = apply(Hand.click(None, ItemPlace.Worn(EquipSlot.Weapon), sword, double = false))
+      val stillOn = view.worn.contains(EquipSlot.Weapon)
+      val placed = apply(Hand.click(held, ItemPlace.Bag(3), None, double = false))
+      val inBag  = view.bag(3).map(_.uid) == sword.map(_.uid) && !view.worn.contains(EquipSlot.Weapon)
+      // 包裹里双击：第一下拿起、第二下使用（穿上）
+      val again = apply(Hand.click(None, ItemPlace.Bag(3), view.bag(3), double = false))
+      apply(Hand.click(again, ItemPlace.Bag(3), view.bag(3), double = true))
+      val wornBack = view.worn.get(EquipSlot.Weapon).map(_.uid) == sword.map(_.uid)
+      // 穿着的不能直接扔；快捷栏的药扔到脚下
+      val wornDrop = Hand.dropOnGround(Hand(ItemPlace.Worn(EquipSlot.Weapon), sword.get))
+      val potion   = view.belt(0).get
+      apply(Hand.dropOnGround(Hand(ItemPlace.Belt(0), potion)))
+      assertTrue(
+        held.exists(_.item.uid == sword.get.uid), stillOn, placed.isEmpty, inBag, wornBack,
+        wornDrop.cmds.isEmpty && wornDrop.note.isDefined,
+        view.belt(0).isEmpty, view.ground.values.exists(_.thing == GroundThing.Item(potion.name)),
+        // 手上的东西被服务端挪走了就不再有效
+        !Hand.valid(view, Hand(ItemPlace.Belt(0), potion))
+      )
+    },
+    test("物品、属性、技能说明：装备写清加成和穿戴要求，换下旧装备的差值，药写回多少") {
+      import mir.client.ui.{Describe, Tint}
+      val r = Rig()
+      r.join(Cell(10, 10))
+      val me     = r.client.view.stats.get
+      val wood   = catalog.item(ItemName("木剑")).get
+      val bronze = catalog.item(ItemName("青铜剑")).get
+      val lines  = Describe.itemLines(bronze, None, Job.Warrior, me, Some(wood))
+      val potion = Describe.itemLines(catalog.item(ItemName("金创药(小量)")).get, None, Job.Warrior, me, None)
+      val stats  = Describe.statLines("甲", Job.Warrior, me, 15, 8)
+      val fire   = catalog.skill(SkillId(1)).get
+      assertTrue(
+        lines.head.text == "青铜剑",
+        lines.exists(_.text.startsWith("攻击 +")),
+        lines.exists(l => l.text.startsWith("换下 木剑")),
+        // 1 级穿不了青铜剑：要求标红
+        lines.exists(l => l.text.startsWith("需要等级") && l.tint == Tint.Bad),
+        potion.exists(_.text.startsWith("回复体力 20")),
+        stats.head.text.contains("战士"),
+        Describe.skillLines(fire, LearnedSkill(fire.id, 0, 3, Some(1))).exists(_.text.startsWith("耗魔法"))
+      )
+    },
+    test("设置：百分比每次 5，卡在 0–95；每一行改的是自己那一项") {
+      import mir.client.render.ViewOptions
+      import mir.client.ui.SettingRow
+      val s0 = CharSettings()
+      val o0 = ViewOptions()
+      val flipped = SettingRow.all.map {
+        case SettingRow.GameToggle(_, get, set)  => set(s0, !get(s0)) != s0 && get(set(s0, !get(s0))) != get(s0)
+        case SettingRow.GamePercent(_, get, set) => get(set(s0, 55)) == 55
+        case SettingRow.LocalToggle(_, get, set) => get(set(o0, !get(o0))) != get(o0)
+      }
+      assertTrue(
+        flipped.forall(identity),
+        SettingRow.stepPercent(0, up = false) == 0,
+        SettingRow.stepPercent(95, up = true) == 95,
+        SettingRow.stepPercent(40, up = true) == 45
+      )
     }
   )

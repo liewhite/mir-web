@@ -134,6 +134,8 @@ enum ServerMsg:
   case Equipment(worn: Map[EquipSlot, ItemInstance])
   case Storage(items: List[ItemInstance])
   case Skills(skills: List[LearnedSkill])
+  /** 技能冷却：技能 → 可再用的时刻（服务端时钟；界面画技能键上的冷却遮罩） */
+  case Cooldowns(ready: Map[SkillId, Millis])
   case Status(status: SelfStatus)
   case Sword(state: SwordState)
   case Settings(settings: CharSettings)

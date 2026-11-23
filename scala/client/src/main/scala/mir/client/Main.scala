@@ -6,7 +6,7 @@ import mir.client.game.{ClientEnv, Controller, GameClient}
 import mir.client.input.{Input, Joystick}
 import mir.client.net.{LocalServer, WsTransport}
 import mir.client.render.{Renderer, ViewOptions}
-import mir.client.ui.{BasicUi, Lobby, Viewport}
+import mir.client.ui.{ClassicUi, Gfx, Insets, Lobby, UiEnv, Viewport}
 import mir.core.*
 import mir.data.Catalog
 import org.scalajs.dom
@@ -67,14 +67,26 @@ object Main:
     )
     val client = GameClient(catalog, env)
     clientRef = Some(client)
-    val lobby = Lobby(client.send, client.enterGame)
-    val ctl = Controller(client)
-    val ui  = BasicUi(catalog, client, ctl, joystick, lobby)
+    val lobby = Lobby(client.send)
+    val ctl   = Controller(client)
+    def applyOptions(o: ViewOptions): Unit =
+      client.options = o
+      audio.soundOn = o.soundOn
+      audio.music(o.musicOn)
+    val uiEnv = UiEnv(
+      sound = id => audio.play(id, None, None),
+      saveOptions = o =>
+        dom.window.localStorage.setItem(OptionsKey, o.toJson)
+        applyOptions(o),
+      // 退出：重新打开页面回到选人（服务端在断线时存档）
+      logout = () => dom.window.location.reload(),
+      uiScale = () => view.uiScale
+    )
+    val touch = dom.window.matchMedia("(pointer: coarse)").matches
+    val ui    = ClassicUi(Gfx(renderer.ctx, sprites), catalog, client, ctl, joystick, lobby, uiEnv, touch)
     client.ui = ui
 
-    client.options = loadOptions()
-    audio.soundOn = client.options.soundOn
-    audio.music(client.options.musicOn)
+    applyOptions(loadOptions())
     Input(canvas, renderer, client, ctl, ui, joystick, () => view.uiScale, () => dom.window.innerWidth / view.uiScale)
     val unlock: js.Function1[dom.Event, Unit] = _ => audio.unlock()
     dom.window.addEventListener("pointerdown", unlock)
@@ -83,6 +95,9 @@ object Main:
     def fit(): Unit =
       view = Viewport.choose(dom.window.innerWidth, dom.window.innerHeight)
       renderer.resize(dom.window.innerWidth, dom.window.innerHeight, view.worldZoom)
+      val css = dom.window.getComputedStyle(dom.document.documentElement)
+      def inset(name: String): Double = css.getPropertyValue(name).trim.stripSuffix("px").toDoubleOption.getOrElse(0.0) / view.uiScale
+      ui.safe = Insets(inset("--safe-l"), inset("--safe-r"), inset("--safe-t"), inset("--safe-b"))
     fit()
     dom.window.addEventListener("resize", (_: dom.Event) => fit())
     // iOS 转屏后 innerWidth 有时晚一帧才更新
@@ -102,11 +117,11 @@ object Main:
         renderer.ctx.fillStyle = "#000"
         renderer.ctx.fillRect(0, 0, renderer.width, renderer.height)
       renderer.scaleTo(view.uiScale)
-      ui.draw(renderer.ctx, dom.window.innerWidth / view.uiScale, dom.window.innerHeight / view.uiScale, view.ctlScale)
+      ui.draw(dom.window.innerWidth / view.uiScale, dom.window.innerHeight / view.uiScale, view.ctlScale)
       dom.window.requestAnimationFrame(frame): Unit
     dom.window.requestAnimationFrame(frame): Unit
 
-    DebugHandle.install(client, ctl, renderer)
+    DebugHandle.install(client, ctl, renderer, ui)
 
   private def loadOptions(): ViewOptions =
     Option(dom.window.localStorage.getItem(OptionsKey)).flatMap(_.fromJson[ViewOptions].toOption).getOrElse(ViewOptions())
@@ -115,7 +130,7 @@ object Main:
  * 给自动化测试（browser-cli）看的把手：window.__mir 上读状态摘要、触发操作。只读视野副本、只调公开的意图入口，不绕过协议。
  */
 object DebugHandle:
-  def install(client: GameClient, ctl: Controller, renderer: Renderer): Unit =
+  def install(client: GameClient, ctl: Controller, renderer: Renderer, ui: ClassicUi): Unit =
     val handle = js.Dynamic.literal(
       state = () =>
         js.JSON.parse(
@@ -134,8 +149,15 @@ object DebugHandle:
       release = () => ctl.stickReleased(),
       tap = (id: Int) => ctl.tapActor(ActorId(id)),
       attack = () => ctl.attack(),
+      goTo = (x: Int, y: Int) => ctl.goTo(Cell(x, y)),
       teleport = (i: Int) => client.send(mir.protocol.GameCmd.Teleport(TeleportRef(i))),
-      cam = () => js.Array(renderer.camX, renderer.camY, renderer.zoom)
+      cam = () => js.Array(renderer.camX, renderer.camY, renderer.zoom),
+      screen = () => ui.screen.toString.takeWhile(_ != '('),
+      chat = () => js.Array(ui.chat.map(_.text)*),
+      bag = () => js.Array(client.view.bag.flatten.map(_.name.value)*),
+      worn = () => js.Array(client.view.worn.toSeq.map((s, i) => s"${s.key}=${i.name.value}")*),
+      gold = () => client.view.stats.fold(0L)(_.gold.value),
+      sent = () => js.Array(client.recent.filter(_.isInstanceOf[mir.protocol.GameCmd]).map(_.toString)*)
     )
     dom.window.asInstanceOf[js.Dynamic].__mir = handle
 

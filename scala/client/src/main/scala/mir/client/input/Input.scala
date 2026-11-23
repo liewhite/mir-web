@@ -4,16 +4,20 @@ import mir.client.game.{Controller, GameClient}
 import mir.client.render.Renderer
 import org.scalajs.dom
 
-/** 界面层（底栏、窗口、操作件）先接触摸：接了返回 true，地图就不管这一下。坐标是界面像素。 */
+/**
+ * 界面层（底栏、窗口、操作件）先接触摸和按键：接了返回 true，地图、技能键就不管这一下。坐标是界面像素。
+ * button：鼠标键（0 左、2 右；手指算 0）。
+ */
 trait Overlay:
-  def pointerDown(p: Pt, pointer: Double): Boolean
+  def pointerDown(p: Pt, pointer: Double, button: Int): Boolean
   def pointerMove(p: Pt, pointer: Double): Unit
   def pointerUp(p: Pt, pointer: Double): Unit
+  def key(k: String): Boolean
 
 /**
  * 触屏、鼠标、键盘 → 先给界面，界面不要的再变成 Controller 意图（照 TS 版 game/input.ts 的摇杆布局，用户 #1140 定）：
  * 点中怪锁定、点 NPC 对话、点地上物品去捡，否则在左半屏按下就是摇杆；多指同时操作（一指摇杆、一指按技能）。
- * 键盘：F1–F8 放技能，空格捡脚下的东西。不做电脑鼠标走路（用户 11-23）。
+ * 键盘：先给界面（窗口快捷键、聊天），剩下 F1–F8 放技能、空格捡脚下的东西。不做电脑鼠标走路（用户 11-23）。
  */
 final class Input(
     canvas: dom.HTMLCanvasElement,
@@ -46,7 +50,7 @@ final class Input(
     (e: dom.PointerEvent) =>
       e.preventDefault()
       val u = uiPos(e)
-      if overlay.pointerDown(u, e.pointerId) then uiFingers += e.pointerId
+      if overlay.pointerDown(u, e.pointerId, e.button) then uiFingers += e.pointerId
       else
         // 手指滑出画布也继续收到移动；合成事件抓不了也不影响
         try canvas.setPointerCapture(e.pointerId)
@@ -87,14 +91,16 @@ final class Input(
   dom.window.addEventListener(
     "keydown",
     (e: dom.KeyboardEvent) =>
-      Input.fKey(e.key) match
-        case Some(n) =>
-          e.preventDefault()
-          ctl.castKey(n)
-        case None =>
-          if e.key == " " then
+      if overlay.key(e.key) then e.preventDefault()
+      else if client.map.isDefined then
+        Input.fKey(e.key) match
+          case Some(n) =>
             e.preventDefault()
-            ctl.pickUpHere()
+            ctl.castKey(n)
+          case None =>
+            if e.key == " " then
+              e.preventDefault()
+              ctl.pickUpHere()
   )
 
 object Input:

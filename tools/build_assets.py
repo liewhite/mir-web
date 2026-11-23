@@ -273,7 +273,7 @@ def main() -> None:
     if args.only in (None, "libs"):
         # 角色、怪物、NPC、技能、物品、界面：图库体积不大的整库导出；怪物按需
         for lib in ["hum", "hair", "weapon", "magic", "magic2", "items", "dnitems", "stateitem",
-                    "prguse", "prguse2", "magicon", "npc", "mmap", "effect"]:
+                    "prguse", "prguse2", "magicon", "npc", "mmap", "effect", "chrsel"]:
             add(lib, whole(lib))
         sys.path.insert(0, str(Path(__file__).parent))
         from monsters import monster_libs  # noqa: E402

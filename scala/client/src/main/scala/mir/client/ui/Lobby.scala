@@ -1,8 +1,6 @@
 package mir.client.ui
 
-import mir.core.CharId
-import mir.model.{Job, Sex}
-import mir.protocol.{CharSummary, SessionCmd}
+import mir.protocol.SessionCmd
 import org.scalajs.dom
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits.*
 
@@ -10,10 +8,10 @@ import scala.concurrent.{Future, Promise}
 import scala.scalajs.js
 
 /**
- * 进游戏前的网页表单（index.html 里的 #loading）：登录（HTTP，拿到 cookie 素材才给下载）、选角色或建角色。
- * 原版风格的选人界面在 #1156 做，这里是能用的最简版。
+ * 进游戏前的网页表单（index.html 里的 #loading）：加载进度、登录（HTTP，拿到 cookie 素材才给下载；网页表单浏览器能记密码）。
+ * 选人、建角色是画布上的原版画面（ui.CharSelect）。
  */
-final class Lobby(send: SessionCmd => Unit, enter: CharId => Unit):
+final class Lobby(send: SessionCmd => Unit):
   import Lobby.*
 
   def status(text: String): Unit = Lobby.status(text)
@@ -56,41 +54,10 @@ final class Lobby(send: SessionCmd => Unit, enter: CharId => Unit):
     done.future
 
   def loggedIn(account: String): Unit =
-    status(s"$account，选择角色")
+    status(s"$account，读取角色…")
     send(SessionCmd.ListChars)
 
-  /** 列出角色（点名字进游戏）；不到两个时可以再建。 */
-  def charList(chars: List[CharSummary]): Unit =
-    show()
-    val list = $[dom.HTMLElement]("#chars")
-    list.classList.remove("hidden")
-    list.innerHTML = ""
-    chars.foreach { c =>
-      val b = dom.document.createElement("button").asInstanceOf[dom.HTMLButtonElement]
-      b.className = "char"
-      b.textContent = s"${c.name}  ${c.job.label} ${c.sex.label}  ${c.level} 级"
-      b.onclick = _ =>
-        list.classList.add("hidden")
-        $[dom.HTMLElement]("#create").classList.add("hidden")
-        status("进入游戏…")
-        enter(c.id)
-      list.appendChild(b)
-    }
-    val form = $[dom.HTMLFormElement]("#create")
-    if chars.size < Lobby.MaxChars then form.classList.remove("hidden") else form.classList.add("hidden")
-    form.onsubmit = e =>
-      e.preventDefault()
-      val fd   = new dom.FormData(form)
-      val name = fd.get("name").toString.trim
-      if name.nonEmpty then
-        val job = Job.values.find(_.code.toString == fd.get("job").toString).getOrElse(Job.Warrior)
-        val sex = Sex.values.find(_.code.toString == fd.get("sex").toString).getOrElse(Sex.Male)
-        send(SessionCmd.CreateChar(name, job, sex))
-
 object Lobby:
-  /** 每个账号最多两个角色（原版选人界面两个位） */
-  val MaxChars = 2
-
   private def $[T <: dom.Element](sel: String): T = dom.document.querySelector(sel).asInstanceOf[T]
 
   /** 加载页上的状态文字（进游戏前的各步、出错原因）。 */

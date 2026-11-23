@@ -2,7 +2,8 @@ package mir.client.game
 
 import mir.core.*
 import mir.protocol.{GameCmd, GroundView, Look, Tone}
-import mir.world.{Path, PlayerOps, World}
+import mir.model.LearnedSkill
+import mir.world.{Combat, Path, PlayerOps, World}
 
 /** 玩家想做的事：输入只改意图，每帧在自己空闲时推进一步。 */
 enum Intent:
@@ -15,6 +16,8 @@ enum Intent:
   case Fetch(item: GroundId)
   /** 走近锁定的怪打它（服务端按「按住攻击」设置决定打一下还是打到死） */
   case Fight(target: ActorId)
+  /** 走到某一格（点小地图） */
+  case GoTo(cell: Cell)
 
 /**
  * 输入意图 → 游戏指令（照 TS 版 game/controller.ts，自动喝药、自动捡物、还手、烈火已挪到服务端 AutoPlay）。
@@ -62,14 +65,22 @@ final class Controller(client: GameClient):
       intent = Intent.Fight(t)
     case None => client.ui.notice("附近没有怪", Tone.Bad)
 
-  /** 放 F1–F8 上的技能：打锁定的怪，没有就打最近的，再没有就对着自己脚下。 */
+  /** 放 F1–F8 上的技能。 */
   def castKey(key: Int): Unit =
-    client.view.skills.find(_.key.contains(key)).foreach { s =>
-      val target = autoTarget()
-      target.foreach(t => client.locked = Some(t))
-      val cell = target.flatMap(client.actor).orElse(client.self).map(_.cell)
-      cell.foreach(c => client.send(GameCmd.Cast(s.id, target, c)))
-    }
+    client.view.skills.find(_.key.contains(key)).foreach(s => castSkill(s.id))
+
+  /** 放技能：打锁定的怪，没有就打最近的，再没有就对着自己脚下（治愈、召唤、魔法盾）。 */
+  def castSkill(id: SkillId): Unit =
+    val target = autoTarget()
+    target.foreach(t => client.locked = Some(t))
+    val cell = target.flatMap(client.actor).orElse(client.self).map(_.cell)
+    cell.foreach(c => client.send(GameCmd.Cast(id, target, c)))
+
+  /** 走到某一格（点小地图）。 */
+  def goTo(cell: Cell): Unit = intent = Intent.GoTo(cell)
+
+  /** 能主动放的技能（不是被动），按学会的顺序。 */
+  def activeSkills: List[LearnedSkill] = client.view.skills.filterNot(s => Combat.isPassive(s.id))
 
   def pickUpHere(): Unit = client.send(GameCmd.PickUp)
 
@@ -113,6 +124,8 @@ final class Controller(client: GameClient):
               // 服务端「按住攻击」关着时只打一下
               if !client.view.settings.stickyAttack then intent = Intent.Idle
           case Some(a) => approach(me.cell, a.cell, adjacent = true)
+      case Intent.GoTo(cell) =>
+        if me.cell == cell then intent = Intent.Idle else approach(me.cell, cell, adjacent = false)
   }
 
   /** 朝目标走一步（寻路绕开障碍，远就跑）。 */

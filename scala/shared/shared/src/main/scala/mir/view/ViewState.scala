@@ -20,6 +20,8 @@ final case class ViewState(
     worn: Map[EquipSlot, ItemInstance] = Map.empty,
     storage: List[ItemInstance] = Nil,
     skills: List[LearnedSkill] = Nil,
+    /** 技能 → 可再用的时刻（服务端时钟） */
+    cooldowns: Map[SkillId, Millis] = Map.empty,
     status: SelfStatus = SelfStatus(),
     sword: SwordState = SwordState(longHitOn = true, wideHitOn = false, fireReady = false),
     settings: CharSettings = CharSettings(),
@@ -44,6 +46,7 @@ final case class ViewState(
     case ServerMsg.Equipment(w)             => copy(worn = w)
     case ServerMsg.Storage(items)           => copy(storage = items)
     case ServerMsg.Skills(s)                => copy(skills = s)
+    case ServerMsg.Cooldowns(c)             => copy(cooldowns = c)
     case ServerMsg.Status(s)                => copy(status = s)
     case ServerMsg.Sword(s)                 => copy(sword = s)
     case ServerMsg.Settings(s)              => copy(settings = s)

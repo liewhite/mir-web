@@ -606,6 +606,7 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
     SelfView(
       stats = SelfStats(p.level, p.exp, catalog.expToNext(p.level), Hp(p.hp), Mp(p.mp), p.gold, bagWeight(p), wearWeight(p), p.stats),
       bag = p.bag.toVector, belt = p.belt.toVector, worn = p.worn.toMap, storage = p.storage.toList, skills = p.skills.toList,
+      cooldowns = p.cooldown.toMap,
       status = SelfStatus(
         poison = p.poison.map(_.kind), poisonUntil = p.poison.map(_.until),
         shieldUntil = Option.when(p.shieldUntil > clock)(p.shieldUntil),
@@ -684,6 +685,7 @@ final case class SelfView(
     worn: Map[EquipSlot, ItemInstance],
     storage: List[ItemInstance],
     skills: List[LearnedSkill],
+    cooldowns: Map[SkillId, Millis],
     status: SelfStatus,
     sword: SwordState,
     settings: CharSettings
@@ -698,6 +700,7 @@ object SelfView:
       Option.when(changed(_.worn))(ServerMsg.Equipment(now.worn)),
       Option.when(changed(_.storage))(ServerMsg.Storage(now.storage)),
       Option.when(changed(_.skills))(ServerMsg.Skills(now.skills)),
+      Option.when(changed(_.cooldowns))(ServerMsg.Cooldowns(now.cooldowns)),
       Option.when(changed(_.status))(ServerMsg.Status(now.status)),
       Option.when(changed(_.sword))(ServerMsg.Sword(now.sword)),
       Option.when(changed(_.settings))(ServerMsg.Settings(now.settings))

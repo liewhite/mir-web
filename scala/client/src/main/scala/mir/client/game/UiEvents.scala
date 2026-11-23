@@ -4,7 +4,7 @@ import mir.core.*
 import mir.protocol.{ChatKind, CharSummary, Tone}
 
 /**
- * 客户端核心告诉界面的事（界面实现它；原版界面在 #1156，现在是 ui.BasicUi 的简单版）。
+ * 客户端核心告诉界面的事（界面 ui.ClassicUi 实现它）。
  * 视野、属性、背包这些状态界面直接读 GameClient.view，这里只有一次性的事。
  */
 trait UiEvents:

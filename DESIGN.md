@@ -53,11 +53,14 @@
     - 部署 `deploy/jvm/deploy.sh`（sbt-assembly 打成 mir176.jar；JRE 21 放 /opt/mir176/jre；systemd 单元仍叫 mir176、端口和 Ingress 不变；服务器上命令行 `/opt/mir176/bin/mir176ctl`）。从 Node 版切过来在 #1148 做。
   - `client/`（Scala.js，#1155；照 TS 版 assets/render/audio/input/joystick/viewport 移植，画面与 TS 版逐像素对得上）：
     - 构建：`sbt client/fastLinkJS`（开发）/ `client/fullLinkJS`（发布，约 5MB）产物在 `client/web/js/main.js`（不进 git）；`client/web/` 是服务端在 `/` 提供的静态目录（index.html、style.css、图标）。
+    - 选人画面用 ChrSel 图库（build_assets.py 整库导出的 `chrsel`）。
     - 本机看：`client/dev-serve.sh [端口]`（默认 18190，只听 127.0.0.1）后开 `http://127.0.0.1:18190/?local`：`net.LocalServer` 在浏览器里跑共用的世界当服务端（同一协议，指令消息都过 JSON），不用起服务端。`window.__mir` 给 browser-cli 测试：`state()`、`stick(方向,跑)`、`release()`、`tap(对象)`、`attack()`、`teleport(下标)`。
     - 和服务端的约定（#1154 评论）：HTTP `api/login`/`api/me` 登录拿 cookie（素材要登录），WebSocket 在相对路径 `ws`，一帧一条 JSON；连上服务端先发 LoggedIn；断线自动重连后直接 `EnterGame(上次的角色)`。
     - `net`：`Transport`（WsTransport / LocalServer）、`ServerClock`（进图粗定、Ping/Pong 按往返一半校正，只采信快的）。
     - `game`：`GameClient`（视野副本 + 一次性画面 + 发指令，不碰 DOM，测试里直接接 World 跑）、`SelfMotion`（本地先走：发 Walk/Run 同时本地走，MoveOk 才发下一步，MoveDenied 丢掉本地的回到服务端位置）、`Controller`（意图：摇杆走跑、点 NPC 走过去对话、点物品去捡、锁定攻击；自动喝药捡物还手烈火在服务端 AutoPlay）、`UiEvents`（给界面的一次性事件）。
-    - `assets`（素材版本、图集块、地图格子 MapData、重试下载）、`render`（Frames 动作表、Renderer、Scene、Transients 特效飘字气泡）、`audio`、`input`（Joystick、Input：界面 Overlay 先接触摸）、`ui`（Viewport、Lobby 登录选人网页表单、BasicUi 临时界面：消息、锁定怪信息、攻击键、复活；#1156 的原版界面实现 UiEvents + Overlay 后替换它）。
+    - `assets`（素材版本、图集块、地图格子 MapData、重试下载）、`render`（Frames 动作表、Renderer、Scene、Transients 特效飘字气泡）、`audio`、`input`（Joystick、Input：界面 Overlay 先接触摸和按键）。
+    - `ui`（#1156，照 TS 版 ui/classic 移植，外观操作一致）：`ClassicUi`（实现 UiEvents + Overlay；画面 Lobby/Select/Game、窗口开关、点击登记 `Hits`、键盘）、`Board`（原版底栏 + 叠在上方的摇杆/攻击键/F1–F8 技能环/锁定怪信息 + 传送键）、`Panels`（小地图、状态窗 4 页、包裹、设置、技能快捷键、悬停说明、手机物品菜单）、`MerchantPanel`（买卖存取）、`TeleportPanel`、`CharSelect`（原版选人/建角色画面，ChrSel 图库）、`ChatInput`（回车或点聊天框弹网页输入框，「!」开头喊话）、`Describe`（物品/属性/技能说明，纯函数）、`Hand`（拖物品：只是界面状态，放下时发 MoveItem/UseItem/DropItem，结果以服务端为准）、`SettingRow`（设置分两类：玩法类发 UpdateSettings 存角色上，画面声音类存 localStorage）、`Lobby`（加载页、登录网页表单）。所有改状态的操作都发 GameCmd，画的永远是视野副本。触屏设备（pointer: coarse）点物品弹说明+操作菜单（按触屏倍数放大），电脑点一下拿起、再点放下、双击使用。
+    - `window.__mir` 另有 `screen()`、`chat()`、`bag()`、`worn()`、`gold()`、`sent()`（最近发出的游戏指令）、`goTo(x,y)`。
 - 测试：怪物行为（TS 版 7 项）、多人（互相看见、各打各的、掉落、换图消失、60 秒随机操作每步副本与世界一致、比奇省满图性能）、非法指令；game.json 完整解码与引用检查；规则与 TS 版逐条对照（`scala/testdata/ts-golden.json`，TS 规则改了就跑 `scala/testdata/gen-golden.sh` 重算）；协议每种消息往返（新加消息必须补样例，测试会查）。
 
 ## 进度

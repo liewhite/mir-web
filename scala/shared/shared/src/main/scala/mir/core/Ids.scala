@@ -63,6 +63,8 @@ object SkillId:
   def apply(n: Int): SkillId                  = n
   extension (id: SkillId) def value: Int      = id
   given JsonCodec[SkillId]                    = JsonCodec.int
+  given zio.json.JsonFieldDecoder[SkillId]    = zio.json.JsonFieldDecoder.int
+  given zio.json.JsonFieldEncoder[SkillId]    = zio.json.JsonFieldEncoder.int
 
 /** 账号下的角色编号（服务端数据库分配）。 */
 opaque type CharId = Long

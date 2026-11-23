@@ -86,6 +86,7 @@ object ProtocolSpec extends ZIOSpecDefault:
     ServerMsg.Equipment(Map(EquipSlot.Weapon -> pot.copy(uid = ItemUid(1L)), EquipSlot.RingL -> pot)),
     ServerMsg.Storage(List(pot)),
     ServerMsg.Skills(List(LearnedSkill(SkillId(1), 2, 300, Some(1)), LearnedSkill(SkillId(3), 0, 0, None))),
+    ServerMsg.Cooldowns(Map(SkillId(1) -> t0, SkillId(26) -> (t0 + 10000))),
     ServerMsg.Status(SelfStatus(poison = Some(PoisonKind.Green), poisonUntil = Some(t0), shieldUntil = Some(t0 + 1000))),
     ServerMsg.Sword(SwordState(longHitOn = true, wideHitOn = false, fireReady = true)),
     ServerMsg.Settings(CharSettings()),

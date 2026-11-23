@@ -44,7 +44,12 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
   private var playing = Option.empty[CharId]
 
   def connect(t: Transport): Unit = transport = Some(t)
-  def send(cmd: ClientCmd): Unit  = transport.foreach(_.send(cmd))
+  /** 最近发出的指令（给 window.__mir 测试看） */
+  var recent: Vector[ClientCmd] = Vector.empty
+
+  def send(cmd: ClientCmd): Unit =
+    recent = (recent :+ cmd).takeRight(GameClient.RecentKeep)
+    transport.foreach(_.send(cmd))
 
   def serverNow: Millis = clock.now(env.localNow())
 
@@ -183,3 +188,6 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
   /** 自己在做的攻击、施法等动作完了没（服务端在动作里不让走）。 */
   def actionDone(s: ActorView, now: Millis): Boolean =
     s.action.kind == ActKind.Walk || s.action.kind == ActKind.Run || Frames.finished(s.action, now)
+
+object GameClient:
+  val RecentKeep = 20
