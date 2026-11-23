@@ -3908,15 +3908,14 @@ var TouchControls = class {
     this.drawAttack(a.attack);
     this.drawSkills(a.attack);
   }
-  /** F1-F8 按键位摆；没设快捷键的主动技能顺次补进空位（只是显示，不改存档里的快捷键）。 */
+  /** F1-F8 按键位摆；只显示设了快捷键的技能，取消快捷键即从技能环消失（#1164）。 */
   skillButtons(attack2) {
     const all = this.h.ctl.activeSkills();
     const byKey = new Map(all.filter((s) => s.key > 0 && s.key <= 8).map((s) => [s.key, s]));
-    const loose = all.filter((s) => !(s.key > 0 && s.key <= 8));
     const out = [];
     const sr = SKILL_R * this.s;
     for (let k = 1; k <= 8; k++) {
-      const s = byKey.get(k) ?? loose.shift();
+      const s = byKey.get(k);
       if (!s) continue;
       const ring = RINGS[k <= 4 ? 0 : 1] * this.s;
       const ang = ANGLES[(k - 1) % 4] * Math.PI / 180;
