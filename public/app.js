@@ -3016,6 +3016,8 @@ var ClassicUi = class {
     this.buttons = [];
     this.W = 800;
     this.H = 600;
+    /** 安全区（刘海、圆角），逻辑像素；触屏按钮和贴边的小地图要避开 */
+    this.safe = { left: 0, right: 0, top: 0, bottom: 0 };
     /** 触屏设备：在右侧画技能按钮（原版没有，手机上没有 F1-F8） */
     this.touch = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
     /** 退出按钮：存档后回到登录画面 */
@@ -3179,7 +3181,7 @@ var ClassicUi = class {
     const my = p.y;
     const left = Math.max(0, Math.min(s.w - 120, mx - 60));
     const top = Math.max(0, Math.min(s.h - 120, my - 60));
-    return { idx: idx - 1, rc: { x: left, y: top, w: Math.min(120, s.w), h: Math.min(120, s.h) }, x: this.W - 120, y: 0 };
+    return { idx: idx - 1, rc: { x: left, y: top, w: Math.min(120, s.w), h: Math.min(120, s.h) }, x: this.W - 120 - this.safe.right, y: this.safe.top };
   }
   drawMiniMap(now) {
     const m = this.miniRect();
@@ -3219,7 +3221,7 @@ var ClassicUi = class {
   drawTouchSkills() {
     const g = this.g;
     const keyed = this.p.skills.filter((s) => s.key > 0).sort((a, b) => a.key - b.key);
-    const x = this.W - 44;
+    const x = (this.stateOpen ? this.stateX() : this.W - this.safe.right) - 44;
     let y = this.H - BOARD_H - 44;
     for (const ls of keyed) {
       const def = this.catalog.skillsById.get(ls.id);
@@ -3237,7 +3239,7 @@ var ClassicUi = class {
   }
   // ---------------- 状态窗 ----------------
   stateX() {
-    return this.W - 232;
+    return this.W - 232 - this.safe.right;
   }
   drawState() {
     const g = this.g;
@@ -3354,7 +3356,7 @@ var ClassicUi = class {
   }
   // ---------------- 包裹 ----------------
   bagX() {
-    return this.npc ? 475 : 0;
+    return (this.npc ? 475 : 0) + this.safe.left;
   }
   gridCell(i) {
     const x = this.bagX();
@@ -4139,7 +4141,12 @@ async function main() {
     applyView();
     void persist();
   };
-  const fit = () => renderer.resize(window.innerWidth, window.innerHeight);
+  const fit = () => {
+    renderer.resize(window.innerWidth, window.innerHeight);
+    const css = getComputedStyle(document.documentElement);
+    const inset = (name) => (parseFloat(css.getPropertyValue(name)) || 0) / renderer.zoom;
+    ui.safe = { left: inset("--safe-l"), right: inset("--safe-r"), top: inset("--safe-t"), bottom: inset("--safe-b") };
+  };
   fit();
   window.addEventListener("resize", fit);
   bindInput(canvas, renderer, ctl, ui);

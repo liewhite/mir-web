@@ -35,6 +35,13 @@ interface Hand {
 
 type MerchantMode = 'talk' | 'buy' | 'sell' | 'store' | 'getback';
 
+export interface Insets {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
 interface Button extends Rect {
   img: number;
   /** 平时也画（不是底图的一部分） */
@@ -80,6 +87,8 @@ export class ClassicUi {
   private buttons: Button[] = [];
   W = 800;
   H = 600;
+  /** 安全区（刘海、圆角），逻辑像素；触屏按钮和贴边的小地图要避开 */
+  safe: Insets = { left: 0, right: 0, top: 0, bottom: 0 };
   /** 触屏设备：在右侧画技能按钮（原版没有，手机上没有 F1-F8） */
   readonly touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 
@@ -269,7 +278,7 @@ export class ClassicUi {
     const my = p.y;
     const left = Math.max(0, Math.min(s.w - 120, mx - 60));
     const top = Math.max(0, Math.min(s.h - 120, my - 60));
-    return { idx: idx - 1, rc: { x: left, y: top, w: Math.min(120, s.w), h: Math.min(120, s.h) }, x: this.W - 120, y: 0 };
+    return { idx: idx - 1, rc: { x: left, y: top, w: Math.min(120, s.w), h: Math.min(120, s.h) }, x: this.W - 120 - this.safe.right, y: this.safe.top };
   }
 
   private drawMiniMap(now: number): void {
@@ -309,7 +318,8 @@ export class ClassicUi {
   private drawTouchSkills(): void {
     const g = this.g;
     const keyed = this.p.skills.filter((s) => s.key > 0).sort((a, b) => a.key - b.key);
-    const x = this.W - 44;
+    // 状态窗开着时挤到它左边，免得被盖住
+    const x = (this.stateOpen ? this.stateX() : this.W - this.safe.right) - 44;
     let y = this.H - BOARD_H - 44;
     for (const ls of keyed) {
       const def = this.catalog.skillsById.get(ls.id)!;
@@ -329,7 +339,7 @@ export class ClassicUi {
   // ---------------- 状态窗 ----------------
 
   private stateX(): number {
-    return this.W - 232;
+    return this.W - 232 - this.safe.right;
   }
 
   private drawState(): void {
@@ -448,7 +458,7 @@ export class ClassicUi {
   // ---------------- 包裹 ----------------
 
   private bagX(): number {
-    return this.npc ? 475 : 0;
+    return (this.npc ? 475 : 0) + this.safe.left;
   }
 
   private gridCell(i: number): Rect {

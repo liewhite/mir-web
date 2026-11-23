@@ -33,7 +33,8 @@ if (!PASSWORD_HASH.startsWith('scrypt$') || SECRET.length < 16) {
   process.exit(1);
 }
 
-const PUBLIC_FILES = new Set(['/', '/index.html', '/style.css', '/app.js', '/app.js.map', '/favicon.ico']);
+const PUBLIC_FILES = new Set(['/', '/index.html', '/style.css', '/app.js', '/app.js.map', '/favicon.ico',
+  '/manifest.webmanifest', '/icon-180.png', '/icon-512.png']);
 const SESSION_DAYS = 90;
 const MAX_SAVE = 2 * 1024 * 1024;
 
@@ -41,8 +42,9 @@ const TYPES = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.map': 'application/json', '.json': 'application/json', '.png': 'image/png', '.webp': 'image/webp',
   '.bin': 'application/octet-stream', '.wav': 'audio/wav', '.ico': 'image/x-icon',
+  '.webmanifest': 'application/manifest+json',
 };
-const COMPRESSIBLE = new Set(['.html', '.css', '.js', '.map', '.json', '.bin']);
+const COMPRESSIBLE = new Set(['.html', '.css', '.js', '.map', '.json', '.bin', '.webmanifest']);
 
 // ---------------- 登录 ----------------
 

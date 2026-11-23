@@ -1,7 +1,10 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: #000; overflow: hidden; color: #e8dcc0;
   font: 13px/1.45 "PingFang SC", "Microsoft YaHei", sans-serif; -webkit-user-select: none; user-select: none;
-  touch-action: none; overscroll-behavior: none; }
+  touch-action: none; overscroll-behavior: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+/* 安全区（刘海、圆角、底部横条），JS 读这几个变量把触屏按钮挪进来 */
+:root { --safe-l: env(safe-area-inset-left, 0px); --safe-r: env(safe-area-inset-right, 0px);
+  --safe-t: env(safe-area-inset-top, 0px); --safe-b: env(safe-area-inset-bottom, 0px); }
 canvas#game { position: fixed; inset: 0; display: block; image-rendering: pixelated; }
 .hidden { display: none !important; }
 button { font: inherit; color: #f4e6c4; background: linear-gradient(#5b4426, #3a2a16); border: 1px solid #8a6a3a;

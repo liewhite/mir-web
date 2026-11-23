@@ -145,7 +145,12 @@ async function main(): Promise<void> {
     applyView();
     void persist();
   };
-  const fit = (): void => renderer.resize(window.innerWidth, window.innerHeight);
+  const fit = (): void => {
+    renderer.resize(window.innerWidth, window.innerHeight);
+    const css = getComputedStyle(document.documentElement);
+    const inset = (name: string): number => (parseFloat(css.getPropertyValue(name)) || 0) / renderer.zoom;
+    ui.safe = { left: inset('--safe-l'), right: inset('--safe-r'), top: inset('--safe-t'), bottom: inset('--safe-b') };
+  };
   fit();
   window.addEventListener('resize', fit);
   bindInput(canvas, renderer, ctl, ui);
