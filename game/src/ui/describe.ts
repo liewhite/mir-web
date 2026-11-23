@@ -52,7 +52,7 @@ export function itemLines(def: ItemDef, inst: ItemInstance | null, p: Player, co
       out.push({ text: { town: '回到城里', escape: '离开地下城回到城里', random: '随机传送到本地图某处', other: '特殊卷轴' }[k.effect] });
       break;
     case 'bundle':
-      out.push({ text: '双击拆成 6 瓶（需要 6 个空位）' });
+      out.push({ text: '双击拆成 6 瓶（和包裹里同名的药叠在一起）' });
       break;
     case 'amulet':
       out.push({ text: k.poison === 0 ? '道士施法消耗（灵魂火符、召唤、隐身）' : k.poison === 1 ? '施毒术用：绿毒，持续掉血' : '施毒术用：红毒，降低防御' });
@@ -74,8 +74,10 @@ export function itemLines(def: ItemDef, inst: ItemInstance | null, p: Player, co
     const have = req.stat === 'level' ? p.level : req.stat === 'dc' ? p.stats.dc[1] : req.stat === 'mc' ? p.stats.mc[1] : p.stats.sc[1];
     out.push({ text: `需要${label} ${req.value}`, tone: have >= req.value ? 'dim' : 'bad' });
   }
+  if (inst && inst.count > 1) out.push({ text: `数量 ${inst.count}（叠在一格，用一个少一个）` });
   out.push({ text: `重量 ${def.weight}${inst && k.kind === 'equip' ? `　持久 ${Math.ceil(inst.dura / 1000)}/${Math.ceil(inst.duraMax / 1000)}` : ''}`, tone: 'dim' });
-  out.push({ text: `卖给商店约 ${Math.floor(def.price / 2)} 金币`, tone: 'gold' });
+  const each = Math.floor(def.price / 2);
+  out.push({ text: inst && inst.count > 1 ? `卖给商店每个约 ${each} 金币，整叠 ${each * inst.count}` : `卖给商店约 ${each} 金币`, tone: 'gold' });
   return out;
 }
 

@@ -2,6 +2,7 @@
 import type { Catalog } from '../data/defs';
 import { BAG_SIZE, Player } from '../world/entities';
 import { EQUIP_SLOTS, type EquipSlot, type ItemInstance, setNextUid } from '../world/items';
+import { normalize } from '../world/inventory';
 import type { Job } from '../world/rules';
 
 export const SAVE_VERSION = 1;
@@ -48,7 +49,7 @@ export function toSave(p: Player, settings: Record<string, unknown>): SaveData {
   };
 }
 
-/** 读档：丢掉数据表里已不存在的物品，避免旧存档把游戏弄坏。 */
+/** 读档：丢掉数据表里已不存在的物品，避免旧存档把游戏弄坏；旧存档没有物品数量的按 1 算。 */
 export function fromSave(d: SaveData, catalog: Catalog, id: number, now: number): Player {
   const s = d.player;
   const p = new Player(id, s.name, s.job, s.sex, s.map, s.x, s.y, now);
@@ -68,6 +69,7 @@ export function fromSave(d: SaveData, catalog: Catalog, id: number, now: number)
   p.skills = s.skills.filter((x) => catalog.skillsById.has(x.id)).map((x) => ({ ...x }));
   p.longHitOn = s.longHitOn;
   p.wideHitOn = s.wideHitOn;
+  normalize(catalog, p); // 旧存档补数量、同名可叠的并成一叠（#1159）
   const all = [...p.bag, ...p.belt, ...p.storage, ...Object.values(p.equip)];
   setNextUid(1 + Math.max(0, ...all.map((it) => it?.uid ?? 0)));
   return p;

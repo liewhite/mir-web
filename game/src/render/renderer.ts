@@ -7,7 +7,7 @@ import type { Catalog } from '../data/defs';
 import { GROUND_BLOCK, type MapData, UNITX, UNITY } from '../assets/mapdata';
 import { type Sprite, type SpriteStore, assetUrl } from '../assets/sprites';
 import { type Actor, type GroundItem, type Monster, type Player, isGold } from '../world/entities';
-import { itemKind } from '../world/items';
+import { itemKind, itemLabel } from '../world/items';
 import type { VisualEffect, World } from '../world/world';
 import { HUMAN_FRAMES, humanFrame, monsterFrame, monsterLook, weaponInFront } from './frames';
 
@@ -479,7 +479,7 @@ export class Renderer {
         const x = it.x * UNITX - this.camX + UNITX / 2;
         const y = it.y * UNITY - this.camY + 4;
         if (x < -40 || x > this.width + 40 || y < -20 || y > this.height + 20) continue;
-        const name = isGold(it.item) ? `金币 ${it.item.gold}` : it.item.name;
+        const name = isGold(it.item) ? `金币 ${it.item.gold}` : itemLabel(it.item);
         const kind = isGold(it.item) ? 'gold' : itemKind(this.catalog.item(it.item.name)).kind;
         this.text(name, x, y, kind === 'equip' ? '#ffd76b' : kind === 'gold' ? '#ffe08a' : '#ddd');
       }

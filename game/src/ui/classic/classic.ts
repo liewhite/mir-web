@@ -6,7 +6,7 @@
  */
 import type { Catalog } from '../../data/defs';
 import type { Npc, Player } from '../../world/entities';
-import { type EquipSlot, type ItemInstance, type ItemKind, itemKind, newItem } from '../../world/items';
+import { type EquipSlot, type ItemInstance, type ItemKind, itemKind, itemLabel, stacks } from '../../world/items';
 import { manaCost } from '../../world/combat';
 import type { World } from '../../world/world';
 import type { Controller } from '../../game/controller';
@@ -18,6 +18,7 @@ import { Gfx, MAIN, type Rect, distTo, goldStr, inside } from './gfx';
 import { BoardLayout, type Button, type ChatColor, type ChatLine, type Insets, type Layout, type Pt, type UiHost } from './layout';
 import { TouchLayout } from './touch';
 import { TeleportPanel } from './teleport';
+import { type QuantityAsk, QuantityPanel } from './quantity';
 import { Joystick } from '../../game/joystick';
 
 const LINE_H = 14; // 商品列表行高
@@ -79,6 +80,8 @@ export class ClassicUi implements UiHost {
   settingsOpen = false;
   teleportOpen = false;
   private readonly teleport: TeleportPanel;
+  /** 卖、存、取一叠时问数量（#1159） */
+  private readonly quantity: QuantityPanel;
 
   private keyDlg: { skill: number } | null = null;
   private npc: Npc | null = null;
@@ -130,6 +133,20 @@ export class ClassicUi implements UiHost {
       message: (t) => this.message(t),
       close: () => (this.teleportOpen = false),
     });
+    this.quantity = new QuantityPanel({
+      g,
+      get W() { return ui.W; },
+      get H() { return ui.H; },
+      get scale() { return ui.ctlScale; },
+      dialogOrigin: (w, h) => this.layout.dialogOrigin(w, h),
+      area: (r) => this.area(r),
+      button: (b) => this.button(b),
+      isPressed: (r) => this.isPressed(r),
+      typeNumber: (title, value) => {
+        const t = window.prompt(title, String(value));
+        return t === null ? null : Number(t);
+      },
+    });
   }
 
   /** 切换布局（屏幕大小变了时）。 */
@@ -165,6 +182,7 @@ export class ClassicUi implements UiHost {
     this.teleportOpen = false;
     this.keyDlg = null;
     this.itemMenu = null;
+    this.quantity.close();
     this.cancelHand();
   }
 
@@ -234,6 +252,7 @@ export class ClassicUi implements UiHost {
     if (this.settingsOpen) this.drawSettings();
     if (this.teleportOpen) this.teleport.draw();
     if (this.keyDlg) this.drawKeyDlg();
+    this.quantity.draw();
     if (this.itemMenu) this.drawItemMenu(this.itemMenu);
     else this.drawHover();
     if (this.hand) {
@@ -448,7 +467,7 @@ export class ClassicUi implements UiHost {
     p.bag.forEach((it, i) => {
       if (!it || this.isHandFrom('bag', i)) return;
       const r = this.gridCell(i);
-      g.imgCenter('items', this.catalog.item(it.name).look, r.x - 1, r.y + 1, r.w, r.h);
+      g.item(this.catalog.item(it.name).look, it.count, r.x - 1, r.y + 1, r.w, r.h);
     });
     g.text(goldStr(p.gold), x + 64, y + 185, '#fff');
     // 物品信息栏
@@ -521,13 +540,12 @@ export class ClassicUi implements UiHost {
   private menuRows(): { name: string; price: string; dura: string; onBuy: () => void; item: ItemInstance | null; defName: string }[] {
     const n = this.npc!;
     if (this.mode === 'getback') {
-      return this.p.storage.map((it, i) => ({
-        name: it.name, price: '', dura: `${Math.ceil(it.dura / 1000)}/${Math.ceil(it.duraMax / 1000)}`, item: it, defName: it.name,
-        onBuy: () => {
-          if (!this.world.addToBag(this.p, it)) return this.message('包裹满了', 'bad');
-          this.p.storage.splice(i, 1);
-          this.menuIndex = -1;
-        },
+      return this.p.storage.map((it) => ({
+        name: itemLabel(it), price: '', item: it, defName: it.name,
+        dura: stacks(this.catalog.item(it.name)) ? '-' : `${Math.ceil(it.dura / 1000)}/${Math.ceil(it.duraMax / 1000)}`,
+        onBuy: () => this.askCount(it, `取回 ${it.name}`, undefined, (n) => {
+          if (this.report(this.world.withdraw(this.p, it.uid, n))) this.menuIndex = -1;
+        }),
       }));
     }
     return n.def.goods.flatMap((gd) => {
@@ -601,9 +619,10 @@ export class ClassicUi implements UiHost {
     const spot = { x: x + 27, y: y + 67, w: 61, h: 52 };
     this.hit({ ...spot, img: -1, onClick: () => this.clickSellSpot() });
     if (this.sellSpot) {
-      const def = this.catalog.item(this.sellSpot.item.name);
-      g.imgCenter('items', def.look, spot.x, spot.y, spot.w, spot.h);
-      if (!store) g.text(`${Math.floor(def.price / 2)} 金币`, x + 30, y + 128, '#ff0');
+      const it = this.sellSpot.item;
+      const def = this.catalog.item(it.name);
+      g.item(def.look, it.count, spot.x, spot.y, spot.w, spot.h);
+      if (!store) g.text(`${Math.floor(def.price / 2) * it.count} 金币`, x + 30, y + 128, '#ff0');
     }
     this.button({ img: 393, x: x + 85, y: y + 150, w: 24, h: 13, always: true, onClick: () => this.confirmSell() });
     this.button({ img: 64, x: x + 115, y, w: 16, h: 23, onClick: () => this.closeSell() });
@@ -968,7 +987,10 @@ export class ClassicUi implements UiHost {
     const kind = itemKind(def).kind;
     const actions: MenuAction[] = [];
     const src: HandSource = { kind: 'bag', index: i };
-    if (this.npc && this.mode === 'sell') actions.push({ label: `卖出 ${Math.floor(def.price / 2)} 金币`, run: () => this.sellOrStore(src, it) });
+    if (this.npc && this.mode === 'sell') {
+      const each = Math.floor(def.price / 2);
+      actions.push({ label: it.count > 1 ? `卖出（每个 ${each} 金币）` : `卖出 ${each} 金币`, run: () => this.sellOrStore(src, it) });
+    }
     if (this.npc && this.mode === 'store') actions.push({ label: '保管', run: () => this.sellOrStore(src, it) });
     const use = USE_LABEL[kind];
     if (use) actions.push({ label: use, run: () => this.useOrEquip(it) });
@@ -1146,6 +1168,7 @@ export class ClassicUi implements UiHost {
     }
     const target = p.bag[i];
     const src = this.hand.src;
+    if (target && this.mergeHandInto(target)) return;
     if (src.kind === 'bag') {
       p.bag[src.index] = target ?? null;
       p.bag[i] = this.hand.item;
@@ -1161,6 +1184,15 @@ export class ClassicUi implements UiHost {
     if (it) p.bag[i] = it;
   }
 
+  /** 手上的一叠放到同名的另一叠上：并成一叠（#1159）。不能并返回 false。 */
+  private mergeHandInto(target: ItemInstance): boolean {
+    const h = this.hand!;
+    if (target === h.item || target.name !== h.item.name || !stacks(this.catalog.item(target.name))) return false;
+    const it = this.takeHand();
+    if (it) target.count += it.count;
+    return true;
+  }
+
   private placeIntoBelt(i: number): void {
     const p = this.p;
     const h = this.hand!;
@@ -1170,6 +1202,7 @@ export class ClassicUi implements UiHost {
       return;
     }
     const target = p.belt[i];
+    if (target && this.mergeHandInto(target)) return;
     if (h.src.kind === 'bag') {
       p.bag[h.src.index] = target ?? null;
       p.belt[i] = h.item;
@@ -1213,13 +1246,20 @@ export class ClassicUi implements UiHost {
   }
 
   private buy(name: string): void {
-    const def = this.catalog.item(name);
-    const p = this.p;
-    if (p.gold < def.price) return this.message('金币不够', 'bad');
-    if (this.world.bagWeight(p) + def.weight > p.stats.maxBagWeight) return this.message('包裹太重了', 'bad');
-    if (!this.world.addToBag(p, newItem(def))) return this.message('包裹满了', 'bad');
-    p.gold -= def.price;
-    this.message(`买了 ${def.name}，花费 ${def.price} 金币`, 'item');
+    this.report(this.world.buy(this.p, name));
+  }
+
+  /** 世界返回的失败原因显示出来；成功返回 true（成功的提示由世界发）。 */
+  private report(why: string | null): boolean {
+    if (why) this.message(why, 'bad');
+    return !why;
+  }
+
+  /** 一叠东西问要几个（默认全部），单个直接按 1。 */
+  private askCount(it: ItemInstance, title: string, note: QuantityAsk['note'], ok: (n: number) => void): void {
+    if (it.count <= 1) return ok(1);
+    this.itemMenu = null;
+    this.quantity.show({ title, max: it.count, note, ok });
   }
 
   private clickSellSpot(): void {
@@ -1243,21 +1283,17 @@ export class ClassicUi implements UiHost {
     this.mode = 'talk';
   }
 
+  /** 卖出 / 保管出售框里的东西：一叠先问数量（默认全部）。 */
   private confirmSell(): void {
     const h = this.sellSpot;
-    if (!h) return;
+    if (!h || h.src.kind === 'equip') return;
     this.sellSpot = null;
-    this.hand = h;
-    const it = this.takeHand();
-    if (!it) return;
-    const def = this.catalog.item(it.name);
+    const it = h.item;
     if (this.mode === 'store') {
-      this.p.storage.push(it);
-      this.message(`保管了 ${def.name}`, 'item');
+      this.askCount(it, `保管 ${it.name}`, undefined, (n) => this.report(this.world.deposit(this.p, it.uid, n)));
     } else {
-      const price = Math.floor(def.price / 2);
-      this.p.gold += price;
-      this.message(`卖出 ${def.name}，得到 ${price} 金币`, 'item');
+      const each = Math.floor(this.catalog.item(it.name).price / 2);
+      this.askCount(it, `卖出 ${it.name}`, (n) => `得到 ${each * n} 金币`, (n) => this.report(this.world.sell(this.p, it.uid, n)));
     }
   }
 }

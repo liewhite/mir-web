@@ -36,6 +36,14 @@ export class Gfx {
     if (s) this.ctx.drawImage(s.img, s.sx, s.sy, s.w, s.h, Math.round(x + (w - s.w) / 2), Math.round(y + (h - s.h) / 2), s.w, s.h);
   }
 
+  /** 物品格：图标居中；一叠（#1159）在右上角用黄字写数量（快捷栏下方居中是按键号，不和它混）。 */
+  item(look: number, count: number, x: number, y: number, w: number, h: number): void {
+    this.imgCenter('items', look, x, y, w, h);
+    if (count <= 1) return;
+    const s = String(count);
+    this.text(s, x + w - this.width(s) - 2, y + 1, '#ffe08a', true);
+  }
+
   /** 以 (cx, cy) 为中心按倍数画（手机上把原版小图标放大）。 */
   imgScaled(lib: string, idx: number, cx: number, cy: number, scale: number): void {
     const s = this.sprites.get(lib, idx);

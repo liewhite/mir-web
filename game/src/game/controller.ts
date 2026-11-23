@@ -350,8 +350,7 @@ export class Controller {
           const k = itemKind(def).kind;
           if (k !== 'equip' && k !== 'book' && k !== 'amulet') continue;
         }
-        if (w.bagWeight(p) + def.weight > p.stats.maxBagWeight) continue;
-        if (!p.bag.includes(null)) continue;
+        if (w.roomFor(p, it.item.name, it.item.count)) continue;
       }
       // 站着的格子被占就捡不了
       const occ = w.occupant(it.x, it.y);

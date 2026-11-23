@@ -353,6 +353,19 @@ var EQUIP_SLOTS = [
   "ringL",
   "ringR"
 ];
+var STACKS = {
+  potion: true,
+  scroll: true,
+  book: true,
+  bundle: true,
+  equip: false,
+  amulet: false,
+  material: false,
+  other: false
+};
+function stacks(d) {
+  return STACKS[itemKind(d).kind];
+}
 function itemKind(d) {
   switch (d.mode) {
     case 0:
@@ -475,8 +488,14 @@ var nextUid = 1;
 function setNextUid(n) {
   nextUid = Math.max(nextUid, n);
 }
-function newItem(d) {
-  return { uid: nextUid++, name: d.name, dura: d.dura, duraMax: d.dura };
+function newItem(d, count = 1) {
+  return { uid: nextUid++, name: d.name, dura: d.dura, duraMax: d.dura, count: stacks(d) ? Math.max(1, count) : 1 };
+}
+function itemLabel(it) {
+  return it.count > 1 ? `${it.name} \xD7${it.count}` : it.name;
+}
+function splitOff(it, n) {
+  return { ...it, uid: nextUid++, count: n };
 }
 
 // src/core/geom.ts
@@ -504,6 +523,99 @@ function samePos(a, b) {
 var ALL_DIRS = [0, 1, 2, 3, 4, 5, 6, 7];
 function opposite(d) {
   return (d + 4) % 8;
+}
+
+// src/world/inventory.ts
+function beltable(d) {
+  const k = itemKind(d).kind;
+  return k === "potion" || k === "scroll";
+}
+function find(p, uid) {
+  let i = p.bag.findIndex((x) => x?.uid === uid);
+  if (i >= 0) return { where: "bag", index: i, item: p.bag[i] };
+  i = p.belt.findIndex((x) => x?.uid === uid);
+  if (i >= 0) return { where: "belt", index: i, item: p.belt[i] };
+  return null;
+}
+function stackOf(d, p) {
+  if (!stacks(d)) return null;
+  return [...p.belt, ...p.bag].find((x) => x?.name === d.name) ?? null;
+}
+function freeSlot(d, p) {
+  const b = beltable(d) ? p.belt.indexOf(null) : -1;
+  if (b >= 0) return { where: "belt", index: b };
+  const i = p.bag.indexOf(null);
+  return i >= 0 ? { where: "bag", index: i } : null;
+}
+function hasRoom(d, p) {
+  return stackOf(d, p) !== null || freeSlot(d, p) !== null;
+}
+function add(catalog, p, it) {
+  const d = catalog.item(it.name);
+  const s = stackOf(d, p);
+  if (s) {
+    s.count += it.count;
+    return true;
+  }
+  const slot = freeSlot(d, p);
+  if (!slot) return false;
+  (slot.where === "bag" ? p.bag : p.belt)[slot.index] = it;
+  return true;
+}
+function takeFrom(it, n, remove) {
+  const k = Math.min(it.count, Math.max(1, n ?? it.count));
+  if (k >= it.count) {
+    remove();
+    return it;
+  }
+  it.count -= k;
+  return splitOff(it, k);
+}
+function take(p, uid, n) {
+  const f = find(p, uid);
+  if (!f) return null;
+  return takeFrom(f.item, n, () => (f.where === "bag" ? p.bag : p.belt)[f.index] = null);
+}
+function carriedWeight(catalog, p) {
+  return [...p.bag, ...p.belt].reduce((s, it) => s + (it ? catalog.item(it.name).weight * it.count : 0), 0);
+}
+function store(catalog, storage, it) {
+  const s = stacks(catalog.item(it.name)) ? storage.find((x) => x.name === it.name) : void 0;
+  if (s) s.count += it.count;
+  else storage.push(it);
+}
+function unstore(storage, uid, n) {
+  const i = storage.findIndex((x) => x.uid === uid);
+  if (i < 0) return null;
+  return takeFrom(storage[i], n, () => storage.splice(i, 1));
+}
+function normalize(catalog, p) {
+  const fix = (it) => {
+    const c = Math.floor(Number(it.count));
+    it.count = stacks(catalog.item(it.name)) && c >= 1 ? c : 1;
+  };
+  const merge = (slots) => {
+    const first = /* @__PURE__ */ new Map();
+    slots.forEach((it, i) => {
+      if (!it) return;
+      fix(it);
+      if (!stacks(catalog.item(it.name))) return;
+      const s = first.get(it.name);
+      if (!s) first.set(it.name, it);
+      else {
+        s.count += it.count;
+        slots[i] = null;
+      }
+    });
+  };
+  const carried = [...p.belt, ...p.bag];
+  merge(carried);
+  p.belt = carried.slice(0, p.belt.length);
+  p.bag = carried.slice(p.belt.length);
+  const st = [...p.storage];
+  merge(st);
+  p.storage = st.filter((x) => x !== null);
+  for (const it of Object.values(p.equip)) if (it) fix(it);
 }
 
 // src/world/rules.ts
@@ -2033,7 +2145,9 @@ var World = class {
       }
       const def = this.catalog.itemsByName.get(d.item);
       if (!def) continue;
-      for (let k = 0; k < Math.max(1, d.amount); k++) this.dropAt(m.pos, newItem(def));
+      const n = Math.max(1, d.amount);
+      if (stacks(def)) this.dropAt(m.pos, newItem(def, n));
+      else for (let k = 0; k < n; k++) this.dropAt(m.pos, newItem(def));
     }
   }
   dropAt(p, item) {
@@ -2068,25 +2182,21 @@ var World = class {
   }
   // ---------------- 物品 ----------------
   bagWeight(p) {
-    return [...p.bag, ...p.belt].reduce((s, it) => s + (it ? this.catalog.item(it.name).weight : 0), 0);
+    return carriedWeight(this.catalog, p);
   }
   wearWeight(p) {
     return ["dress", "helmet", "necklace", "braceletL", "braceletR", "ringL", "ringR"].reduce((s, k) => s + (p.equip[k] ? this.catalog.item(p.equip[k].name).weight : 0), 0);
   }
-  /** 放进包裹；满了返回 false。药品优先放快捷栏空位。 */
+  /** 放进包裹；满了返回 false。同名可叠的并进已有的一叠，药品、卷轴优先放快捷栏空位。 */
   addToBag(p, it) {
-    const kind = itemKind(this.catalog.item(it.name)).kind;
-    if (kind === "potion" || kind === "scroll") {
-      const b = p.belt.indexOf(null);
-      if (b >= 0) {
-        p.belt[b] = it;
-        return true;
-      }
-    }
-    const i = p.bag.indexOf(null);
-    if (i < 0) return false;
-    p.bag[i] = it;
-    return true;
+    return add(this.catalog, p, it);
+  }
+  /** 能不能再拿 count 个这种东西：重量和格子；不行返回原因。 */
+  roomFor(p, name, count = 1) {
+    const def = this.catalog.item(name);
+    if (this.bagWeight(p) + def.weight * count > p.stats.maxBagWeight) return "\u5305\u88F9\u592A\u91CD\u4E86\uFF0C\u62FF\u4E0D\u52A8";
+    if (!hasRoom(def, p)) return "\u5305\u88F9\u6EE1\u4E86";
+    return null;
   }
   pickUp(p) {
     const here = this.items.filter((i) => i.x === p.x && i.y === p.y);
@@ -2097,16 +2207,12 @@ var World = class {
         p.gold += g.item.gold;
         this.events.push({ type: "msg", text: `\u6361\u5230\u91D1\u5E01 ${g.item.gold}`, color: "item" });
       } else {
-        const def = this.catalog.item(g.item.name);
-        if (this.bagWeight(p) + def.weight > p.stats.maxBagWeight) {
-          this.events.push({ type: "msg", text: "\u5305\u88F9\u592A\u91CD\u4E86\uFF0C\u62FF\u4E0D\u52A8", color: "bad" });
+        const why = this.roomFor(p, g.item.name, g.item.count);
+        if (why || !this.addToBag(p, g.item)) {
+          this.events.push({ type: "msg", text: why ?? "\u5305\u88F9\u6EE1\u4E86", color: "bad" });
           continue;
         }
-        if (!this.addToBag(p, g.item)) {
-          this.events.push({ type: "msg", text: "\u5305\u88F9\u6EE1\u4E86", color: "bad" });
-          continue;
-        }
-        this.events.push({ type: "msg", text: `\u6361\u5230 ${g.item.name}`, color: "item" });
+        this.events.push({ type: "msg", text: `\u6361\u5230 ${itemLabel(g.item)}`, color: "item" });
       }
       this.items.splice(this.items.indexOf(g), 1);
       any = true;
@@ -2114,17 +2220,55 @@ var World = class {
     return any;
   }
   findOwned(p, uid) {
-    let i = p.bag.findIndex((x) => x?.uid === uid);
-    if (i >= 0) return { where: "bag", index: i, item: p.bag[i] };
-    i = p.belt.findIndex((x) => x?.uid === uid);
-    if (i >= 0) return { where: "belt", index: i, item: p.belt[i] };
+    return find(p, uid);
+  }
+  /** 从身上拿走 n 个（默认整件，一叠就是整叠）。 */
+  removeOwned(p, uid, n) {
+    return take(p, uid, n);
+  }
+  /** 用掉一个（一叠只减一）。 */
+  consumeOne(p, uid) {
+    take(p, uid, 1);
+  }
+  // ---------------- 商人、仓库 ----------------
+  /** 买一个；不行返回原因。 */
+  buy(p, name) {
+    const def = this.catalog.item(name);
+    if (p.gold < def.price) return "\u91D1\u5E01\u4E0D\u591F";
+    const why = this.roomFor(p, name);
+    if (why) return why;
+    this.addToBag(p, newItem(def));
+    p.gold -= def.price;
+    this.events.push({ type: "msg", text: `\u4E70\u4E86 ${def.name}\uFF0C\u82B1\u8D39 ${def.price} \u91D1\u5E01`, color: "item" });
     return null;
   }
-  removeOwned(p, uid) {
-    const f = this.findOwned(p, uid);
-    if (!f) return null;
-    (f.where === "bag" ? p.bag : p.belt)[f.index] = null;
-    return f.item;
+  /** 卖出身上一件的 n 个（默认整叠），每个半价。 */
+  sell(p, uid, n) {
+    const it = this.removeOwned(p, uid, n);
+    if (!it) return "\u5305\u88F9\u91CC\u6CA1\u6709\u8FD9\u4EF6\u7269\u54C1";
+    const price = Math.floor(this.catalog.item(it.name).price / 2) * it.count;
+    p.gold += price;
+    this.events.push({ type: "msg", text: `\u5356\u51FA ${itemLabel(it)}\uFF0C\u5F97\u5230 ${price} \u91D1\u5E01`, color: "item" });
+    return null;
+  }
+  /** 把身上一件的 n 个存进仓库（并进同名一叠）。 */
+  deposit(p, uid, n) {
+    const it = this.removeOwned(p, uid, n);
+    if (!it) return "\u5305\u88F9\u91CC\u6CA1\u6709\u8FD9\u4EF6\u7269\u54C1";
+    store(this.catalog, p.storage, it);
+    this.events.push({ type: "msg", text: `\u4FDD\u7BA1\u4E86 ${itemLabel(it)}`, color: "item" });
+    return null;
+  }
+  /** 从仓库取回一件的 n 个（默认整叠）。 */
+  withdraw(p, uid, n) {
+    const it0 = p.storage.find((x) => x.uid === uid);
+    if (!it0) return "\u4ED3\u5E93\u91CC\u6CA1\u6709\u8FD9\u4EF6\u7269\u54C1";
+    const why = this.roomFor(p, it0.name, Math.min(it0.count, n ?? it0.count));
+    if (why) return why;
+    const it = unstore(p.storage, uid, n);
+    this.addToBag(p, it);
+    this.events.push({ type: "msg", text: `\u53D6\u56DE ${itemLabel(it)}`, color: "item" });
+    return null;
   }
   /** 双击包裹里的物品：喝药、读书、用卷轴、穿装备、拆药包。返回提示文字（失败时）。 */
   useItem(p, uid) {
@@ -2135,7 +2279,7 @@ var World = class {
     const k = itemKind(def);
     switch (k.kind) {
       case "potion": {
-        this.removeOwned(p, uid);
+        this.consumeOne(p, uid);
         this.sound(S.eatDrug);
         if (k.instant) {
           const hp = Math.min(k.hp, p.stats.maxHp - p.hp);
@@ -2151,20 +2295,20 @@ var World = class {
       case "bundle": {
         const one = this.catalog.data.items.find((i) => i.mode !== 31 && i.ani === k.of);
         if (!one) return "\u8FD9\u4E2A\u5305\u62C6\u4E0D\u5F00";
-        const free = p.bag.filter((x) => x === null).length - 1 + p.belt.filter((x) => x === null).length;
-        if (free < 6) return "\u5305\u88F9\u7A7A\u4F4D\u4E0D\u591F\uFF0C\u62C6\u5305\u9700\u8981 6 \u4E2A\u7A7A\u4F4D";
-        this.removeOwned(p, uid);
-        for (let i = 0; i < 6; i++) this.addToBag(p, newItem(one));
+        const last = f.item.count === 1;
+        if (!last && !hasRoom(one, p)) return "\u5305\u88F9\u6EE1\u4E86\uFF0C\u62C6\u5305\u9700\u8981\u4E00\u4E2A\u7A7A\u4F4D";
+        this.consumeOne(p, uid);
+        this.addToBag(p, newItem(one, 6));
         return null;
       }
       case "scroll":
         if (k.effect === "town" || k.effect === "escape") {
-          this.removeOwned(p, uid);
+          this.consumeOne(p, uid);
           this.pendingTeleport = { ...p.home };
           return null;
         }
         if (k.effect === "random") {
-          this.removeOwned(p, uid);
+          this.consumeOne(p, uid);
           for (let t = 0; t < 50; t++) {
             const x = random(this.map.width);
             const y = random(this.map.height);
@@ -2182,7 +2326,7 @@ var World = class {
         if (skill.job !== p.job) return "\u4F60\u7684\u804C\u4E1A\u5B66\u4E0D\u4E86\u8FD9\u4E2A\u6280\u80FD";
         if (p.level < k.level) return `\u9700\u8981 ${k.level} \u7EA7\u624D\u80FD\u5B66`;
         if (p.skills.some((s) => s.id === skill.id)) return "\u5DF2\u7ECF\u5B66\u4F1A\u4E86";
-        this.removeOwned(p, uid);
+        this.consumeOne(p, uid);
         const key = [1, 2, 3, 4, 5, 6, 7, 8].find((n) => !p.skills.some((s) => s.key === n)) ?? 0;
         p.skills.push({ id: skill.id, level: 0, train: 0, key: isPassive(skill.id) ? 0 : key });
         this.recalc(p);
@@ -2806,7 +2950,7 @@ var Renderer = class {
         const x = it.x * UNITX - this.camX + UNITX / 2;
         const y = it.y * UNITY - this.camY + 4;
         if (x < -40 || x > this.width + 40 || y < -20 || y > this.height + 20) continue;
-        const name = isGold(it.item) ? `\u91D1\u5E01 ${it.item.gold}` : it.item.name;
+        const name = isGold(it.item) ? `\u91D1\u5E01 ${it.item.gold}` : itemLabel(it.item);
         const kind = isGold(it.item) ? "gold" : itemKind(this.catalog.item(it.item.name)).kind;
         this.text(name, x, y, kind === "equip" ? "#ffd76b" : kind === "gold" ? "#ffe08a" : "#ddd");
       }
@@ -3145,8 +3289,7 @@ var Controller = class {
           const k = itemKind(def).kind;
           if (k !== "equip" && k !== "book" && k !== "amulet") continue;
         }
-        if (w.bagWeight(p) + def.weight > p.stats.maxBagWeight) continue;
-        if (!p.bag.includes(null)) continue;
+        if (w.roomFor(p, it.item.name, it.item.count)) continue;
       }
       const occ = w.occupant(it.x, it.y);
       if (occ && occ !== p) continue;
@@ -3441,6 +3584,7 @@ function fromSave(d, catalog, id, now) {
   p.skills = s.skills.filter((x) => catalog.skillsById.has(x.id)).map((x) => ({ ...x }));
   p.longHitOn = s.longHitOn;
   p.wideHitOn = s.wideHitOn;
+  normalize(catalog, p);
   const all = [...p.bag, ...p.belt, ...p.storage, ...Object.values(p.equip)];
   setNextUid(1 + Math.max(0, ...all.map((it) => it?.uid ?? 0)));
   return p;
@@ -3502,7 +3646,7 @@ function itemLines(def, inst, p, compareWith) {
       out.push({ text: { town: "\u56DE\u5230\u57CE\u91CC", escape: "\u79BB\u5F00\u5730\u4E0B\u57CE\u56DE\u5230\u57CE\u91CC", random: "\u968F\u673A\u4F20\u9001\u5230\u672C\u5730\u56FE\u67D0\u5904", other: "\u7279\u6B8A\u5377\u8F74" }[k.effect] });
       break;
     case "bundle":
-      out.push({ text: "\u53CC\u51FB\u62C6\u6210 6 \u74F6\uFF08\u9700\u8981 6 \u4E2A\u7A7A\u4F4D\uFF09" });
+      out.push({ text: "\u53CC\u51FB\u62C6\u6210 6 \u74F6\uFF08\u548C\u5305\u88F9\u91CC\u540C\u540D\u7684\u836F\u53E0\u5728\u4E00\u8D77\uFF09" });
       break;
     case "amulet":
       out.push({ text: k.poison === 0 ? "\u9053\u58EB\u65BD\u6CD5\u6D88\u8017\uFF08\u7075\u9B42\u706B\u7B26\u3001\u53EC\u5524\u3001\u9690\u8EAB\uFF09" : k.poison === 1 ? "\u65BD\u6BD2\u672F\u7528\uFF1A\u7EFF\u6BD2\uFF0C\u6301\u7EED\u6389\u8840" : "\u65BD\u6BD2\u672F\u7528\uFF1A\u7EA2\u6BD2\uFF0C\u964D\u4F4E\u9632\u5FA1" });
@@ -3524,8 +3668,10 @@ function itemLines(def, inst, p, compareWith) {
     const have = req.stat === "level" ? p.level : req.stat === "dc" ? p.stats.dc[1] : req.stat === "mc" ? p.stats.mc[1] : p.stats.sc[1];
     out.push({ text: `\u9700\u8981${label} ${req.value}`, tone: have >= req.value ? "dim" : "bad" });
   }
+  if (inst && inst.count > 1) out.push({ text: `\u6570\u91CF ${inst.count}\uFF08\u53E0\u5728\u4E00\u683C\uFF0C\u7528\u4E00\u4E2A\u5C11\u4E00\u4E2A\uFF09` });
   out.push({ text: `\u91CD\u91CF ${def.weight}${inst && k.kind === "equip" ? `\u3000\u6301\u4E45 ${Math.ceil(inst.dura / 1e3)}/${Math.ceil(inst.duraMax / 1e3)}` : ""}`, tone: "dim" });
-  out.push({ text: `\u5356\u7ED9\u5546\u5E97\u7EA6 ${Math.floor(def.price / 2)} \u91D1\u5E01`, tone: "gold" });
+  const each = Math.floor(def.price / 2);
+  out.push({ text: inst && inst.count > 1 ? `\u5356\u7ED9\u5546\u5E97\u6BCF\u4E2A\u7EA6 ${each} \u91D1\u5E01\uFF0C\u6574\u53E0 ${each * inst.count}` : `\u5356\u7ED9\u5546\u5E97\u7EA6 ${each} \u91D1\u5E01`, tone: "gold" });
   return out;
 }
 function compareLines(a, b, oldName) {
@@ -3629,6 +3775,13 @@ var Gfx = class {
   imgCenter(lib, idx, x, y, w, h) {
     const s = this.sprites.get(lib, idx);
     if (s) this.ctx.drawImage(s.img, s.sx, s.sy, s.w, s.h, Math.round(x + (w - s.w) / 2), Math.round(y + (h - s.h) / 2), s.w, s.h);
+  }
+  /** 物品格：图标居中；一叠（#1159）在右上角用黄字写数量（快捷栏下方居中是按键号，不和它混）。 */
+  item(look, count, x, y, w, h) {
+    this.imgCenter("items", look, x, y, w, h);
+    if (count <= 1) return;
+    const s = String(count);
+    this.text(s, x + w - this.width(s) - 2, y + 1, "#ffe08a", true);
   }
   /** 以 (cx, cy) 为中心按倍数画（手机上把原版小图标放大）。 */
   imgScaled(lib, idx, cx, cy, scale) {
@@ -3919,9 +4072,9 @@ var BoardLayout = class {
   }
   drawBottom() {
     const { g, p, catalog, world } = this.h;
-    const H = this.h.H;
+    const H2 = this.h.H;
     const bx = this.boardX();
-    const by = H - BOARD_H;
+    const by = H2 - BOARD_H;
     this.h.area({ x: bx, y: by + 40, w: BOARD_W, h: BOARD_H - 40 });
     this.h.area({ x: bx, y: by, w: 190, h: 40 });
     this.h.area({ x: bx + 610, y: by, w: 190, h: 40 });
@@ -3941,19 +4094,19 @@ var BoardLayout = class {
     const mpText = `${p.mp}/${s.maxMp}`;
     g.text(hpText, bx + 86 - g.width(hpText) / 2, by + 186, "#fff", true);
     g.text(mpText, bx + 86 - g.width(mpText) / 2, by + 200, "#9fc6ff", true);
-    g.text(String(p.level), bx + 660, H - 104, "#fff", true);
+    g.text(String(p.level), bx + 660, H2 - 104, "#fff", true);
     const bar = g.size(MAIN, 7);
     if (bar) {
       const need = catalog.expToNext(p.level);
       const er = need === Infinity ? 1 : p.exp / need;
-      g.imgPart(MAIN, 7, bx + 666, H - 73, 0, 0, Math.round(bar.w * Math.min(1, er)), bar.h);
+      g.imgPart(MAIN, 7, bx + 666, H2 - 73, 0, 0, Math.round(bar.w * Math.min(1, er)), bar.h);
       const wr = world.bagWeight(p) / Math.max(1, s.maxBagWeight);
-      g.imgPart(MAIN, 7, bx + 666, H - 40, 0, 0, Math.round(bar.w * Math.min(1, wr)), bar.h);
+      g.imgPart(MAIN, 7, bx + 666, H2 - 40, 0, 0, Math.round(bar.w * Math.min(1, wr)), bar.h);
     }
     this.h.chat.slice(-CHAT_LINES).forEach((l, i) => {
       const [fg, bg] = CHAT_COLOR[l.color];
-      g.rect(bx + 208, H - 130 + i * 12, g.width(l.text), 12, bg);
-      g.text(l.text, bx + 208, H - 130 + i * 12, fg);
+      g.rect(bx + 208, H2 - 130 + i * 12, g.width(l.text), 12, bg);
+      g.text(l.text, bx + 208, H2 - 130 + i * 12, fg);
     });
     this.h.button({ img: 8, x: bx + 643, y: by + 61, w: 24, h: 24, onClick: () => this.h.toggleState(0) });
     this.h.button({ img: 9, x: bx + 682, y: by + 41, w: 24, h: 22, onClick: () => this.h.toggleBag() });
@@ -3961,7 +4114,7 @@ var BoardLayout = class {
     this.h.button({ img: 11, x: bx + 764, y: by + 11, w: 24, h: 23, onClick: () => this.h.toggleSettings() });
     this.beltRects().forEach((r2, i) => {
       const it = p.belt[i];
-      if (it && !this.h.beltInHand(i)) g.imgCenter("items", catalog.item(it.name).look, r2.x, r2.y, r2.w, r2.h);
+      if (it && !this.h.beltInHand(i)) g.item(catalog.item(it.name).look, it.count, r2.x, r2.y, r2.w, r2.h);
       g.text(String(i + 1), r2.x + 13, r2.y + 19, "#fff", true);
     });
     this.h.button({ img: 130, x: bx + 219, y: by + 104, w: 28, h: 13, always: true, onClick: () => this.h.toggleMiniMap() });
@@ -4122,7 +4275,7 @@ var TouchLayout = class {
       g.frame(r2.x, r2.y, r2.w, r2.h, "rgba(0,0,0,.55)", "#8a6a3a");
       this.h.area(r2);
       const it = p.belt[i];
-      if (it && !this.h.beltInHand(i)) g.imgCenter("items", catalog.item(it.name).look, r2.x, r2.y, r2.w, r2.h);
+      if (it && !this.h.beltInHand(i)) g.item(catalog.item(it.name).look, it.count, r2.x, r2.y, r2.w, r2.h);
       g.text(String(i + 1), r2.x + 3, r2.y + 2, "#ffe08a", true);
     });
   }
@@ -4234,6 +4387,97 @@ var TeleportPanel = class {
   }
 };
 
+// src/ui/classic/quantity.ts
+var W = 252;
+var PAD2 = 10;
+var BTN_H2 = 28;
+var GAP3 = 6;
+var H = 62 + (BTN_H2 + GAP3) * 3 + PAD2 - GAP3;
+var QuantityPanel = class {
+  constructor(h) {
+    this.h = h;
+    this.ask = null;
+    this.value = 1;
+  }
+  get open() {
+    return this.ask !== null;
+  }
+  show(ask) {
+    this.ask = ask;
+    this.value = ask.max;
+  }
+  close() {
+    this.ask = null;
+  }
+  set(n) {
+    if (this.ask) this.value = Math.max(1, Math.min(this.ask.max, Math.floor(n)));
+  }
+  draw() {
+    const ask = this.ask;
+    if (!ask) return;
+    const { g } = this.h;
+    const s = Math.min(this.h.scale, (this.h.W - 8) / W, (this.h.H - 8) / H);
+    const o = this.h.dialogOrigin(W * s, H * s);
+    const toUi = (r2) => ({ x: o.x + r2.x * s, y: o.y + r2.y * s, w: r2.w * s, h: r2.h * s });
+    this.h.area(toUi({ x: 0, y: 0, w: W, h: H }));
+    const ctx = g.ctx;
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    ctx.scale(s, s);
+    g.frame(0, 0, W, H, "rgba(16,11,6,.96)", "#8a6a3a");
+    g.text(ask.title, PAD2, 10, "#ffe08a", true);
+    const field = { x: PAD2, y: 32, w: 110, h: 22 };
+    g.frame(field.x, field.y, field.w, field.h, "#000", "#c9a060");
+    g.text(`${this.value} / ${ask.max}`, field.x + 6, field.y + 5, "#fff", true);
+    this.h.button({
+      ...toUi(field),
+      img: -1,
+      onClick: () => {
+        const n = this.h.typeNumber(`${ask.title}\uFF1A\u8F93\u5165\u6570\u91CF\uFF081\u2013${ask.max}\uFF09`, this.value);
+        if (n !== null && Number.isFinite(n)) this.set(n);
+      }
+    });
+    const note = ask.note?.(this.value);
+    if (note) g.text(note, field.x + field.w + 8, field.y + 5, "#ffd96b");
+    const row = (y, items) => {
+      const bw = (W - PAD2 * 2 - GAP3 * (items.length - 1)) / items.length;
+      items.forEach((b, i) => this.flat({ x: PAD2 + i * (bw + GAP3), y, w: bw, h: BTN_H2 }, toUi, b.label, b.run, b.color));
+    };
+    row(62, [
+      { label: "\u221210", run: () => this.set(this.value - 10) },
+      { label: "\u22121", run: () => this.set(this.value - 1) },
+      { label: "+1", run: () => this.set(this.value + 1) },
+      { label: "+10", run: () => this.set(this.value + 10) }
+    ]);
+    row(62 + BTN_H2 + GAP3, [
+      { label: "1 \u4E2A", run: () => this.set(1) },
+      { label: "\u4E00\u534A", run: () => this.set(Math.ceil(ask.max / 2)) },
+      { label: "\u5168\u90E8", run: () => this.set(ask.max) }
+    ]);
+    row(62 + (BTN_H2 + GAP3) * 2, [
+      { label: "\u53D6\u6D88", run: () => this.close() },
+      {
+        label: "\u786E\u5B9A",
+        color: "#9cff8a",
+        run: () => {
+          const n = this.value;
+          this.close();
+          ask.ok(n);
+        }
+      }
+    ]);
+    ctx.restore();
+  }
+  /** r：面板内坐标（画）；点击区换算成界面坐标。 */
+  flat(r2, toUi, label, onClick, color = "#ffe08a") {
+    const { g } = this.h;
+    const hit = toUi(r2);
+    g.frame(r2.x, r2.y, r2.w, r2.h, this.h.isPressed(hit) ? "#7a5a2a" : "#3a2a16", "#c9a060");
+    g.text(label, r2.x + (r2.w - g.width(label)) / 2, r2.y + (r2.h - 14) / 2 + 1, color, true);
+    this.h.button({ ...hit, img: -1, onClick });
+  }
+};
+
 // src/ui/classic/classic.ts
 var LINE_H = 14;
 var MAX_MENU = 10;
@@ -4332,6 +4576,26 @@ var ClassicUi = class {
       message: (t) => this.message(t),
       close: () => this.teleportOpen = false
     });
+    this.quantity = new QuantityPanel({
+      g,
+      get W() {
+        return ui.W;
+      },
+      get H() {
+        return ui.H;
+      },
+      get scale() {
+        return ui.ctlScale;
+      },
+      dialogOrigin: (w, h) => this.layout.dialogOrigin(w, h),
+      area: (r2) => this.area(r2),
+      button: (b) => this.button(b),
+      isPressed: (r2) => this.isPressed(r2),
+      typeNumber: (title, value) => {
+        const t = window.prompt(title, String(value));
+        return t === null ? null : Number(t);
+      }
+    });
   }
   /** 切换布局（屏幕大小变了时）。 */
   setLayout(kind) {
@@ -4362,6 +4626,7 @@ var ClassicUi = class {
     this.teleportOpen = false;
     this.keyDlg = null;
     this.itemMenu = null;
+    this.quantity.close();
     this.cancelHand();
   }
   toggleBag() {
@@ -4404,9 +4669,9 @@ var ClassicUi = class {
     this.buttons.push({ ...b, z: this.z++ });
   }
   // ======================= 绘制 =======================
-  draw(W, H, now) {
-    this.W = W;
-    this.H = H;
+  draw(W2, H2, now) {
+    this.W = W2;
+    this.H = H2;
     this.areas = [];
     this.buttons = [];
     this.z = 0;
@@ -4419,6 +4684,7 @@ var ClassicUi = class {
     if (this.settingsOpen) this.drawSettings();
     if (this.teleportOpen) this.teleport.draw();
     if (this.keyDlg) this.drawKeyDlg();
+    this.quantity.draw();
     if (this.itemMenu) this.drawItemMenu(this.itemMenu);
     else this.drawHover();
     if (this.hand) {
@@ -4622,7 +4888,7 @@ var ClassicUi = class {
     p.bag.forEach((it2, i) => {
       if (!it2 || this.isHandFrom("bag", i)) return;
       const r2 = this.gridCell(i);
-      g.imgCenter("items", this.catalog.item(it2.name).look, r2.x - 1, r2.y + 1, r2.w, r2.h);
+      g.item(this.catalog.item(it2.name).look, it2.count, r2.x - 1, r2.y + 1, r2.w, r2.h);
     });
     g.text(goldStr(p.gold), x + 64, y + 185, "#fff");
     const it = this.hoverItem();
@@ -4693,17 +4959,15 @@ var ClassicUi = class {
   menuRows() {
     const n = this.npc;
     if (this.mode === "getback") {
-      return this.p.storage.map((it, i) => ({
-        name: it.name,
+      return this.p.storage.map((it) => ({
+        name: itemLabel(it),
         price: "",
-        dura: `${Math.ceil(it.dura / 1e3)}/${Math.ceil(it.duraMax / 1e3)}`,
         item: it,
         defName: it.name,
-        onBuy: () => {
-          if (!this.world.addToBag(this.p, it)) return this.message("\u5305\u88F9\u6EE1\u4E86", "bad");
-          this.p.storage.splice(i, 1);
-          this.menuIndex = -1;
-        }
+        dura: stacks(this.catalog.item(it.name)) ? "-" : `${Math.ceil(it.dura / 1e3)}/${Math.ceil(it.duraMax / 1e3)}`,
+        onBuy: () => this.askCount(it, `\u53D6\u56DE ${it.name}`, void 0, (n2) => {
+          if (this.report(this.world.withdraw(this.p, it.uid, n2))) this.menuIndex = -1;
+        })
       }));
     }
     return n.def.goods.flatMap((gd) => {
@@ -4725,10 +4989,10 @@ var ClassicUi = class {
     const y = o.y + 176;
     this.area({ x, y, w: 308, h: 205 });
     g.img(MAIN, 385, x, y);
-    const store = this.mode === "getback";
-    g.text(store ? "\u4FDD\u7BA1\u7269\u54C1" : "\u7269\u54C1\u5217\u8868", x + 19, y + 11, "#fff");
-    g.text(store ? "\u6301\u4E45" : "\u4EF7\u683C", x + 156, y + 11, "#fff");
-    if (!store) g.text("\u6301\u4E45", x + 245, y + 11, "#fff");
+    const store2 = this.mode === "getback";
+    g.text(store2 ? "\u4FDD\u7BA1\u7269\u54C1" : "\u7269\u54C1\u5217\u8868", x + 19, y + 11, "#fff");
+    g.text(store2 ? "\u6301\u4E45" : "\u4EF7\u683C", x + 156, y + 11, "#fff");
+    if (!store2) g.text("\u6301\u4E45", x + 245, y + 11, "#fff");
     const rows = this.menuRows();
     for (let i = this.menuTop; i < Math.min(rows.length, this.menuTop + MAX_MENU); i++) {
       const r2 = rows[i];
@@ -4736,8 +5000,8 @@ var ClassicUi = class {
       const color = i === this.menuIndex ? "#f00" : "#fff";
       if (i === this.menuIndex) g.text("\u2022", x + 10, y + 32 + m * LINE_H, color);
       g.text(r2.name, x + 19, y + 32 + m * LINE_H, color);
-      g.text(store ? r2.dura : r2.price, x + 156, y + 32 + m * LINE_H, color);
-      if (!store) g.text(r2.dura, x + 245, y + 32 + m * LINE_H, color);
+      g.text(store2 ? r2.dura : r2.price, x + 156, y + 32 + m * LINE_H, color);
+      if (!store2) g.text(r2.dura, x + 245, y + 32 + m * LINE_H, color);
       const rr = this.menuRowRect(m);
       this.hit({
         ...rr,
@@ -4785,14 +5049,15 @@ var ClassicUi = class {
     const y = o.y + 176;
     this.area({ x, y, w: 140, h: 181 });
     g.img(MAIN, 392, x, y);
-    const store = this.mode === "store";
-    g.text(store ? "\u653E\u5165\u8981\u4FDD\u7BA1\u7684\u7269\u54C1" : "\u653E\u5165\u8981\u51FA\u552E\u7684\u7269\u54C1", x + 12, y + 30, "#fff");
+    const store2 = this.mode === "store";
+    g.text(store2 ? "\u653E\u5165\u8981\u4FDD\u7BA1\u7684\u7269\u54C1" : "\u653E\u5165\u8981\u51FA\u552E\u7684\u7269\u54C1", x + 12, y + 30, "#fff");
     const spot = { x: x + 27, y: y + 67, w: 61, h: 52 };
     this.hit({ ...spot, img: -1, onClick: () => this.clickSellSpot() });
     if (this.sellSpot) {
-      const def = this.catalog.item(this.sellSpot.item.name);
-      g.imgCenter("items", def.look, spot.x, spot.y, spot.w, spot.h);
-      if (!store) g.text(`${Math.floor(def.price / 2)} \u91D1\u5E01`, x + 30, y + 128, "#ff0");
+      const it = this.sellSpot.item;
+      const def = this.catalog.item(it.name);
+      g.item(def.look, it.count, spot.x, spot.y, spot.w, spot.h);
+      if (!store2) g.text(`${Math.floor(def.price / 2) * it.count} \u91D1\u5E01`, x + 30, y + 128, "#ff0");
     }
     this.button({ img: 393, x: x + 85, y: y + 150, w: 24, h: 13, always: true, onClick: () => this.confirmSell() });
     this.button({ img: 64, x: x + 115, y, w: 16, h: 23, onClick: () => this.closeSell() });
@@ -5132,7 +5397,10 @@ var ClassicUi = class {
     const kind = itemKind(def).kind;
     const actions = [];
     const src = { kind: "bag", index: i };
-    if (this.npc && this.mode === "sell") actions.push({ label: `\u5356\u51FA ${Math.floor(def.price / 2)} \u91D1\u5E01`, run: () => this.sellOrStore(src, it) });
+    if (this.npc && this.mode === "sell") {
+      const each = Math.floor(def.price / 2);
+      actions.push({ label: it.count > 1 ? `\u5356\u51FA\uFF08\u6BCF\u4E2A ${each} \u91D1\u5E01\uFF09` : `\u5356\u51FA ${each} \u91D1\u5E01`, run: () => this.sellOrStore(src, it) });
+    }
     if (this.npc && this.mode === "store") actions.push({ label: "\u4FDD\u7BA1", run: () => this.sellOrStore(src, it) });
     const use = USE_LABEL[kind];
     if (use) actions.push({ label: use, run: () => this.useOrEquip(it) });
@@ -5208,7 +5476,7 @@ var ClassicUi = class {
   drawItemMenu(m) {
     const g = this.g;
     const LH = 15;
-    const BTN_H2 = 32;
+    const BTN_H3 = 32;
     const pad = 6;
     const btnW = m.actions.map((a2) => Math.max(56, g.width(a2.label) + 20));
     const textW = Math.max(...m.lines.map((l) => g.width(l.text)));
@@ -5225,7 +5493,7 @@ var ClassicUi = class {
       rows[rows.length - 1].push({ a: a2, w: bw });
       rowW += (rowW > 0 ? 6 : 0) + bw;
     });
-    const h = pad + m.lines.length * LH + 4 + rows.length * (BTN_H2 + 6) + pad - 6;
+    const h = pad + m.lines.length * LH + 4 + rows.length * (BTN_H3 + 6) + pad - 6;
     const a = m.anchor;
     let x = a.x + a.w + 4;
     if (x + w > this.W - this.safe.right) x = a.x - w - 4;
@@ -5240,7 +5508,7 @@ var ClassicUi = class {
     for (const row of rows) {
       let bx = x + pad;
       for (const { a: act, w: bw } of row) {
-        const r2 = { x: bx, y: by, w: bw, h: BTN_H2 };
+        const r2 = { x: bx, y: by, w: bw, h: BTN_H3 };
         g.frame(r2.x, r2.y, r2.w, r2.h, this.isPressed(r2) ? "#7a5a2a" : "#3a2a16", "#c9a060");
         g.text(act.label, r2.x + (bw - g.width(act.label)) / 2, r2.y + 10, "#ffe08a", true);
         this.hit({
@@ -5253,7 +5521,7 @@ var ClassicUi = class {
         });
         bx += bw + 6;
       }
-      by += BTN_H2 + 6;
+      by += BTN_H3 + 6;
     }
   }
   useOrEquip(it) {
@@ -5295,6 +5563,7 @@ var ClassicUi = class {
     }
     const target = p.bag[i];
     const src = this.hand.src;
+    if (target && this.mergeHandInto(target)) return;
     if (src.kind === "bag") {
       p.bag[src.index] = target ?? null;
       p.bag[i] = this.hand.item;
@@ -5308,6 +5577,14 @@ var ClassicUi = class {
     const it = this.takeHand();
     if (it) p.bag[i] = it;
   }
+  /** 手上的一叠放到同名的另一叠上：并成一叠（#1159）。不能并返回 false。 */
+  mergeHandInto(target) {
+    const h = this.hand;
+    if (target === h.item || target.name !== h.item.name || !stacks(this.catalog.item(target.name))) return false;
+    const it = this.takeHand();
+    if (it) target.count += it.count;
+    return true;
+  }
   placeIntoBelt(i) {
     const p = this.p;
     const h = this.hand;
@@ -5317,6 +5594,7 @@ var ClassicUi = class {
       return;
     }
     const target = p.belt[i];
+    if (target && this.mergeHandInto(target)) return;
     if (h.src.kind === "bag") {
       p.bag[h.src.index] = target ?? null;
       p.belt[i] = h.item;
@@ -5356,13 +5634,18 @@ var ClassicUi = class {
     this.npc = null;
   }
   buy(name) {
-    const def = this.catalog.item(name);
-    const p = this.p;
-    if (p.gold < def.price) return this.message("\u91D1\u5E01\u4E0D\u591F", "bad");
-    if (this.world.bagWeight(p) + def.weight > p.stats.maxBagWeight) return this.message("\u5305\u88F9\u592A\u91CD\u4E86", "bad");
-    if (!this.world.addToBag(p, newItem(def))) return this.message("\u5305\u88F9\u6EE1\u4E86", "bad");
-    p.gold -= def.price;
-    this.message(`\u4E70\u4E86 ${def.name}\uFF0C\u82B1\u8D39 ${def.price} \u91D1\u5E01`, "item");
+    this.report(this.world.buy(this.p, name));
+  }
+  /** 世界返回的失败原因显示出来；成功返回 true（成功的提示由世界发）。 */
+  report(why) {
+    if (why) this.message(why, "bad");
+    return !why;
+  }
+  /** 一叠东西问要几个（默认全部），单个直接按 1。 */
+  askCount(it, title, note, ok) {
+    if (it.count <= 1) return ok(1);
+    this.itemMenu = null;
+    this.quantity.show({ title, max: it.count, note, ok });
   }
   clickSellSpot() {
     if (this.hand) {
@@ -5382,21 +5665,17 @@ var ClassicUi = class {
     this.returnSellSpot();
     this.mode = "talk";
   }
+  /** 卖出 / 保管出售框里的东西：一叠先问数量（默认全部）。 */
   confirmSell() {
     const h = this.sellSpot;
-    if (!h) return;
+    if (!h || h.src.kind === "equip") return;
     this.sellSpot = null;
-    this.hand = h;
-    const it = this.takeHand();
-    if (!it) return;
-    const def = this.catalog.item(it.name);
+    const it = h.item;
     if (this.mode === "store") {
-      this.p.storage.push(it);
-      this.message(`\u4FDD\u7BA1\u4E86 ${def.name}`, "item");
+      this.askCount(it, `\u4FDD\u7BA1 ${it.name}`, void 0, (n) => this.report(this.world.deposit(this.p, it.uid, n)));
     } else {
-      const price = Math.floor(def.price / 2);
-      this.p.gold += price;
-      this.message(`\u5356\u51FA ${def.name}\uFF0C\u5F97\u5230 ${price} \u91D1\u5E01`, "item");
+      const each = Math.floor(this.catalog.item(it.name).price / 2);
+      this.askCount(it, `\u5356\u51FA ${it.name}`, (n) => `\u5F97\u5230 ${each * n} \u91D1\u5E01`, (n) => this.report(this.world.sell(this.p, it.uid, n)));
     }
   }
 };
@@ -5533,10 +5812,8 @@ function newPlayer(catalog, c) {
   const p = new Player(1, c.name, c.job, c.sex, START.map, START.x, START.y, 0);
   p.gold = 300;
   const give = (name, n = 1) => {
-    for (let i = 0; i < n; i++) {
-      const d = catalog.itemsByName.get(name);
-      if (d) p.bag[p.bag.indexOf(null)] = newItem(d);
-    }
+    const d = catalog.itemsByName.get(name);
+    if (d) p.bag[p.bag.indexOf(null)] = newItem(d, n);
   };
   p.equip.weapon = newItem(catalog.item("\u6728\u5251"));
   p.equip.dress = newItem(catalog.item(c.sex === 0 ? "\u5E03\u8863(\u7537)" : "\u5E03\u8863(\u5973)"));
@@ -5550,10 +5827,10 @@ async function main() {
   status("\u8BFB\u53D6\u6E38\u620F\u6570\u636E\u2026");
   await loadAssetVersion();
   const catalog = await loadCatalog();
-  const store = new HttpSaveStore();
+  const store2 = new HttpSaveStore();
   let save = null;
   try {
-    save = await store.load();
+    save = await store2.load();
   } catch (e) {
     status(`\u8BFB\u6863\u5931\u8D25\uFF1A${e.message}\uFF0C\u5237\u65B0\u91CD\u8BD5`);
     return;
@@ -5646,7 +5923,7 @@ async function main() {
     if (saving) return;
     saving = true;
     try {
-      await store.save(toSave(player, settings));
+      await store2.save(toSave(player, settings));
     } catch (e) {
       ui.message(`\u5B58\u6863\u5931\u8D25\uFF1A${e.message}`, "bad");
     } finally {

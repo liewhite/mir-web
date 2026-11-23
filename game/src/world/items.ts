@@ -32,6 +32,11 @@ export interface ItemInstance {
   /** 当前持久（药品、卷轴为 1；符和毒是剩余次数×100） */
   dura: number;
   duraMax: number;
+  /**
+   * 一格里叠了几个（#1159，原版不叠）：可叠的消耗品（见 stacks）同名放一格、不设上限；
+   * 其他物品永远是 1。旧存档没有这个字段，读档时补 1。
+   */
+  count: number;
 }
 
 /** 物品的用途，按 StdMode 分类。 */
@@ -44,6 +49,19 @@ export type ItemKind =
   | { kind: 'amulet'; poison: 0 | 1 | 2 } // 护身符(0)/灰色药粉(1 绿毒)/黄色药粉(2 红毒)
   | { kind: 'material' }
   | { kind: 'other' };
+
+/**
+ * 哪些物品同名叠成一格（用户 #1159 定）：药、卷轴、技能书、捆装药叠；装备（每件持久不同）、
+ * 护身符和毒粉（剩余次数记在持久里）、矿石等材料（纯度不同）和其他都不叠。
+ */
+const STACKS: Record<ItemKind['kind'], boolean> = {
+  potion: true, scroll: true, book: true, bundle: true,
+  equip: false, amulet: false, material: false, other: false,
+};
+
+export function stacks(d: ItemDef): boolean {
+  return STACKS[itemKind(d).kind];
+}
 
 export function itemKind(d: ItemDef): ItemKind {
   switch (d.mode) {
@@ -193,6 +211,17 @@ export function setNextUid(n: number): void {
   nextUid = Math.max(nextUid, n);
 }
 
-export function newItem(d: ItemDef): ItemInstance {
-  return { uid: nextUid++, name: d.name, dura: d.dura, duraMax: d.dura };
+/** 新物品；count 只对可叠的有意义，不可叠的传了也按 1。 */
+export function newItem(d: ItemDef, count = 1): ItemInstance {
+  return { uid: nextUid++, name: d.name, dura: d.dura, duraMax: d.dura, count: stacks(d) ? Math.max(1, count) : 1 };
+}
+
+/** 提示里的叫法：一叠写成「金创药(小量) ×5」。 */
+export function itemLabel(it: ItemInstance): string {
+  return it.count > 1 ? `${it.name} ×${it.count}` : it.name;
+}
+
+/** 从一叠里分出 n 个成为新的一件（新编号）；原来那叠不动，调用方负责减数量。 */
+export function splitOff(it: ItemInstance, n: number): ItemInstance {
+  return { ...it, uid: nextUid++, count: n };
 }

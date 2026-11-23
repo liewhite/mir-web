@@ -65,10 +65,8 @@ function newPlayer(catalog: Catalog, c: { name: string; job: Job; sex: 0 | 1 }):
   const p = new Player(1, c.name, c.job, c.sex, START.map, START.x, START.y, 0);
   p.gold = 300;
   const give = (name: string, n = 1): void => {
-    for (let i = 0; i < n; i++) {
-      const d = catalog.itemsByName.get(name);
-      if (d) p.bag[p.bag.indexOf(null)] = newItem(d);
-    }
+    const d = catalog.itemsByName.get(name);
+    if (d) p.bag[p.bag.indexOf(null)] = newItem(d, n);
   };
   p.equip.weapon = newItem(catalog.item('木剑'));
   p.equip.dress = newItem(catalog.item(c.sex === 0 ? '布衣(男)' : '布衣(女)'));

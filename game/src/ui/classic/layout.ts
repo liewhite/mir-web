@@ -229,7 +229,7 @@ export class BoardLayout implements Layout {
     // 快捷栏
     this.beltRects().forEach((r, i) => {
       const it = p.belt[i];
-      if (it && !this.h.beltInHand(i)) g.imgCenter('items', catalog.item(it.name).look, r.x, r.y, r.w, r.h);
+      if (it && !this.h.beltInHand(i)) g.item(catalog.item(it.name).look, it.count, r.x, r.y, r.w, r.h);
       g.text(String(i + 1), r.x + 13, r.y + 19, '#fff', true);
     });
     // 底栏小按钮：小地图、交易、行会、组队、能力、退出（后几个单机用不上，只画样子）

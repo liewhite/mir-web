@@ -150,7 +150,7 @@ export class TouchLayout implements Layout {
       g.frame(r.x, r.y, r.w, r.h, 'rgba(0,0,0,.55)', '#8a6a3a');
       this.h.area(r);
       const it = p.belt[i];
-      if (it && !this.h.beltInHand(i)) g.imgCenter('items', catalog.item(it.name).look, r.x, r.y, r.w, r.h);
+      if (it && !this.h.beltInHand(i)) g.item(catalog.item(it.name).look, it.count, r.x, r.y, r.w, r.h);
       g.text(String(i + 1), r.x + 3, r.y + 2, '#ffe08a', true);
     });
   }

@@ -8,7 +8,10 @@ import type { MapData } from '../assets/mapdata';
 import {
   type Action, type ActKind, type Actor, type GroundItem, type HitStyle, Monster, Npc, Player, isGold,
 } from './entities';
-import { EQUIP_SLOTS, type EquipSlot, type ItemInstance, dressSex, itemEffects, itemKind, newItem, requirement } from './items';
+import {
+  EQUIP_SLOTS, type EquipSlot, type ItemInstance, dressSex, itemEffects, itemKind, itemLabel, newItem, requirement, stacks,
+} from './items';
+import * as inv from './inventory';
 import { computeStats, random, type Stats } from './rules';
 import { findPath } from './path';
 import { RATES, dropChance } from './rates';
@@ -462,7 +465,10 @@ export class World {
       }
       const def = this.catalog.itemsByName.get(d.item);
       if (!def) continue;
-      for (let k = 0; k < Math.max(1, d.amount); k++) this.dropAt(m.pos, newItem(def));
+      const n = Math.max(1, d.amount);
+      // 可叠的一次掉多个就掉成一叠
+      if (stacks(def)) this.dropAt(m.pos, newItem(def, n));
+      else for (let k = 0; k < n; k++) this.dropAt(m.pos, newItem(def));
     }
   }
 
@@ -504,7 +510,7 @@ export class World {
   // ---------------- 物品 ----------------
 
   bagWeight(p: Player): number {
-    return [...p.bag, ...p.belt].reduce((s, it) => s + (it ? this.catalog.item(it.name).weight : 0), 0);
+    return inv.carriedWeight(this.catalog, p);
   }
 
   wearWeight(p: Player): number {
@@ -512,20 +518,17 @@ export class World {
       .reduce((s, k) => s + (p.equip[k] ? this.catalog.item(p.equip[k]!.name).weight : 0), 0);
   }
 
-  /** 放进包裹；满了返回 false。药品优先放快捷栏空位。 */
+  /** 放进包裹；满了返回 false。同名可叠的并进已有的一叠，药品、卷轴优先放快捷栏空位。 */
   addToBag(p: Player, it: ItemInstance): boolean {
-    const kind = itemKind(this.catalog.item(it.name)).kind;
-    if (kind === 'potion' || kind === 'scroll') {
-      const b = p.belt.indexOf(null);
-      if (b >= 0) {
-        p.belt[b] = it;
-        return true;
-      }
-    }
-    const i = p.bag.indexOf(null);
-    if (i < 0) return false;
-    p.bag[i] = it;
-    return true;
+    return inv.add(this.catalog, p, it);
+  }
+
+  /** 能不能再拿 count 个这种东西：重量和格子；不行返回原因。 */
+  roomFor(p: Player, name: string, count = 1): string | null {
+    const def = this.catalog.item(name);
+    if (this.bagWeight(p) + def.weight * count > p.stats.maxBagWeight) return '包裹太重了，拿不动';
+    if (!inv.hasRoom(def, p)) return '包裹满了';
+    return null;
   }
 
   pickUp(p: Player): boolean {
@@ -537,16 +540,12 @@ export class World {
         p.gold += g.item.gold;
         this.events.push({ type: 'msg', text: `捡到金币 ${g.item.gold}`, color: 'item' });
       } else {
-        const def = this.catalog.item(g.item.name);
-        if (this.bagWeight(p) + def.weight > p.stats.maxBagWeight) {
-          this.events.push({ type: 'msg', text: '包裹太重了，拿不动', color: 'bad' });
+        const why = this.roomFor(p, g.item.name, g.item.count);
+        if (why || !this.addToBag(p, g.item)) {
+          this.events.push({ type: 'msg', text: why ?? '包裹满了', color: 'bad' });
           continue;
         }
-        if (!this.addToBag(p, g.item)) {
-          this.events.push({ type: 'msg', text: '包裹满了', color: 'bad' });
-          continue;
-        }
-        this.events.push({ type: 'msg', text: `捡到 ${g.item.name}`, color: 'item' });
+        this.events.push({ type: 'msg', text: `捡到 ${itemLabel(g.item)}`, color: 'item' });
       }
       this.items.splice(this.items.indexOf(g), 1);
       any = true;
@@ -554,19 +553,63 @@ export class World {
     return any;
   }
 
-  findOwned(p: Player, uid: number): { where: 'bag' | 'belt'; index: number; item: ItemInstance } | null {
-    let i = p.bag.findIndex((x) => x?.uid === uid);
-    if (i >= 0) return { where: 'bag', index: i, item: p.bag[i]! };
-    i = p.belt.findIndex((x) => x?.uid === uid);
-    if (i >= 0) return { where: 'belt', index: i, item: p.belt[i]! };
+  findOwned(p: Player, uid: number): inv.Carried | null {
+    return inv.find(p, uid);
+  }
+
+  /** 从身上拿走 n 个（默认整件，一叠就是整叠）。 */
+  removeOwned(p: Player, uid: number, n?: number): ItemInstance | null {
+    return inv.take(p, uid, n);
+  }
+
+  /** 用掉一个（一叠只减一）。 */
+  private consumeOne(p: Player, uid: number): void {
+    inv.take(p, uid, 1);
+  }
+
+  // ---------------- 商人、仓库 ----------------
+
+  /** 买一个；不行返回原因。 */
+  buy(p: Player, name: string): string | null {
+    const def = this.catalog.item(name);
+    if (p.gold < def.price) return '金币不够';
+    const why = this.roomFor(p, name);
+    if (why) return why;
+    this.addToBag(p, newItem(def));
+    p.gold -= def.price;
+    this.events.push({ type: 'msg', text: `买了 ${def.name}，花费 ${def.price} 金币`, color: 'item' });
     return null;
   }
 
-  removeOwned(p: Player, uid: number): ItemInstance | null {
-    const f = this.findOwned(p, uid);
-    if (!f) return null;
-    (f.where === 'bag' ? p.bag : p.belt)[f.index] = null;
-    return f.item;
+  /** 卖出身上一件的 n 个（默认整叠），每个半价。 */
+  sell(p: Player, uid: number, n?: number): string | null {
+    const it = this.removeOwned(p, uid, n);
+    if (!it) return '包裹里没有这件物品';
+    const price = Math.floor(this.catalog.item(it.name).price / 2) * it.count;
+    p.gold += price;
+    this.events.push({ type: 'msg', text: `卖出 ${itemLabel(it)}，得到 ${price} 金币`, color: 'item' });
+    return null;
+  }
+
+  /** 把身上一件的 n 个存进仓库（并进同名一叠）。 */
+  deposit(p: Player, uid: number, n?: number): string | null {
+    const it = this.removeOwned(p, uid, n);
+    if (!it) return '包裹里没有这件物品';
+    inv.store(this.catalog, p.storage, it);
+    this.events.push({ type: 'msg', text: `保管了 ${itemLabel(it)}`, color: 'item' });
+    return null;
+  }
+
+  /** 从仓库取回一件的 n 个（默认整叠）。 */
+  withdraw(p: Player, uid: number, n?: number): string | null {
+    const it0 = p.storage.find((x) => x.uid === uid);
+    if (!it0) return '仓库里没有这件物品';
+    const why = this.roomFor(p, it0.name, Math.min(it0.count, n ?? it0.count));
+    if (why) return why;
+    const it = inv.unstore(p.storage, uid, n)!;
+    this.addToBag(p, it);
+    this.events.push({ type: 'msg', text: `取回 ${itemLabel(it)}`, color: 'item' });
+    return null;
   }
 
   /** 双击包裹里的物品：喝药、读书、用卷轴、穿装备、拆药包。返回提示文字（失败时）。 */
@@ -578,7 +621,7 @@ export class World {
     const k = itemKind(def);
     switch (k.kind) {
       case 'potion': {
-        this.removeOwned(p, uid);
+        this.consumeOne(p, uid);
         this.sound(S.eatDrug);
         if (k.instant) {
           const hp = Math.min(k.hp, p.stats.maxHp - p.hp);
@@ -595,20 +638,21 @@ export class World {
         // 包的 Shape = 里面那种药的 AniCount
         const one = this.catalog.data.items.find((i) => i.mode !== 31 && i.ani === k.of);
         if (!one) return '这个包拆不开';
-        const free = p.bag.filter((x) => x === null).length - 1 + p.belt.filter((x) => x === null).length;
-        if (free < 6) return '包裹空位不够，拆包需要 6 个空位';
-        this.removeOwned(p, uid);
-        for (let i = 0; i < 6; i++) this.addToBag(p, newItem(one));
+        // 拆出的 6 个并成一叠：身上已有这种药就并进去；没有就要一个空位（这包是最后一个时它腾出来的格子也算）
+        const last = f.item.count === 1;
+        if (!last && !inv.hasRoom(one, p)) return '包裹满了，拆包需要一个空位';
+        this.consumeOne(p, uid);
+        this.addToBag(p, newItem(one, 6));
         return null;
       }
       case 'scroll':
         if (k.effect === 'town' || k.effect === 'escape') {
-          this.removeOwned(p, uid);
+          this.consumeOne(p, uid);
           this.pendingTeleport = { ...p.home };
           return null;
         }
         if (k.effect === 'random') {
-          this.removeOwned(p, uid);
+          this.consumeOne(p, uid);
           for (let t = 0; t < 50; t++) {
             const x = random(this.map.width);
             const y = random(this.map.height);
@@ -626,7 +670,7 @@ export class World {
         if (skill.job !== p.job) return '你的职业学不了这个技能';
         if (p.level < k.level) return `需要 ${k.level} 级才能学`;
         if (p.skills.some((s) => s.id === skill.id)) return '已经学会了';
-        this.removeOwned(p, uid);
+        this.consumeOne(p, uid);
         const key = [1, 2, 3, 4, 5, 6, 7, 8].find((n) => !p.skills.some((s) => s.key === n)) ?? 0;
         p.skills.push({ id: skill.id, level: 0, train: 0, key: isPassive(skill.id) ? 0 : key });
         this.recalc(p);
