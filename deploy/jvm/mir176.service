@@ -1,0 +1,22 @@
+[Unit]
+Description=Mir 1.76 multiplayer server (Scala, issue #1148)
+After=network-online.target k3s.service
+Wants=network-online.target
+
+[Service]
+User=mir176
+Group=mir176
+EnvironmentFile=/etc/mir176.env
+ExecStart=/opt/mir176/jre/bin/java -Xms128m -Xmx768m -Dfile.encoding=UTF-8 -jar /opt/mir176/app/mir176.jar serve
+# 停服时游戏线程把在线角色存档，给足时间
+TimeoutStopSec=30
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/mir176
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

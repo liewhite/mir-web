@@ -1,0 +1,8 @@
+#!/bin/bash
+# kaojiang 上的命令行（以 mir176 用户、带 /etc/mir176.env 的环境跑服务端 jar）：
+#   mir176ctl account add <账号>       然后输入密码（或 echo 密码 | mir176ctl account add <账号>）
+#   mir176ctl account passwd <账号>
+#   mir176ctl account list
+#   mir176ctl migrate <账号> /var/lib/mir176/save.json [角色名]   旧单机版存档导成角色
+set -euo pipefail
+exec sudo bash -c 'set -a; . /etc/mir176.env; set +a; exec runuser -u mir176 -- /opt/mir176/jre/bin/java -jar /opt/mir176/app/mir176.jar "$@"' _ "$@"
