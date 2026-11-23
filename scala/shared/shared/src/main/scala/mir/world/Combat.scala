@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.SkillDef
 import mir.model.*
 import mir.protocol.{Anchor, ServerMsg, Tone}
-import mir.rules.{Durability, ItemKind, Rng, Rules, SpellRules}
+import mir.rules.{Durability, ItemKind, Rng, Rules, SpellRules, SwordRules}
 
 /** 一个操作的结果：做了；在忙（冷却、上个动作没做完，不用提示）；不行（告诉玩家原因）。 */
 enum Outcome:
@@ -58,7 +58,7 @@ object Combat:
       val style =
         if p.fireReady && target.exists(w.isEnemy(p, _)) then HitStyle.Fire
         else if p.powerHitReady && has(7) then HitStyle.Power
-        else if p.wideHitOn && has(25) && p.mp >= 3 then HitStyle.Wide
+        else if p.wideHitOn && has(25) && p.mp >= SwordRules.WideHitMp then HitStyle.Wide
         else if p.longHitOn && has(12) then HitStyle.Long
         else HitStyle.Normal
       w.setAction(p, if style == HitStyle.Normal then ActKind.Attack else ActKind.Heavy, HitAnimMs, hit = Some(style))
@@ -94,15 +94,13 @@ object Combat:
     var power = Rules.meleePower(p.stats.dc, p.stats.luck)
     style match
       case HitStyle.Power =>
-        // 攻杀：额外 + (5 + 技能等级)（HitPlus）
-        power += 5 + p.skill(SkillId(7)).fold(0)(_.level)
+        power = SwordRules.powerHitPower(power, p.skill(SkillId(7)).fold(0)(_.level))
         p.powerHitReady = false
       case HitStyle.Fire =>
-        // 烈火：威力 ×(1 + (4 + 等级×4)/10)（HitDouble）
-        power += jsRound(power / 100.0 * (4 + p.skill(SkillId(26)).fold(0)(_.level) * 4) * 10)
+        power = SwordRules.firePower(power, p.skill(SkillId(26)).fold(0)(_.level))
         p.fireReady = false
         if target.isDefined then train(w, p, SkillId(26), 1)
-      case HitStyle.Wide => p.mp -= 3
+      case HitStyle.Wide => p.mp -= SwordRules.WideHitMp
       case _             => ()
     target.foreach(physicalHit(w, p, _, power, ignoreArmor = false))
     if style == HitStyle.Long then
@@ -113,7 +111,7 @@ object Combat:
       }
     if style == HitStyle.Wide then
       // 半月：身边一圈（除了正前方）都打到
-      val pw = jsRound(power * (p.skill(SkillId(25)).fold(0)(_.level) + 1) / 4.0) + 1
+      val pw = SwordRules.widePower(power, p.skill(SkillId(25)).fold(0)(_.level))
       List(1, 2, 6, 7, 3, 5, 4).foreach { k =>
         w.occupant(p.cell.step(dir.turn(k))).filter(w.isEnemy(p, _)).foreach(physicalHit(w, p, _, pw, ignoreArmor = false))
       }
@@ -125,7 +123,7 @@ object Combat:
     p.skill(SkillId(7)).filter(_ => hasWeapon).foreach { ph =>
       if style == HitStyle.Power then train(w, p, SkillId(7), 1)
       if p.powerHitCount <= 0 then
-        p.powerHitCount = 7 - ph.level
+        p.powerHitCount = SwordRules.powerHitEvery(ph.level)
         p.powerHitPoint = rng.random(p.powerHitCount)
       p.powerHitCount -= 1
       if p.powerHitCount == p.powerHitPoint then p.powerHitReady = true
@@ -136,6 +134,9 @@ object Combat:
     }
 
   // ---------------- 魔法 ----------------
+
+  /** 放完后同一个技能多久才能再放（毫秒）：表里的间隔，至少一个施法动作；没有间隔为 None。 */
+  def cooldownMs(d: SkillDef): Option[Int] = Option.when(d.delay > 0)(math.max(SpellInterval, d.delay))
 
   /** 魔法耗蓝：spell/4×(等级+1) + defSpell/4×(等级+1)，取整为 0 时用 spell。 */
   def manaCost(d: SkillDef, level: Int): Int =
@@ -198,7 +199,7 @@ object Combat:
                 castBase.get(d.effect).foreach((lib, idx, n, ft) => w.effect(lib, idx, n, ft, Anchor.OnActor(p.id)))
                 w.setAction(p, ActKind.Spell, SpellAnimMs, spellEffect = Some(d.effect))
                 p.busyUntil = w.now + SpellInterval
-                if d.delay > 0 then p.cooldown(skillId) = w.now + math.max(SpellInterval, d.delay)
+                cooldownMs(d).foreach(ms => p.cooldown(skillId) = w.now + ms)
                 train(w, p, skillId, 1 + rng.random(3))
                 if p.invisibleUntil > w.now && skillId.value != 18 then p.invisibleUntil = Millis.zero
                 Outcome.Done
@@ -427,7 +428,7 @@ object Combat:
               case Some(md) =>
                 consumeAmulet(w, p)
                 w.spawnMonster(md, None, p.cell.step(p.dir), 1).foreach { m =>
-                  val boost = 1 + lv * 0.35
+                  val boost = SpellRules.summonBoost(lv)
                   m.master = Some(p.id)
                   m.petLevel = lv
                   m.maxHpNow = jsRound(md.hp * boost)
@@ -482,7 +483,7 @@ object Combat:
         if p.fireReady then Effect.Fail("烈火已经准备好了")
         else
           p.fireReady = true
-          p.cooldown(SkillId(26)) = w.now + 10_000
+          p.cooldown(SkillId(26)) = w.now + SwordRules.FireCooldownMs
           w.sound(p.cell, Sounds.fireHitReady)
           w.notice(p, "烈火剑法准备好了", Tone.System)
           p.mp -= cost

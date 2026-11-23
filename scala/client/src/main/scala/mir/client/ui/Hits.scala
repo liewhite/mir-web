@@ -5,7 +5,11 @@ import scala.collection.mutable
 /**
  * 一个可点的区域。img：原版按钮图号（按下时画、always 时平时也画），自己画的按钮为空。
  */
-final case class Button(rect: Rect, onClick: () => Unit, img: Option[Int] = None, always: Boolean = false)
+final case class Button(rect: Rect, onClick: () => Unit, img: Option[Int] = None, always: Boolean = false, onHold: Option[() => Unit] = None)
+
+object Button:
+  /** 按住超过这么久（毫秒）再松开算长按：有 onHold 的按钮做 onHold（技能环长按看说明），不做 onClick */
+  val HoldMs = 450.0
 
 /**
  * 每帧重建的点击登记表：界面占用区域（点在里面不传给地图）和按钮。

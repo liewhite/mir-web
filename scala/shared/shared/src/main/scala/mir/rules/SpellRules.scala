@@ -210,6 +210,12 @@ object SpellRules:
       else if rng.random(14) == 0 then TameOutcome.Killed
       else TameOutcome.NoEffect
 
+  /** 魔法盾挡掉的伤害比例：技能 0–3 级 30%/40%/50%/60%（挨打至少还掉 1 点）。 */
+  def shieldAbsorb(level: Int): Double = Vector(0.3, 0.4, 0.5, 0.6).lift(level).getOrElse(0.3)
+
+  /** 召唤骷髅、神兽：血量和攻击 ×(1 + 技能等级×0.35)。 */
+  def summonBoost(level: Int): Double = 1 + level * 0.35
+
   /** 收服后宝宝走路、出手间隔的上限（毫秒）：1500 - 等级×200、2000 - 等级×200。 */
   def petWalkCap(level: Int): Int   = 1500 - level * 200
   def petAttackCap(level: Int): Int = 2000 - level * 200

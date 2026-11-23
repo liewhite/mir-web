@@ -219,7 +219,9 @@ final class Board(ui: ClassicUi):
           else if m.stats.mp.value < Combat.manaCost(d, ls.level) then g.circle(cx, cy, sr, "rgba(0,0,80,.45)")
           g.text(s"F$k", r.x - 2, r.y - 4, "#ff0", bold = true)
           ui.area(r)
-          ui.button(Button(r, () => ui.ctl.castSkill(ls.id)))
+          ui.button(Button(r, () => ui.ctl.castSkill(ls.id), onHold = Some(() =>
+            ui.itemMenu = Some(ItemMenu(Describe.skillLines(ui.catalog, d, ls, m.stats), Nil, r))
+          )))
         }
       }
     }

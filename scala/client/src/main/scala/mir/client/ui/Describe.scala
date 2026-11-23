@@ -3,8 +3,7 @@ package mir.client.ui
 import mir.data.{Catalog, ItemDef, SkillDef, Span}
 import mir.model.{EquipSlot, ItemInstance, Job, LearnedSkill, PoisonKind}
 import mir.protocol.SelfStats
-import mir.rules.{Durability, ItemEffects, ItemKind, PotionRules, Pricing, Recovery, Requirement, Rules, ScrollEffect, dressSex}
-import mir.world.Combat
+import mir.rules.{SpellRules, Durability, ItemEffects, ItemKind, PotionRules, Pricing, Recovery, Requirement, Rules, ScrollEffect, dressSex}
 
 /**
  * 把物品、属性、技能讲成可量化的说明（用户 #1165：所有效果给精确数值）。纯函数，只出文字。
@@ -68,7 +67,7 @@ object Describe:
       Some(Line(poison match
         case None                   => "道士灵魂火符、召唤骷髅、召唤神兽、隐身术每次用 1 张"
         case Some(PoisonKind.Green) => "施毒术用：绿毒，中毒期间持续掉血（数值见施毒术说明）"
-        case Some(PoisonKind.Red)   => s"施毒术用：红毒，降低目标防御$notYet"
+        case Some(PoisonKind.Red)   => s"施毒术用：红毒，中毒期间挨打伤害 ×${SpellRules.redPoisonDamage(100) / 100.0}（持续时间见施毒术说明）"
       )),
       Some(Line("装备在左手镯位置才能用", Tint.Dim)),
       inst.map(i => Line(s"剩余 ${Durability.usesLeft(i.dura)} 次", Tint.Dim))
@@ -170,14 +169,5 @@ object Describe:
       Some(Line("包裹、穿戴、武器都不限重量，包裹只看格子", Tint.Dim))
     ).flatten
 
-  /** 技能说明。 */
-  def skillLines(d: SkillDef, ls: LearnedSkill): List[Line] =
-    List(
-      Line(s"${d.name}　${ls.level} 级　${d.job.label}", Tint.Title),
-      Line(s"耗魔法 ${Combat.manaCost(d, ls.level)}"),
-      Line(
-        if ls.level < 3 then s"熟练度 ${ls.train}/${d.train(ls.level)}，人物 ${d.needLevel(ls.level)} 级后才能继续涨" else "已练满",
-        Tint.Dim
-      ),
-      Line("点图标设置 F1-F8 快捷键", Tint.Dim)
-    )
+  /** 技能说明（每级精确数值，见 SkillInfo）。 */
+  def skillLines(catalog: Catalog, d: SkillDef, ls: LearnedSkill, me: SelfStats): List[Line] = SkillInfo.lines(catalog, d, ls, me)

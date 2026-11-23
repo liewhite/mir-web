@@ -254,7 +254,12 @@ object ClientSpec extends ZIOSpecDefault:
         lines.exists(_.text.startsWith("持久")) == false, // 没有实例时不写持久
         stats.exists(_.text.startsWith("体力")) && stats.exists(_.text.contains("自然回")),
         stats.head.text.contains("战士"),
-        Describe.skillLines(fire, LearnedSkill(fire.id, 0, 3, Some(1))).exists(_.text.startsWith("耗魔法"))
+        Describe.skillLines(catalog, fire, LearnedSkill(fire.id, 0, 3, Some(1)), me).exists(_.text.startsWith("耗魔法")),
+        // 每个技能都有具体数值（各级对照或效果行里带数字），不是空话
+        catalog.data.skills.forall { d =>
+          val ls = Describe.skillLines(catalog, d, LearnedSkill(d.id, 1, 0, None), me)
+          ls.size >= 4 && ls.drop(2).exists(_.text.exists(_.isDigit)) && !ls.exists(_.text.contains("未算出"))
+        }
       )
     },
     test("设置：百分比每次 5，卡在 0–95；每一行改的是自己那一项") {

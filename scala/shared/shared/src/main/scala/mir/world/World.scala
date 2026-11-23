@@ -543,7 +543,7 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
         val poisoned = if struck && target.poison.exists(_.kind == PoisonKind.Red) then mir.rules.SpellRules.redPoisonDamage(amount) else amount
         val dmg = target match
           case _: Player if target.shieldUntil > clock =>
-            val absorb = Vector(0.3, 0.4, 0.5, 0.6).lift(target.shieldLevel).getOrElse(0.3)
+            val absorb = mir.rules.SpellRules.shieldAbsorb(target.shieldLevel)
             math.max(1, math.round(poisoned * (1 - absorb)).toInt)
           case _ => poisoned
         target.hp -= dmg

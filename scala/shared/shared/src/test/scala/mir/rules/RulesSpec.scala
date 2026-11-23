@@ -114,5 +114,34 @@ object RulesSpec extends ZIOSpecDefault:
           Rates.dropChance(DropDef(DropDef.GoldName, 1, 100, 50), None) == 0.2
         )
       }
+    ),
+    suite("说明用的精确上下限与概率（#1165）")(
+      test("Rng.lowest/highest 求出区间端点，和逐个取值的最小最大一致") {
+        val fire = catalog.skill(SkillId(1)).get
+        val mc   = Span(3, 9)
+        val all  = Odds.of()(r => SpellRules.mcDamage(fire, 2, mc)(using r)).get.keySet
+        assertTrue(
+          SpellRules.mcDamage(fire, 2, mc)(using Rng.lowest) == all.min,
+          SpellRules.mcDamage(fire, 2, mc)(using Rng.highest) == all.max
+        )
+      },
+      test("Odds：概率和为 1，简单情况与手算一致") {
+        val two = Odds.of()(r => r.random(2) + r.random(3)).get
+        assertTrue(
+          math.abs(two.values.sum - 1.0) < 1e-9,
+          math.abs(two(1) - 2.0 / 6) < 1e-9,
+          // 瞬息移动 0 级：Random(11) < 4 → 4/11
+          math.abs(Odds.chance()(r => SpellRules.spaceMoveWorks(0)(using r)).get - 4.0 / 11) < 1e-9,
+          // 困魔咒：怪比你低 2 级必困住，同级 Random(4) ≥ 2 → 50%
+          Odds.chance()(r => SpellRules.holyCurtainCatches(20, 18)(using r)).contains(1.0),
+          Odds.chance()(r => SpellRules.holyCurtainCatches(20, 20)(using r)).contains(0.5),
+          // 超过路数上限不给近似值
+          Odds.of(limit = 10)(r => r.random(100)).isEmpty
+        )
+      },
+      test("诱惑之光各结果概率和为 1") {
+        val m = Odds.of()(r => SpellRules.tame(20, 1, SpellRules.TameTarget(20, 200, false))(using r)).get
+        assertTrue(math.abs(m.values.sum - 1.0) < 1e-9, m.keySet.contains(SpellRules.TameOutcome.Tamed))
+      }
     )
   )

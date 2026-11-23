@@ -142,7 +142,7 @@ final class Panels(ui: ClassicUi):
     val list = m.view.skills
     // 触屏没有悬停：点技能那一行弹说明（图标在上层，点图标仍是设快捷键）
     list.zipWithIndex.slice(magicPage * 5, magicPage * 5 + 5).foreach { (ls, i) =>
-      catalog.skill(ls.id).foreach(d => infoTap(magicRow(i - magicPage * 5))(Describe.skillLines(d, ls)))
+      catalog.skill(ls.id).foreach(d => infoTap(magicRow(i - magicPage * 5))(Describe.skillLines(catalog, d, ls, m.stats)))
     }
     list.zipWithIndex.slice(magicPage * 5, magicPage * 5 + 5).foreach { (ls, i) =>
       catalog.skill(ls.id).foreach { d =>
@@ -330,7 +330,7 @@ final class Panels(ui: ClassicUi):
   private def skillHover(m: Me): Option[List[Line]] =
     m.view.skills.zipWithIndex.slice(magicPage * 5, magicPage * 5 + 5).collectFirst {
       case (ls, i) if magicRow(i - magicPage * 5).contains(ui.mouse.x, ui.mouse.y) && catalog.skill(ls.id).isDefined =>
-        Describe.skillLines(catalog.skill(ls.id).get, ls)
+        Describe.skillLines(catalog, catalog.skill(ls.id).get, ls, m.stats)
     }
 
   // ---------------- 手机：物品菜单 ----------------

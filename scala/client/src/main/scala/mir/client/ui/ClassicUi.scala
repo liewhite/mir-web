@@ -70,6 +70,8 @@ final class ClassicUi(
   private var chatLines  = Vector.empty[ChatLine]
   var mouse: Pt          = Pt(-1, -1)
   private var pressed    = Option.empty[Button]
+  /** 按下 pressed 的时刻（判断长按） */
+  private var pressedAt  = 0.0
   private var lastClick  = (0.0, "")
   private var problem    = Option.empty[String]
   private var dead       = false
@@ -327,6 +329,7 @@ final class ClassicUi(
         hits.buttonAt(p.x, p.y, slop) match
           case Some(b) =>
             pressed = Some(b)
+            pressedAt = dom.window.performance.now()
             true
           case None =>
             val onUi = hits.covers(p.x, p.y)
@@ -350,9 +353,13 @@ final class ClassicUi(
       case _ =>
         val b = pressed
         pressed = None
+        val held = dom.window.performance.now() - pressedAt >= Button.HoldMs
         b.filter(_.rect.distTo(p.x, p.y) <= slop).foreach { b =>
-          env.sound(ClassicUi.ButtonSound)
-          b.onClick()
+          b.onHold.filter(_ => held) match
+            case Some(hold) => hold()
+            case None =>
+              env.sound(ClassicUi.ButtonSound)
+              b.onClick()
         }
 
   /** 键盘：接了返回 true。在聊天框里打字时不管。 */

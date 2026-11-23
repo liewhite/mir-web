@@ -20,6 +20,12 @@ object Rng:
 
   def fromScala(r: scala.util.Random): Rng = n => if n > 0 then r.nextInt(n) else 0
 
+  /** 每次都取最小值 0：配合单调的公式求下限（技能说明用）。 */
+  val lowest: Rng = _ => 0
+
+  /** 每次都取最大值 n-1：配合单调的公式求上限（技能说明用）。 */
+  val highest: Rng = n => math.max(0, n - 1)
+
   /** 测试用：按顺序吐出给定的值（对 n 取模），用完从头再来。 */
   def sequence(values: Int*): Rng =
     require(values.nonEmpty)
@@ -133,9 +139,9 @@ object Rules:
       )
     }
     val passiveHit =
-      passive.oneSword.filter(_ > 0).fold(0)(l => round(3.0 * l)) +
-        passive.spiritSword.filter(_ > 0).fold(0)(l => round(8.0 / 3 * l)) +
-        passive.powerHit.filter(_ > 0).getOrElse(0)
+      passive.oneSword.fold(0)(SwordRules.oneSwordHit) +
+        passive.spiritSword.fold(0)(SwordRules.spiritSwordHit) +
+        passive.powerHit.fold(0)(SwordRules.powerHitHit)
     worn.copy(hit = worn.hit + passiveHit, hitInterval = hitInterval(equips.iterator.map(_.attackSpeed).sum))
 
   /** 没有攻速加成时两次普通攻击的间隔（毫秒）、每档攻速缩短的毫秒数、间隔下限、攻速档上限。 */
@@ -208,3 +214,38 @@ object Recovery:
   val IntervalMs = 2000
   def hpPerTick(s: Stats): Int = math.max(1, s.maxHp / 75) + s.hpRegen
   def mpPerTick(s: Stats): Int = math.max(1, s.maxMp / 75) + s.mpRegen
+
+/**
+ * 精确概率：把一个用 Rng 的计算的每一种随机取值都走一遍，得出每种结果的概率（技能说明用，#1165）。
+ * 只用于分支不多的公式；走的路数超过 limit 时返回 None（不给近似值）。
+ */
+object Odds:
+  def of[A](limit: Int = 200_000)(f: Rng => A): Option[Map[A, Double]] =
+    val out   = scala.collection.mutable.HashMap.empty[A, Double]
+    var path  = Vector.empty[Int] // 这一路每次取的值
+    var sizes = Vector.empty[Int] // 这一路每次的 n
+    var runs  = 0
+    var more  = true
+    while more && runs < limit do
+      var i     = 0
+      val taken = Vector.newBuilder[Int]
+      val ns    = Vector.newBuilder[Int]
+      val rng: Rng = n =>
+        val k = math.max(1, n)
+        val v = if i < path.size then path(i) else 0
+        i += 1
+        taken += v
+        ns += k
+        if n > 0 then v else 0
+      val a = f(rng)
+      path = taken.result()
+      sizes = ns.result()
+      out(a) = out.getOrElse(a, 0.0) + sizes.foldLeft(1.0)((p, n) => p / n)
+      runs += 1
+      // 下一路：从最后一次往前找还能加 1 的
+      val j = path.indices.lastIndexWhere(k => path(k) + 1 < sizes(k))
+      if j < 0 then more = false else path = path.take(j) :+ (path(j) + 1)
+    Option.when(!more)(out.toMap)
+
+  /** 条件成立的概率。 */
+  def chance(limit: Int = 200_000)(f: Rng => Boolean): Option[Double] = of(limit)(f).map(_.getOrElse(true, 0.0))
