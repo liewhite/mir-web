@@ -195,16 +195,15 @@ final class Board(ui: ClassicUi):
     ui.area(r)
     ui.button(Button(r, () => ui.ctl.attack()))
 
-  /** F1–F8 按键位摆在攻击键左上的两圈；没设快捷键的主动技能顺次补进空位（只是显示，不改快捷键）。 */
+  /** F1–F8 按键位摆在攻击键左上的两圈；只显示设了快捷键的技能，取消快捷键即消失（#1164）。 */
   private def drawSkills(m: Me, attack: Pt): Unit =
     val s     = ui.ctlScale
     val sr    = SkillR * s
     val now   = ui.client.serverNow
     val all   = ui.ctl.activeSkills
     val byKey = all.flatMap(l => l.key.filter(k => k >= 1 && k <= 8).map(_ -> l)).toMap
-    val loose = all.filterNot(l => l.key.exists(k => k >= 1 && k <= 8)).iterator
     (1 to 8).foreach { k =>
-      byKey.get(k).orElse(loose.nextOption()).foreach { ls =>
+      byKey.get(k).foreach { ls =>
         ui.catalog.skill(ls.id).foreach { d =>
           val ring = Rings(if k <= 4 then 0 else 1) * s
           val ang  = Angles((k - 1) % 4) * math.Pi / 180
