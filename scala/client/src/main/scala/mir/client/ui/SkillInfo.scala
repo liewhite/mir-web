@@ -63,7 +63,10 @@ object SkillInfo:
 
   /** 放完多久能再放：烈火是蓄力冷却，其余按技能表。 */
   private def cooldown(d: SkillDef): Option[Int] =
-    if d.id.value == 26 then Some(SwordRules.FireCooldownMs) else Combat.cooldownMs(d)
+    d.id.value match
+      case 26 => Some(SwordRules.FireCooldownMs)
+      case 27 => Some(SpellRules.RushCooldownMs)
+      case _  => Combat.cooldownMs(d)
 
   /** 一个技能在某个等级的效果文字（effect），和放进「各级」对照的那个关键数（headline，没有就不列）。 */
   private final case class Kit(catalog: Catalog, d: SkillDef, me: SelfStats):
@@ -80,9 +83,15 @@ object SkillInfo:
     private val armor                  = "，再减目标魔防"
     private def melee(f: Int => Int)   = if s.dc.lo == s.dc.hi then s"${f(s.dc.lo)}" else s"${f(s.dc.lo)}-${f(s.dc.hi)}"
 
+    /** 诱惑一次各结果的概率：先按 tameChance 收服，没收服再走原版流程（流程里的收服算没反应）。 */
     private def tameOdds(l: Int): Option[Map[String, Double]] =
-      val t = SpellRules.TameTarget(L, 200, undead = false)
-      Odds.of()(r => SpellRules.tame(L, l, t)(using r)).map(_.toList.groupMapReduce {
+      val t    = SpellRules.TameTarget(L, 200, undead = false)
+      val p    = SpellRules.tameChance(L, l, t)
+      val rest = Odds.of()(r => SpellRules.tameOriginal(L, l, t)(using r) match
+        case SpellRules.TameOutcome.Tamed => SpellRules.TameOutcome.NoEffect
+        case o                            => o
+      )
+      rest.map(m => (m.view.mapValues(_ * (1 - p)).toMap + (SpellRules.TameOutcome.Tamed -> p)).toList.groupMapReduce {
         case (SpellRules.TameOutcome.Tamed, _)        => "收服"
         case (SpellRules.TameOutcome.Seized(secs), _) => s"定住 $secs 秒"
         case (SpellRules.TameOutcome.Crazy(_), _)     => "发狂"
@@ -123,6 +132,7 @@ object SkillInfo:
       case 3  => Some(l => s"准确 +${SwordRules.oneSwordHit(l)}")
       case 4  => Some(l => s"准确 +${SwordRules.spiritSwordHit(l)}")
       case 7  => Some(l => s"每 ${SwordRules.powerHitEvery(l)} 刀 +${SwordRules.powerHitPower(0, l)}")
+      case 27 => Some(l => s"冲 ${SpellRules.rushSteps(l)} 格，撞 ${span(r => SpellRules.rushImpact(l, 0)(using r))}")
       case 25 => Some(l => s"旁边 ${melee(SwordRules.widePower(_, l))}")
       case 26 => Some(l => s"${melee(SwordRules.firePower(_, l))}")
       case _  => None
@@ -170,7 +180,9 @@ object SkillInfo:
               m.toList.collect { case (k, p) if k.startsWith("定住") => s"$k ${pct(p)}" }
             s"对和你同级、血量 300 以下的怪每放一次：${parts.mkString("，")}"
           },
-          "怪的血量 300 以上更难收：收服那一步的机会从 1/2 变成 1/(血量÷100×2)"
+          s"血越多越难收：同级怪血 500 收服 ${pct(SpellRules.tameChance(L, l, SpellRules.TameTarget(L, 500, false)))}、" +
+            s"血 1000 收服 ${pct(SpellRules.tameChance(L, l, SpellRules.TameTarget(L, 1000, false)))}；比你低 10 级、血 300 以下 " +
+            pct(SpellRules.tameChance(L, l, SpellRules.TameTarget(L - 10, 200, false)))
         )
       case 2 => List(s"给选中的自己人（没选就是自己）回血 ${heal(l)}", s"= 技能基础 + 道术 ${sc.lo}-${sc.hi} ×2")
       case 29 =>
@@ -228,5 +240,12 @@ object SkillInfo:
           s"放后下一刀砍敌人时威力 ×${SwordRules.firePower(100, l) / 100.0}（你是 ${melee(SwordRules.firePower(_, l))}，再减防御）",
           s"蓄力后 ${sec(SwordRules.FireCooldownMs)}内不能再蓄"
         )
-      case 27 => List("还没做（#1168）")
+      case 27 =>
+        def push(below: Int) = chance(r => SpellRules.rushPushes(L, L - below, l)(using r))
+        List(
+          s"朝目标（没有就朝面向）最多冲 ${SpellRules.rushSteps(l)} 格，把挡路的比你等级低的推着走（同级或更高推不动）",
+          s"每格推得动的机会：低 1 级 ${push(1)}、低 5 级 ${push(5)}、低 10 级 ${push(10)}",
+          s"撞到的挨 ${span(r => SpellRules.rushImpact(l, 0)(using r))}（一格没推动时最重，推着走了 1 格 ${span(r => SpellRules.rushImpact(l, 1)(using r))}），再减防御",
+          s"冲劲没用完就撞墙：自己挨 ${span(r => SpellRules.rushCrash(l)(using r))}，再减防御"
+        )
       case _  => Nil

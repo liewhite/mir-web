@@ -139,8 +139,8 @@ object RulesSpec extends ZIOSpecDefault:
           Odds.of(limit = 10)(r => r.random(100)).isEmpty
         )
       },
-      test("诱惑之光各结果概率和为 1") {
-        val m = Odds.of()(r => SpellRules.tame(20, 1, SpellRules.TameTarget(20, 200, false))(using r)).get
+      test("诱惑之光原版流程各结果概率和为 1") {
+        val m = Odds.of()(r => SpellRules.tameOriginal(20, 1, SpellRules.TameTarget(20, 200, false))(using r)).get
         assertTrue(math.abs(m.values.sum - 1.0) < 1e-9, m.keySet.contains(SpellRules.TameOutcome.Tamed))
       }
     )

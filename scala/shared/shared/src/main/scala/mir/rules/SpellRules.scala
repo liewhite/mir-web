@@ -183,7 +183,7 @@ object SpellRules:
     // 倍率：先按「原版收服概率 × Rates.tame」判一次；没收服再走原版流程决定定住/发狂/打死（流程里的收服改为没效果）
     if rng.random(1_000_000) < math.round(tameChance(casterLevel, level, t) * 1_000_000).toInt then TameOutcome.Tamed
     else
-      original(casterLevel, level, t) match
+      tameOriginal(casterLevel, level, t) match
         case TameOutcome.Tamed => TameOutcome.NoEffect
         case other             => other
 
@@ -195,8 +195,8 @@ object SpellRules:
     val pass = math.max(0, roll - t.level - 11).toDouble / roll
     math.min(1.0, 1.0 / (4 - level) * 0.5 * (1.0 / 3) * pass / n * Rates.tame)
 
-  /** 原版 MagTamming 的流程。 */
-  private def original(casterLevel: Int, level: Int, t: TameTarget)(using rng: Rng): TameOutcome =
+  /** 原版 MagTamming 的流程（技能说明用它算定住、发狂、打死的概率）。 */
+  def tameOriginal(casterLevel: Int, level: Int, t: TameTarget)(using rng: Rng): TameOutcome =
     def crazy = TameOutcome.Crazy(rng.random(20) + 10)
     if rng.random(4 - level) != 0 then TameOutcome.NoEffect
     else if rng.random(2) != 0 then TameOutcome.Seized(level * 5 + 10)
