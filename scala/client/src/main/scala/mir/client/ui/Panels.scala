@@ -120,12 +120,8 @@ final class Panels(ui: ClassicUi):
     g.img(Gfx.Main, 382, o.x + 38, o.y + 52)
     val bx = o.x + 58
     val by = o.y + 62
-    val weapon = m.view.worn.get(EquipSlot.Weapon).flatMap(i => catalog.item(i.name)).fold(0)(_.weight)
     val rows = List(
       ("经验", st.expToNext.fold("满级")(need => f"${100.0 * st.exp.value / math.max(1L, need.value)}%.2f%%"), false),
-      ("背包负重", s"${st.bagWeight}/${s.maxBagWeight}", st.bagWeight > s.maxBagWeight),
-      ("穿戴负重", s"${st.wearWeight}/${s.maxWearWeight}", false),
-      ("腕力", s"$weapon/${s.maxHandWeight}", false),
       ("准确", s.hit.toString, false),
       ("敏捷", s.agility.toString, false),
       ("魔法躲避", s"${s.magicAvoid}", false),
@@ -201,8 +197,7 @@ final class Panels(ui: ClassicUi):
     // 物品信息栏（电脑：鼠标停在哪件上）
     hoverItem(m).foreach { (it, _) =>
       catalog.item(it.name).foreach { d =>
-        val n = g.textW(d.name.value, o.x + 70, o.y + 215, "#ff0")
-        g.text(s" 重量${d.weight}", o.x + 70 + n, o.y + 215)
+        g.text(d.name.value, o.x + 70, o.y + 215, "#ff0")
         // 说明的前两条（只取括号前的部分）；穿不了的要求标红
         describe(m, it).slice(1, 3).zipWithIndex.foreach { (l, i) =>
           g.text(l.text.takeWhile(_ != '　'), o.x + 70, o.y + 229 + i * 14, if l.tint == Tint.Bad then "#f00" else "#fff")

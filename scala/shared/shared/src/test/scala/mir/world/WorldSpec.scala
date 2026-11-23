@@ -364,7 +364,6 @@ object WorldSpec extends ZIOSpecDefault:
         assertTrue(
           start == List(4), merged == List(9), opened == List(15), leftB.contains(1), drank == List(14),
           stored == List(red -> 5), back == (List(13), List(1)), swords == List(1, 1),
-          s.w.bagWeight(p) == (p.belt.iterator ++ p.bag.iterator).flatten.map(x => catalog.item(x.name).get.weight * x.count).sum,
           { s.flush(); s.consistent(p) }
         )
       },
@@ -383,6 +382,16 @@ object WorldSpec extends ZIOSpecDefault:
           old.allItems.forall(_.count == 1),
           p.belt.flatten.filter(_.name == pot.name).map(_.count).toList == List(3)
         )
+      },
+      test("不限重量：1 级人物包里塞 20 件重盔甲还能再拿，只有格子满了才拿不了") {
+        val s     = sim()
+        val p     = join(s.w, "甲", Cell(30, 30), tough = false)
+        val armor = catalog.item(ItemName("重盔甲(男)")).get
+        (1 to 20).foreach(_ => s.w.newItem(armor.name).foreach(PlayerOps.addToBag(s.w, p, _)))
+        val heavy = (p.bag.iterator ++ p.belt.iterator).flatten.count(_.name == armor.name)
+        val more  = PlayerOps.fits(p, armor)
+        while Inventory.hasRoom(p, armor) do s.w.newItem(armor.name).foreach(PlayerOps.addToBag(s.w, p, _))
+        assertTrue(heavy == 20, armor.weight * 20 > 100, more.isRight, PlayerOps.fits(p, armor) == Left("包裹满了"))
       },
       test("穿脱装备、挪位置、喝药都由服务端改，副本跟着变") {
         val s   = sim()

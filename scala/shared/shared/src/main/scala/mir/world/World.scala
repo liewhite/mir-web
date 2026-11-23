@@ -655,11 +655,6 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
     p.hp = math.min(p.hp, p.stats.maxHp)
     p.mp = math.min(p.mp, p.stats.maxMp)
 
-  /** 一件（一叠按个数乘）的重量 */
-  private[world] def weight(it: ItemInstance): Int = Inventory.weight(catalog, it)
-  private[world] def bagWeight(p: Player): Int     = (p.bag.iterator ++ p.belt.iterator).flatten.map(weight).sum
-  private[world] def wearWeight(p: Player): Int    = p.worn.iterator.filter(_._1 != EquipSlot.Weapon).map(e => weight(e._2)).sum
-
   // ---------------- 指令 ----------------
 
   /** 执行一个玩家的游戏指令；不合法的回 Refused（或移动回 MoveDenied）。 */
@@ -685,7 +680,7 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
   /** 自己的全部界面状态。 */
   private[world] def selfView(p: Player): SelfView =
     SelfView(
-      stats = SelfStats(p.level, p.exp, catalog.expToNext(p.level), Hp(p.hp), Mp(p.mp), p.gold, bagWeight(p), wearWeight(p), p.stats),
+      stats = SelfStats(p.level, p.exp, catalog.expToNext(p.level), Hp(p.hp), Mp(p.mp), p.gold, p.stats),
       bag = p.bag.toVector, belt = p.belt.toVector, worn = p.worn.toMap, storage = p.storage.toList, skills = p.skills.toList,
       cooldowns = p.cooldown.toMap,
       status = SelfStatus(

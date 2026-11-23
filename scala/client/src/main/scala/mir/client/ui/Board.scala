@@ -68,8 +68,7 @@ final class Board(ui: ClassicUi):
     g.size(Gfx.Main, 7).foreach { (bw, bh) =>
       val er = st.expToNext.fold(1.0)(need => st.exp.value.toDouble / math.max(1L, need.value))
       g.imgPart(Gfx.Main, 7, bx + 666, ui.H - 73, 0, 0, math.round(bw * math.min(1, er)).toDouble, bh)
-      val wr = st.bagWeight.toDouble / math.max(1, s.maxBagWeight)
-      g.imgPart(Gfx.Main, 7, bx + 666, ui.H - 40, 0, 0, math.round(bw * math.min(1, wr)).toDouble, bh)
+      // 原版这里还有一条负重条；不限重量后不画
     }
     // 聊天、系统消息；点聊天框说话
     val cr = chatRect

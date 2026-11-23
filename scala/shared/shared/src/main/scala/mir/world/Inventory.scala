@@ -78,9 +78,6 @@ private[world] object Inventory:
       taken
     }
 
-  /** 物品的总重：每个都算（一叠按个数乘）。 */
-  def weight(catalog: Catalog, it: ItemInstance): Int = catalog.item(it.name).fold(0)(_.weight) * it.count
-
   /** 存进仓库：并进同名一叠。 */
   def store(catalog: Catalog, storage: mutable.ArrayBuffer[ItemInstance], it: ItemInstance): Unit =
     val i = if catalog.item(it.name).exists(ItemKind.stacks) then storage.indexWhere(_.name == it.name) else -1

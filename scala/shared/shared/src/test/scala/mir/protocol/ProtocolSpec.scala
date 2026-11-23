@@ -21,7 +21,7 @@ object ProtocolSpec extends ZIOSpecDefault:
   private val t0   = Millis(123456789L)
   private val act  = ActionView(ActKind.Walk, t0, 600, from = Some(Cell(9, 20)))
   private val sp   = Span(1, 3)
-  private val stat = Stats(19, 15, sp, sp, sp, sp, sp, 5, 15, 900, 0, 0, 0, 0, 0, 50, 15, 12)
+  private val stat = Stats(19, 15, sp, sp, sp, sp, sp, 5, 15, 900, 0, 0, 0, 0, 0)
 
   val clientSamples: List[ClientCmd] = List(
     SessionCmd.Login("liewhite", "密码"),
@@ -85,7 +85,7 @@ object ProtocolSpec extends ZIOSpecDefault:
     ServerMsg.Damage(ActorId(100), 12, Some(me)),
     ServerMsg.Miss(ActorId(100)),
     ServerMsg.Heal(me, 20),
-    ServerMsg.Stats(SelfStats(1, Exp(50L), Some(Exp(100L)), Hp(19), Mp(15), Gold(1000), 3, 0, stat)),
+    ServerMsg.Stats(SelfStats(1, Exp(50L), Some(Exp(100L)), Hp(19), Mp(15), Gold(1000), stat)),
     ServerMsg.Bag(Vector(Some(pot), None), Vector(None, Some(pot))),
     ServerMsg.Equipment(Map(EquipSlot.Weapon -> pot.copy(uid = ItemUid(1L)), EquipSlot.RingL -> pot)),
     ServerMsg.Storage(List(pot)),

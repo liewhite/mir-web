@@ -74,7 +74,7 @@ object Describe:
       inst.map(i => Line(s"剩余 ${Durability.usesLeft(i.dura)} 次", Tint.Dim))
     ).flatten
 
-  /** 穿上它要的东西：等级/属性要求、性别、腕力或穿戴负重。 */
+  /** 穿上它要的东西：等级/属性要求、性别（不限重量）。 */
   private def wearLines(d: ItemDef, slots: List[EquipSlot], me: SelfStats): List[Line] =
     val s   = me.stats
     val req = Requirement.of(d)
@@ -83,12 +83,7 @@ object Describe:
       Line(s"需要${req.label} ${req.value}（你现在 $have）", if have >= req.value then Tint.Dim else Tint.Bad)
     }
     val sex = dressSex(d).map(x => Line(s"${x.label}穿", Tint.Dim))
-    val load =
-      if slots.contains(EquipSlot.Weapon) then
-        Line(s"武器重 ${d.weight}，要腕力 ≥ ${d.weight}（你的腕力 ${s.maxHandWeight}）", if s.maxHandWeight >= d.weight then Tint.Dim else Tint.Bad)
-      else
-        Line(s"穿戴负重 +${d.weight}（你已穿 ${me.wearWeight}/${s.maxWearWeight}）", if me.wearWeight + d.weight <= s.maxWearWeight then Tint.Dim else Tint.Bad)
-    need.toList ++ sex ++ List(load)
+    need.toList ++ sex
 
   private def durabilityLines(slots: List[EquipSlot], inst: Option[ItemInstance]): List[Line] =
     inst.toList.flatMap { i =>
@@ -121,9 +116,7 @@ object Describe:
           durabilityLines(slots, inst) ++
           compareWith.filter(_.name != d.name).fold(Nil)(c => compareLines(e, ItemEffects.of(c), c.name.value))
       case ItemKind.Material | ItemKind.Other => Nil
-    val count = inst.filter(_.count > 1).fold("")(i => s"，这叠 ${i.count} 个共 ${d.weight * i.count}")
     Line(d.name.value, Tint.Title) :: body ++ List(
-      Line(s"重量 ${d.weight}$count（包裹 ${me.bagWeight}/${me.stats.maxBagWeight}）", Tint.Dim),
       Line(s"商店收购价 ${Pricing.sell(d)} 金币", Tint.Gold)
     )
 
@@ -174,9 +167,7 @@ object Describe:
       )),
       Option.when(s.magicAvoid != 0)(Line(s"魔法躲避 ${s.magicAvoid}$notYet", Tint.Dim)),
       Option.when(s.poisonAvoid != 0)(Line(s"毒物躲避 ${s.poisonAvoid}$notYet", Tint.Dim)),
-      Some(Line(s"包裹负重 ${me.bagWeight}/${s.maxBagWeight}：超过就捡不起、买不了", Tint.Dim)),
-      Some(Line(s"穿戴负重 ${me.wearWeight}/${s.maxWearWeight}：武器以外的装备总重上限", Tint.Dim)),
-      Some(Line(s"腕力 ${s.maxHandWeight}：能拿的武器最重 ${s.maxHandWeight}", Tint.Dim))
+      Some(Line("包裹、穿戴、武器都不限重量，包裹只看格子", Tint.Dim))
     ).flatten
 
   /** 技能说明。 */

@@ -97,11 +97,9 @@ object PlayerOps:
   /** 放到身上：同名可叠的并进已有的一叠，药品、卷轴优先放快捷栏空位；放不下返回 false。 */
   private[world] def addToBag(w: World, p: Player, it: ItemInstance): Boolean = Inventory.add(w.catalog, p, it)
 
-  /** 再拿 count 个这种东西：重量和格子都要够。 */
-  private[world] def fits(w: World, p: Player, d: ItemDef, count: Int = 1): Result =
-    if w.bagWeight(p) + d.weight * count > p.stats.maxBagWeight then Left("包裹太重了，拿不动")
-    else if !Inventory.hasRoom(p, d) then Left("包裹满了")
-    else ok
+  /** 再拿一件（或一叠）这种东西：只看格子，不限重量（用户 11-23 定）。 */
+  private[world] def fits(p: Player, d: ItemDef): Result =
+    Either.cond(Inventory.hasRoom(p, d), (), "包裹满了")
 
   /** 用掉一个（一叠只减一）。 */
   private def consumeOne(w: World, p: Player, uid: ItemUid): Unit =
@@ -127,7 +125,7 @@ object PlayerOps:
           true
         case Loot.Item(it) =>
           w.selfSound(p, Sounds.itemClick)
-          defOf(w, it).flatMap(fits(w, p, _, it.count)) match
+          defOf(w, it).flatMap(fits(p, _)) match
             case Left(why) =>
               w.notice(p, why, Tone.Bad)
               false
@@ -207,14 +205,6 @@ object PlayerOps:
     else if dressSex(d).exists(_ != p.sex) then Left("性别不符")
     else ok
 
-  /** 武器看腕力，其他看穿戴负重（换下来的那件不算）。 */
-  private def strongEnough(w: World, p: Player, d: ItemDef, slot: EquipSlot): Result =
-    if slot == EquipSlot.Weapon then
-      Either.cond(d.weight <= p.stats.maxHandWeight, (), s"武器太重（${d.weight}），你的腕力 ${p.stats.maxHandWeight}")
-    else
-      val replaced = p.worn.get(slot).fold(0)(w.weight)
-      Either.cond(w.wearWeight(p) - replaced + d.weight <= p.stats.maxWearWeight, (), s"穿不动了（负重上限 ${p.stats.maxWearWeight}）")
-
   /** 穿戴；prefer 指定左右手镯/戒指位。换下来的放回原处。 */
   def equip(w: World, p: Player, uid: ItemUid, prefer: Option[EquipSlot]): Result =
     for
@@ -224,7 +214,6 @@ object PlayerOps:
       slots       = ItemKind.slots(ItemKind.of(d))
       _          <- Either.cond(slots.nonEmpty, (), "这个不能穿戴")
       _          <- canWear(p, d)
-      _          <- strongEnough(w, p, d, slots.head)
       _          <- Either.cond(prefer.forall(slots.contains), (), "不能放在这个位置")
     yield
       val slot = prefer.orElse(slots.find(s => !p.worn.contains(s))).getOrElse(slots.head)
@@ -310,7 +299,7 @@ object PlayerOps:
       _ <- Either.cond(n.defn.goods.exists(_.name == name), (), s"${n.defn.name}不卖这个")
       d <- w.catalog.item(name).toRight("数据表里没有这件物品")
       _ <- Either.cond(p.gold.value >= Pricing.buy(d), (), "金币不够")
-      _ <- fits(w, p, d)
+      _ <- fits(p, d)
       it <- w.newItem(name).toRight("数据表里没有这件物品")
     yield
       addToBag(w, p, it)
@@ -345,7 +334,7 @@ object PlayerOps:
       _  <- npcFor(w, p, npc, _ == MerchantService.Storage)
       it <- p.storage.find(_.uid == uid).toRight("仓库里没有这件物品")
       d  <- defOf(w, it)
-      _  <- fits(w, p, d, n.fold(it.count)(_.max(1).min(it.count)))
+      _  <- fits(p, d)
       got = Inventory.unstore(p.storage, uid, n, () => w.newUid()).get
     yield
       addToBag(w, p, got)

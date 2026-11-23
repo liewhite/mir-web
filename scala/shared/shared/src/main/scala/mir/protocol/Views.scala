@@ -106,7 +106,7 @@ final case class CharSummary(id: CharId, name: String, job: Job, sex: Sex, level
 object CharSummary:
   given JsonCodec[CharSummary] = DeriveJsonCodec.gen
 
-/** 自己的数值面板：等级、经验、血魔、金币、负重、最终属性。 */
+/** 自己的数值面板：等级、经验、血魔、金币、最终属性。 */
 final case class SelfStats(
     level: Int,
     exp: Exp,
@@ -115,8 +115,6 @@ final case class SelfStats(
     hp: Hp,
     mp: Mp,
     gold: Gold,
-    bagWeight: Int,
-    wearWeight: Int,
     stats: Stats
 )
 

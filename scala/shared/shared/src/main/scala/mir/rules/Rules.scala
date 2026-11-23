@@ -37,13 +37,10 @@ final case class LevelAbility(
     mc: Span,
     sc: Span,
     ac: Span,
-    mac: Span,
-    maxBagWeight: Int,
-    maxWearWeight: Int,
-    maxHandWeight: Int
+    mac: Span
 )
 
-/** 人物最终属性。 */
+/** 人物最终属性。不设负重上限（用户 11-23 定：包裹、穿戴、腕力都不限）。 */
 final case class Stats(
     maxHp: Int,
     maxMp: Int,
@@ -60,10 +57,7 @@ final case class Stats(
     magicAvoid: Int,
     poisonAvoid: Int,
     hpRegen: Int,
-    mpRegen: Int,
-    maxBagWeight: Int,
-    maxWearWeight: Int,
-    maxHandWeight: Int
+    mpRegen: Int
 )
 
 object Stats:
@@ -88,9 +82,6 @@ object Rules:
         LevelAbility(
           maxHp = 14 + round((l / 6 + 2.5) * l),
           maxMp = 13 + round((l / 8) * 2.2 * l),
-          maxBagWeight = 50 + round((l / 4) * l),
-          maxWearWeight = math.min(255, 15 + round((l / 50) * l)),
-          maxHandWeight = math.min(255, 12 + round((l / 42) * l)),
           dc = Span(math.max(n7 - 1, 0), math.max(1, n7)),
           mc = Span.zero,
           sc = Span(math.max(n7 - 1, 0), math.max(1, n7)),
@@ -101,9 +92,6 @@ object Rules:
         LevelAbility(
           maxHp = 14 + round((l / 15 + 1.8) * l),
           maxMp = 13 + round((l / 5 + 2) * 2.2 * l),
-          maxBagWeight = 50 + round((l / 5) * l),
-          maxWearWeight = math.min(255, 15 + round((l / 100) * l)),
-          maxHandWeight = math.min(255, 12 + round((l / 90) * l)),
           dc = Span(math.max(n7 - 1, 0), math.max(1, n7)),
           mc = Span(math.max(n7 - 1, 0), math.max(1, n7)),
           sc = Span.zero,
@@ -114,9 +102,6 @@ object Rules:
         LevelAbility(
           maxHp = 14 + round((l / 4 + 4.5 + l / 20) * l),
           maxMp = 11 + round(l * 3.5),
-          maxBagWeight = 50 + round((l / 3) * l),
-          maxWearWeight = math.min(255, 15 + round((l / 20) * l)),
-          maxHandWeight = math.min(255, 12 + round((l / 13) * l)),
           dc = Span(math.max(lv / 5 - 1, 1), math.max(1, lv / 5)),
           mc = Span.zero,
           sc = Span.zero,
@@ -136,8 +121,7 @@ object Rules:
     val start = Stats(
       maxHp = base.maxHp, maxMp = base.maxMp, ac = base.ac, mac = base.mac, dc = base.dc, mc = base.mc, sc = base.sc,
       hit = 5, agility = if job == Job.Taoist then 18 else 15, hitInterval = 900, luck = 0, magicAvoid = 0,
-      poisonAvoid = 0, hpRegen = 0, mpRegen = 0,
-      maxBagWeight = base.maxBagWeight, maxWearWeight = base.maxWearWeight, maxHandWeight = base.maxHandWeight
+      poisonAvoid = 0, hpRegen = 0, mpRegen = 0
     )
     val worn = equips.foldLeft(start) { (s, e) =>
       s.copy(
