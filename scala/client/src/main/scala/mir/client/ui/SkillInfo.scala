@@ -4,7 +4,7 @@ import mir.core.{MonsterName, SkillId}
 import mir.data.{Catalog, SkillDef}
 import mir.model.LearnedSkill
 import mir.protocol.SelfStats
-import mir.rules.{Odds, Rng, Skill, SkillUse, SpellRules, SwordRules}
+import mir.rules.{Odds, Rates, Rng, Skill, SkillUse, SpellRules, SwordRules}
 
 import scala.collection.mutable
 
@@ -54,7 +54,7 @@ object SkillInfo:
     val now   = skill.fold(List("这个技能还没做，放不出来"))(k.effect(_, lv)).map(Line(_))
     val table = skill.flatMap(k.headline).map(h => Line(s"各级：${Levels.map(l => s"$l 级 ${h(l)}").mkString("｜")}", Tint.Dim)).toList
     val train = Line(
-      if lv < 3 then s"熟练度 ${ls.train}/${d.train(lv)}；升 ${lv + 1} 级要人物 ${d.needLevel(lv)} 级（各级熟练度 ${(0 to 2).map(d.train(_)).mkString("/")}）"
+      if lv < 3 then s"熟练度 ${ls.train}/${Rates.trainNeed(d, lv)}；升 ${lv + 1} 级要人物 ${d.needLevel(lv)} 级（各级熟练度 ${(0 to 2).map(Rates.trainNeed(d, _)).mkString("/")}，已按原版 1/${Rates.skillTrain} 算）"
       else "已练满 3 级",
       Tint.Dim
     )

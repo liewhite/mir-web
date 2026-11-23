@@ -8,6 +8,7 @@ import type { Catalog } from '../../data/defs';
 import type { Npc, Player } from '../../world/entities';
 import { type EquipSlot, type ItemInstance, type ItemKind, itemKind, itemLabel, stacks } from '../../world/items';
 import { manaCost } from '../../world/combat';
+import { trainNeed } from '../../world/rates';
 import type { World } from '../../world/world';
 import type { Controller } from '../../game/controller';
 import { SETTING_LABELS } from '../../game/settings';
@@ -437,7 +438,7 @@ export class ClassicUi implements UiHost {
       g.img(MAIN, 112, bbx + 48, bby + 23 + m * 37);
       g.img(MAIN, 111, bbx + 74, bby + 23 + m * 37);
       g.text(String(ls.level), bbx + 64, bby + 23 + m * 37, '#c0c0c0');
-      g.text(ls.level < 3 ? `${ls.train}/${def.train[ls.level]}` : '-', bbx + 94, bby + 23 + m * 37, '#c0c0c0');
+      g.text(ls.level < 3 ? `${ls.train}/${trainNeed(def, ls.level)}` : '-', bbx + 94, bby + 23 + m * 37, '#c0c0c0');
       if (ls.key) g.text(`F${ls.key}`, bbx + 145, bby + 8 + m * 37, '#ff0', true);
     }
     this.button({ img: 398, x: x + 213, y: y + 113, w: 12, h: 21, always: true, onClick: () => (this.magicPage = Math.max(0, this.magicPage - 1)) });
@@ -780,7 +781,7 @@ export class ClassicUi implements UiHost {
           lines = [
             { text: `${def.name}　${ls.level} 级　${JOB_NAME[def.job as 0 | 1 | 2]}`, tone: 'title' },
             { text: `耗魔法 ${manaCost(def, ls.level)}` },
-            { text: ls.level < 3 ? `熟练度 ${ls.train}/${def.train[ls.level]}，人物 ${def.needLevel[ls.level]} 级后才能继续涨` : '已练满', tone: 'dim' },
+            { text: ls.level < 3 ? `熟练度 ${ls.train}/${trainNeed(def, ls.level)}，人物 ${def.needLevel[ls.level]} 级后才能继续涨` : '已练满', tone: 'dim' },
             { text: '点图标设置 F1-F8 快捷键', tone: 'dim' },
           ];
         }

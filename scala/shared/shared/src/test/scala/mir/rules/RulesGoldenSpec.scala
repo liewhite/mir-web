@@ -28,7 +28,7 @@ object RulesGoldenSpec extends ZIOSpecDefault:
   private final case class DropCase(monster: MonsterName, item: ItemName, chance: Double)
   private given JsonDecoder[DropCase] = DeriveJsonDecoder.gen
 
-  private final case class TsRates(exp: Int, drop: Int, highEquipMin: Double, highEquipLevel: Int)
+  private final case class TsRates(exp: Int, drop: Int, highEquipMin: Double, highEquipLevel: Int, warriorBody: Double, skillTrain: Int)
   private given JsonDecoder[TsRates] = DeriveJsonDecoder.gen
 
   private final case class Golden(
@@ -78,7 +78,16 @@ object RulesGoldenSpec extends ZIOSpecDefault:
 
   def spec = suite("规则与 TS 版一致")(
     test("倍率（rates.ts）") {
-      assertTrue(golden.rates == TsRates(Rates.exp, Rates.drop, Rates.highEquipMin, Rates.highEquipLevel))
+      assertTrue(golden.rates == TsRates(Rates.exp, Rates.drop, Rates.highEquipMin, Rates.highEquipLevel, Rates.warriorBody, Rates.skillTrain))
+    },
+    test("技能各级熟练度是原表的 1/10（向上取整）") {
+      val fire = catalog.data.skills.find(_.name == "火球术").get
+      val bad  = for
+        d <- catalog.data.skills
+        l <- 0 to 2
+        if Rates.trainNeed(d, l) != math.max(1, math.ceil(d.train(l) / 10.0).toInt)
+      yield (d.name, l)
+      assertTrue((0 to 2).map(Rates.trainNeed(fire, _)) == Seq(50, 150, 300), bad.isEmpty)
     },
     test("等级基础属性：三职业 1–60 级") {
       val diffs = for

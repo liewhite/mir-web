@@ -3,7 +3,7 @@ package mir.world
 import mir.core.*
 import mir.model.*
 import mir.protocol.{Anchor, Tone}
-import mir.rules.{Durability, Pace, Rng, Rules, Skill, SwordRules}
+import mir.rules.{Durability, Pace, Rates, Rng, Rules, Skill, SwordRules}
 import mir.world.skills.{Effect, SkillHandlers, SpellCtx}
 
 /** 一个操作的结果：做了；在忙（冷却、上个动作没做完，不用提示）；不行（告诉玩家原因）。 */
@@ -34,7 +34,7 @@ object Combat:
       if s.level < 3 && p.level >= d.needLevel(s.level)
     do
       val trained = s.train + amount
-      if trained >= d.train(s.level) then
+      if trained >= Rates.trainNeed(d, s.level) then
         p.skills(i) = s.copy(level = s.level + 1, train = 0)
         w.vitals.recalc(p)
         w.out.notice(p, s"${d.name} 升到 ${s.level + 1} 级", Tone.Good)

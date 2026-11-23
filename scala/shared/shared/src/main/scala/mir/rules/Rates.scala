@@ -1,7 +1,7 @@
 package mir.rules
 
 import mir.core.Exp
-import mir.data.{DropDef, ItemDef, Span}
+import mir.data.{DropDef, ItemDef, SkillDef, Span}
 import mir.model.Job
 
 /**
@@ -20,6 +20,11 @@ object Rates:
   val tame: Int = 10
   /** 战士的攻击、防御、魔防（上下限都乘，含装备加成，四舍五入）倍数（用户 11-24 在 #1176 定） */
   val warriorBody: Double = 1.5
+  /** 技能每级要的熟练度除以这个数（向上取整、至少 1；用户 11-24 在 #1179 定） */
+  val skillTrain: Int = 10
+
+  /** 技能从 level（0..2）升到 level+1 实际要的熟练度：数据表数值 ÷ skillTrain。 */
+  def trainNeed(d: SkillDef, level: Int): Int = math.max(1, (d.train(level) + skillTrain - 1) / skillTrain)
 
   /** 职业倍率作用到一段属性区间上（只有战士有）。 */
   def jobSpan(job: Job, s: Span): Span = job match

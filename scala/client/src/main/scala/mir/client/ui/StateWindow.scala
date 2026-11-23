@@ -3,7 +3,7 @@ package mir.client.ui
 import mir.client.input.Pt
 import mir.model.*
 import mir.protocol.Look
-import mir.rules.Recovery
+import mir.rules.{Rates, Recovery}
 
 /** 状态窗的 4 页（原版顺序，左右箭头循环翻）。 */
 enum StatePage:
@@ -123,7 +123,7 @@ final class StateWindow(ui: ClassicUi) extends Window:
         g.img(Gfx.Main, 112, bbx + 48, y + 15)
         g.img(Gfx.Main, 111, bbx + 74, y + 15)
         g.text(ls.level.toString, bbx + 64, y + 15, "#c0c0c0")
-        g.text(if ls.level < 3 then s"${ls.train}/${d.train(ls.level)}" else "-", bbx + 94, y + 15, "#c0c0c0")
+        g.text(if ls.level < 3 then s"${ls.train}/${Rates.trainNeed(d, ls.level)}" else "-", bbx + 94, y + 15, "#c0c0c0")
         ls.key.foreach(k => g.text(s"F$k", bbx + 145, y, "#ff0", bold = true))
       }
     }

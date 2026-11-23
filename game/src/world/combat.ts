@@ -5,6 +5,7 @@ import { type Dir, type Pos, chebyshev, dir16, dirTo, step } from '../core/geom'
 import type { SkillDef } from '../data/defs';
 import type { Actor, HitStyle, LearnedSkill, Monster, Player } from './entities';
 import { itemKind } from './items';
+import { trainNeed } from './rates';
 import {
   afterArmor, afterMagicArmor, attackPower, hits, magicBase, random, rpow, skillPower, skillPower13,
 } from './rules';
@@ -23,7 +24,7 @@ export function train(w: World, p: Player, s: LearnedSkill, amount: number): voi
   if (!def || s.level >= 3) return;
   if (p.level < def.needLevel[s.level]!) return;
   s.train += amount;
-  if (s.train >= def.train[s.level]!) {
+  if (s.train >= trainNeed(def, s.level)) {
     s.train = 0;
     s.level++;
     w.recalc(p);

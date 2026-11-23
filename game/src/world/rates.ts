@@ -2,7 +2,7 @@
  * 倍率（用户 11-23 在 #1137 定：大幅降低升级难度（经验 11-23 21:34 再调到 ×100）、大幅提高爆率、装备爆率至少 20%、每只怪能爆什么不变）。
  * 原版数值在 game.json 里不动，只在这里换算。
  */
-import type { DropDef, ItemDef, Range } from '../data/defs';
+import type { DropDef, ItemDef, Range, SkillDef } from '../data/defs';
 import { itemKind } from './items';
 
 export const RATES = {
@@ -15,7 +15,14 @@ export const RATES = {
   highEquipLevel: 20,
   /** 战士的攻击、防御、魔防（上下限都乘，含装备加成，四舍五入）倍数（用户 11-24 在 #1176 定） */
   warriorBody: 1.5,
+  /** 技能每级要的熟练度除以这个数（向上取整、至少 1；用户 11-24 在 #1179 定） */
+  skillTrain: 10,
 } as const;
+
+/** 技能从 level（0..2）升到 level+1 实际要的熟练度：数据表数值 ÷ skillTrain。 */
+export function trainNeed(def: SkillDef, level: number): number {
+  return Math.max(1, Math.ceil(def.train[level]! / RATES.skillTrain));
+}
 
 /** 职业倍率作用到一段属性区间上（只有战士 job=0 有）。 */
 export function jobRange(job: number, r: Range): Range {
