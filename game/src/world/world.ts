@@ -741,11 +741,13 @@ export class World {
     }
   }
 
-  private nearestEnemy(m: Monster, range: number): Actor | undefined {
+  /** range 格以内最近的敌人（怪看不见隐身的，除非它能看穿隐身）。 */
+  nearestEnemy(m: Actor, range: number): Actor | undefined {
     let best: Actor | undefined;
     let bd = Infinity;
+    const seesInvisible = m.kind !== 'monster' || m.def.coolEye;
     for (const a of this.actors.values()) {
-      if (!this.isEnemy(m, a) || a.invisibleUntil > this.now && !m.def.coolEye) continue;
+      if (!this.isEnemy(m, a) || (a.invisibleUntil > this.now && !seesInvisible)) continue;
       const d = chebyshev(m, a);
       if (d <= range && d < bd) {
         best = a;

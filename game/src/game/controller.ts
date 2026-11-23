@@ -15,6 +15,8 @@ export type Intent =
   | { kind: 'none' }
   /** 按住鼠标/手指：朝这个格子方向一直走（跑） */
   | { kind: 'steer'; target: Pos; run: boolean }
+  /** 手机摇杆：朝这个方向一直走（跑） */
+  | { kind: 'stick'; dx: number; dy: number; run: boolean }
   /** 走到某格（寻路） */
   | { kind: 'goto'; target: Pos; path: Dir[]; run: boolean }
   | { kind: 'attack'; target: number; once: boolean }
@@ -68,7 +70,38 @@ export class Controller {
   }
 
   stop(): void {
-    if (this.intent.kind === 'steer') this.intent = { kind: 'none' };
+    if (this.intent.kind === 'steer' || this.intent.kind === 'stick') this.intent = { kind: 'none' };
+  }
+
+  /** 摇杆推向某个方向（dx、dy 各是 -1/0/1）。 */
+  stick(dx: number, dy: number, run: boolean): void {
+    this.intent = { kind: 'stick', dx, dy, run };
+  }
+
+  /**
+   * 手机点角色：点 NPC 走过去对话；点怪只锁定为目标（攻击键、技能打它），
+   * 正在打别的怪时改打它。
+   */
+  lock(target: Actor): void {
+    if (target.kind === 'npc') {
+      this.intent = { kind: 'talk', npc: target.id };
+      return;
+    }
+    if (target.kind !== 'monster') return;
+    this.focus = target.id;
+    if (this.intent.kind === 'attack' && this.world.isEnemy(this.me, target)) this.attack(target);
+  }
+
+  /** 取消锁定（也不再打它）。 */
+  unlock(): void {
+    if (this.intent.kind === 'attack' && this.intent.target === this.focus) this.intent = { kind: 'none' };
+    this.focus = 0;
+  }
+
+  /** 锁定的目标（还活着、在这张图上）。 */
+  focused(): Actor | undefined {
+    const a = this.world.actors.get(this.focus);
+    return a && !a.dead && a.map === this.me.map ? a : undefined;
   }
 
   /** 放技能：目标优先用鼠标下的怪，其次当前攻击目标，否则鼠标所在格。 */
@@ -90,6 +123,32 @@ export class Controller {
     if (s) this.cast(s.id, hover, cell);
   }
 
+  /** 触屏放技能：没有鼠标指着的怪，就打当前目标，再没有就打最近的怪。 */
+  castByKeyAuto(key: number): void {
+    const s = this.me.skills.find((x) => x.key === key);
+    if (s) this.castSkillAuto(s.id);
+  }
+
+  castSkillAuto(skillId: number): void {
+    const t = this.autoTarget();
+    this.cast(skillId, t, t ? t.pos : this.me.pos);
+  }
+
+  /** 触屏攻击键：打当前目标，没有就打身边最近的怪。 */
+  attackNearest(): void {
+    const t = this.autoTarget();
+    if (t) this.attack(t);
+    else this.onMessage('附近没有怪', 'bad');
+  }
+
+  /** 当前目标（还活着、不太远），否则 10 格内最近的敌人。 */
+  private autoTarget(): Actor | undefined {
+    const w = this.world;
+    const cur = w.actors.get(this.intent.kind === 'attack' ? this.intent.target : this.focus);
+    if (cur && w.isEnemy(this.me, cur) && chebyshev(this.me, cur) <= 12) return cur;
+    return w.nearestEnemy(this.me, 10);
+  }
+
   // ---------------- 每帧 ----------------
 
   update(): void {
@@ -104,6 +163,11 @@ export class Controller {
       case 'steer':
         this.stepToward(this.intent.target, this.intent.run);
         return;
+      case 'stick': {
+        const it = this.intent;
+        this.stepToward({ x: p.x + it.dx * 4, y: p.y + it.dy * 4 }, it.run);
+        return;
+      }
       case 'goto':
         this.followPath();
         return;

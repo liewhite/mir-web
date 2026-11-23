@@ -36,6 +36,38 @@ export class Gfx {
     if (s) this.ctx.drawImage(s.img, s.sx, s.sy, s.w, s.h, Math.round(x + (w - s.w) / 2), Math.round(y + (h - s.h) / 2), s.w, s.h);
   }
 
+  /** 以 (cx, cy) 为中心按倍数画（手机上把原版小图标放大）。 */
+  imgScaled(lib: string, idx: number, cx: number, cy: number, scale: number): void {
+    const s = this.sprites.get(lib, idx);
+    if (!s) return;
+    const w = s.w * scale;
+    const h = s.h * scale;
+    this.ctx.drawImage(s.img, s.sx, s.sy, s.w, s.h, Math.round(cx - w / 2), Math.round(cy - h / 2), Math.round(w), Math.round(h));
+  }
+
+  circle(cx: number, cy: number, r: number, fill: string, stroke?: string): void {
+    const ctx = this.ctx;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    if (stroke) {
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  }
+
+  /** 描边矩形（手机上的按钮、面板边框）。 */
+  frame(x: number, y: number, w: number, h: number, fill: string, stroke: string): void {
+    const ctx = this.ctx;
+    ctx.fillStyle = fill;
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(Math.round(x) + 0.5, Math.round(y) + 0.5, Math.round(w) - 1, Math.round(h) - 1);
+  }
+
   text(s: string, x: number, y: number, color = '#fff', bold = false): number {
     const ctx = this.ctx;
     ctx.font = FONT;
@@ -75,4 +107,9 @@ export interface Rect {
 
 export function inside(r: Rect, x: number, y: number): boolean {
   return x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h;
+}
+
+/** 点到矩形的距离（在里面是 0）。 */
+export function distTo(r: Rect, x: number, y: number): number {
+  return Math.hypot(Math.max(r.x - x, 0, x - (r.x + r.w)), Math.max(r.y - y, 0, y - (r.y + r.h)));
 }

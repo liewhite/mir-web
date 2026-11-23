@@ -1704,11 +1704,13 @@ var World = class {
       m.busyUntil = this.now + m.def.walkSpeed + random(1e3);
     }
   }
+  /** range 格以内最近的敌人（怪看不见隐身的，除非它能看穿隐身）。 */
   nearestEnemy(m, range) {
     let best;
     let bd = Infinity;
+    const seesInvisible = m.kind !== "monster" || m.def.coolEye;
     for (const a of this.actors.values()) {
-      if (!this.isEnemy(m, a) || a.invisibleUntil > this.now && !m.def.coolEye) continue;
+      if (!this.isEnemy(m, a) || a.invisibleUntil > this.now && !seesInvisible) continue;
       const d = chebyshev(m, a);
       if (d <= range && d < bd) {
         best = a;
@@ -1887,8 +1889,13 @@ var Renderer = class {
     this.height = 600;
     this.zoom = 1;
     this.hoverActor = 0;
+    /** 锁定的目标（手机）：脚下画一个圈 */
+    this.targetActor = 0;
     this.hoverItem = null;
     this.view = { showHpBars: true, showItemNames: true, showMonsterNames: true };
+    this.dpr = 1;
+    /** 人物在画面纵向的位置：原版底栏高，人物略偏上 */
+    this.centerY = 0.47;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("\u6D4F\u89C8\u5668\u4E0D\u652F\u6301 Canvas");
     this.ctx = ctx;
@@ -1896,16 +1903,21 @@ var Renderer = class {
   get context() {
     return this.ctx;
   }
-  resize(cssW, cssH) {
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    this.zoom = Math.min(cssW / 800, cssH / 600);
+  /** 画布铺满窗口；zoom 是地图的缩放（CSS 像素 / 逻辑像素），由 ui/viewport 按设备定。 */
+  resize(cssW, cssH, zoom) {
+    this.dpr = Math.min(2, window.devicePixelRatio || 1);
+    this.zoom = zoom;
     this.width = Math.round(cssW / this.zoom);
     this.height = Math.round(cssH / this.zoom);
-    this.canvas.width = Math.round(cssW * dpr);
-    this.canvas.height = Math.round(cssH * dpr);
+    this.canvas.width = Math.round(cssW * this.dpr);
+    this.canvas.height = Math.round(cssH * this.dpr);
     this.canvas.style.width = `${cssW}px`;
     this.canvas.style.height = `${cssH}px`;
-    this.ctx.setTransform(dpr * this.zoom, 0, 0, dpr * this.zoom, 0, 0);
+    this.scaleTo(this.zoom);
+  }
+  /** 把画布坐标切到「1 单位 = scale 个 CSS 像素」：地图用 zoom，界面用自己的缩放。 */
+  scaleTo(scale) {
+    this.ctx.setTransform(this.dpr * scale, 0, 0, this.dpr * scale, 0, 0);
     this.ctx.imageSmoothingEnabled = false;
   }
   /** 屏幕（CSS 像素）→ 逻辑像素。 */
@@ -1916,11 +1928,26 @@ var Renderer = class {
   cellAt(lx, ly) {
     return { x: Math.floor((lx + this.camX) / UNITX), y: Math.floor((ly + this.camY) / UNITY) };
   }
-  /** 逻辑像素下的角色（取最靠前的一个）。 */
-  actorAt(lx, ly) {
+  /**
+   * 逻辑像素下的角色（取最靠前的一个）。slop > 0 时（触屏）正中没点到任何角色，
+   * 就取点击框外 slop 以内离得最近的一个；exclude 是不参与放宽的角色（自己）。
+   */
+  actorAt(lx, ly, slop = 0, exclude = 0) {
     let best;
     for (const h of this.hits) {
       if (lx >= h.x && lx < h.x + h.w && ly >= h.y && ly < h.y + h.h && (!best || h.row >= best.row)) best = h;
+    }
+    if (best || slop <= 0) return best?.actor;
+    let bd = slop;
+    for (const h of this.hits) {
+      if (h.actor.id === exclude) continue;
+      const dx = Math.max(h.x - lx, 0, lx - (h.x + h.w));
+      const dy = Math.max(h.y - ly, 0, ly - (h.y + h.h));
+      const d = Math.hypot(dx, dy);
+      if (d <= bd) {
+        best = h;
+        bd = d;
+      }
     }
     return best?.actor;
   }
@@ -1991,9 +2018,10 @@ var Renderer = class {
     const now = w.now;
     const ctx = this.ctx;
     const me = w.player;
+    this.scaleTo(this.zoom);
     const mp = this.actorPixel(me, now);
     this.camX = Math.round(mp.x + UNITX / 2 - this.width / 2);
-    this.camY = Math.round(mp.y + UNITY / 2 - this.height * 0.47);
+    this.camY = Math.round(mp.y + UNITY / 2 - this.height * this.centerY);
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, this.width, this.height);
     this.drawGround(map);
@@ -2217,7 +2245,14 @@ var Renderer = class {
       const x = Math.round(px.x - this.camX + UNITX / 2);
       const y = Math.round(px.y - this.camY);
       if (x < -50 || x > this.width + 50 || y < -50 || y > this.height + 120) continue;
-      const hovered = a.id === this.hoverActor;
+      if (a.id === this.targetActor) {
+        ctx.strokeStyle = "#ff5a3a";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(x, y + UNITY / 2, 22, 10, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      const hovered = a.id === this.hoverActor || a.id === this.targetActor;
       if (a.kind === "npc" || hovered || a.kind === "monster" && this.view.showMonsterNames || a.kind === "player") {
         const name = a.kind === "player" ? a.name : a.kind === "npc" ? a.def.name : w.catalog.displayName(a.def.name);
         const color = a.kind === "npc" ? "#7fdcff" : a.kind === "monster" ? a.master ? "#9cff8a" : "#fff" : "#fff";
@@ -2327,7 +2362,34 @@ var Controller = class {
     this.intent = { kind: "pickup", item: item.id };
   }
   stop() {
-    if (this.intent.kind === "steer") this.intent = { kind: "none" };
+    if (this.intent.kind === "steer" || this.intent.kind === "stick") this.intent = { kind: "none" };
+  }
+  /** 摇杆推向某个方向（dx、dy 各是 -1/0/1）。 */
+  stick(dx, dy, run) {
+    this.intent = { kind: "stick", dx, dy, run };
+  }
+  /**
+   * 手机点角色：点 NPC 走过去对话；点怪只锁定为目标（攻击键、技能打它），
+   * 正在打别的怪时改打它。
+   */
+  lock(target) {
+    if (target.kind === "npc") {
+      this.intent = { kind: "talk", npc: target.id };
+      return;
+    }
+    if (target.kind !== "monster") return;
+    this.focus = target.id;
+    if (this.intent.kind === "attack" && this.world.isEnemy(this.me, target)) this.attack(target);
+  }
+  /** 取消锁定（也不再打它）。 */
+  unlock() {
+    if (this.intent.kind === "attack" && this.intent.target === this.focus) this.intent = { kind: "none" };
+    this.focus = 0;
+  }
+  /** 锁定的目标（还活着、在这张图上）。 */
+  focused() {
+    const a = this.world.actors.get(this.focus);
+    return a && !a.dead && a.map === this.me.map ? a : void 0;
   }
   /** 放技能：目标优先用鼠标下的怪，其次当前攻击目标，否则鼠标所在格。 */
   cast(skillId, hover, cell) {
@@ -2345,6 +2407,28 @@ var Controller = class {
     const s = this.me.skills.find((x) => x.key === key);
     if (s) this.cast(s.id, hover, cell);
   }
+  /** 触屏放技能：没有鼠标指着的怪，就打当前目标，再没有就打最近的怪。 */
+  castByKeyAuto(key) {
+    const s = this.me.skills.find((x) => x.key === key);
+    if (s) this.castSkillAuto(s.id);
+  }
+  castSkillAuto(skillId) {
+    const t = this.autoTarget();
+    this.cast(skillId, t, t ? t.pos : this.me.pos);
+  }
+  /** 触屏攻击键：打当前目标，没有就打身边最近的怪。 */
+  attackNearest() {
+    const t = this.autoTarget();
+    if (t) this.attack(t);
+    else this.onMessage("\u9644\u8FD1\u6CA1\u6709\u602A", "bad");
+  }
+  /** 当前目标（还活着、不太远），否则 10 格内最近的敌人。 */
+  autoTarget() {
+    const w = this.world;
+    const cur = w.actors.get(this.intent.kind === "attack" ? this.intent.target : this.focus);
+    if (cur && w.isEnemy(this.me, cur) && chebyshev(this.me, cur) <= 12) return cur;
+    return w.nearestEnemy(this.me, 10);
+  }
   // ---------------- 每帧 ----------------
   update() {
     const w = this.world;
@@ -2357,6 +2441,11 @@ var Controller = class {
       case "steer":
         this.stepToward(this.intent.target, this.intent.run);
         return;
+      case "stick": {
+        const it = this.intent;
+        this.stepToward({ x: p.x + it.dx * 4, y: p.y + it.dy * 4 }, it.run);
+        return;
+      }
       case "goto":
         this.followPath();
         return;
@@ -2579,49 +2668,95 @@ function inLine(a, b) {
 }
 
 // src/game/input.ts
-function bindInput(canvas, r2, ctl, ui) {
+function bindInput(canvas, r2, ctl, ui, uiScale) {
   let held = null;
+  let uiPointer = null;
   let lastMouse = { x: 0, y: 0 };
-  const logical = (e) => {
+  const stick = ui.joystick;
+  const css = (e) => {
     const rect = canvas.getBoundingClientRect();
-    return r2.toLogical(e.clientX - rect.left, e.clientY - rect.top);
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
+  const logical = (e) => {
+    const c = css(e);
+    return r2.toLogical(c.x, c.y);
+  };
+  const uiPos = (e) => {
+    const c = css(e);
+    const s = uiScale();
+    return { x: c.x / s, y: c.y / s };
+  };
+  const actorUnder = (p, touch) => {
+    const a = r2.actorAt(p.x, p.y, touch ? 14 / r2.zoom : 0, ctl.me.id);
+    return a && a.id !== ctl.me.id ? a : void 0;
+  };
+  const groundItem = (p) => {
+    const cell = r2.cellAt(p.x, p.y);
+    return ctl.world.items.find((i) => i.x === cell.x && i.y === cell.y);
   };
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
   canvas.addEventListener("pointerdown", (e) => {
     e.preventDefault();
     const p = logical(e);
     lastMouse = p;
-    if (ui.pointerDown(p.x, p.y, e.button)) return;
-    const target = r2.actorAt(p.x, p.y);
-    if (target && target.id !== ctl.me.id) {
-      ctl.attack(target);
-      return;
-    }
-    const cell = r2.cellAt(p.x, p.y);
-    const item = ctl.world.items.find((i) => i.x === cell.x && i.y === cell.y);
-    if (item && e.button === 0) {
-      ctl.pickup(item);
+    const u = uiPos(e);
+    if (ui.pointerDown(u.x, u.y, e.button)) {
+      uiPointer = e.pointerId;
       return;
     }
     const touch = e.pointerType !== "mouse";
-    held = { id: e.pointerId, run: e.button === 2, start: performance.now(), moved: false, touch };
-    canvas.setPointerCapture(e.pointerId);
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch {
+    }
+    if (ui.layout.kind === "touch") {
+      const target2 = actorUnder(p, true);
+      if (target2) return ctl.lock(target2);
+      const item2 = groundItem(p);
+      if (item2) return ctl.pickup(item2);
+      if (!stick.active && u.x < ui.W / 2) stick.start(e.pointerId, u);
+      return;
+    }
+    const target = actorUnder(p, touch);
+    if (target) return ctl.attack(target);
+    const item = groundItem(p);
+    if (item && e.button === 0) return ctl.pickup(item);
+    const c = css(e);
+    const cell = r2.cellAt(p.x, p.y);
+    held = { id: e.pointerId, run: e.button === 2, start: performance.now(), moved: false, touch, x0: c.x, y0: c.y };
     if (touch) ctl.goTo(cell);
     else ctl.steer(cell, held.run);
   });
   canvas.addEventListener("pointermove", (e) => {
+    if (stick.pointer === e.pointerId) {
+      const d = stick.move(uiPos(e));
+      if (d) ctl.stick(d.dx, d.dy, d.run);
+      else ctl.stop();
+      return;
+    }
     const p = logical(e);
     lastMouse = p;
-    ui.pointerMove(p.x, p.y);
-    if (e.pointerType === "mouse") r2.hoverActor = ui.covers(p.x, p.y) ? 0 : r2.actorAt(p.x, p.y)?.id ?? 0;
+    const u = uiPos(e);
+    ui.pointerMove(u.x, u.y);
+    if (e.pointerType === "mouse") r2.hoverActor = ui.covers(u.x, u.y) ? 0 : actorUnder(p, false)?.id ?? 0;
     if (!held || held.id !== e.pointerId) return;
+    const c = css(e);
+    if (held.touch && !held.moved && Math.hypot(c.x - held.x0, c.y - held.y0) < 12) return;
     held.moved = true;
     const cell = r2.cellAt(p.x, p.y);
     ctl.steer(cell, held.run || held.touch && performance.now() - held.start > 250);
   });
   const release = (e) => {
-    const p = logical(e);
-    ui.pointerUp(p.x, p.y);
+    if (stick.pointer === e.pointerId) {
+      stick.end();
+      ctl.stop();
+      return;
+    }
+    if (uiPointer === e.pointerId || e.pointerType === "mouse") {
+      const u = uiPos(e);
+      ui.pointerUp(u.x, u.y);
+      uiPointer = null;
+    }
     if (!held || held.id !== e.pointerId) return;
     const wasTouchTap = held.touch && !held.moved;
     held = null;
@@ -2935,6 +3070,35 @@ var Gfx = class {
     const s = this.sprites.get(lib, idx);
     if (s) this.ctx.drawImage(s.img, s.sx, s.sy, s.w, s.h, Math.round(x + (w - s.w) / 2), Math.round(y + (h - s.h) / 2), s.w, s.h);
   }
+  /** 以 (cx, cy) 为中心按倍数画（手机上把原版小图标放大）。 */
+  imgScaled(lib, idx, cx, cy, scale) {
+    const s = this.sprites.get(lib, idx);
+    if (!s) return;
+    const w = s.w * scale;
+    const h = s.h * scale;
+    this.ctx.drawImage(s.img, s.sx, s.sy, s.w, s.h, Math.round(cx - w / 2), Math.round(cy - h / 2), Math.round(w), Math.round(h));
+  }
+  circle(cx, cy, r2, fill, stroke) {
+    const ctx = this.ctx;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r2, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    if (stroke) {
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  }
+  /** 描边矩形（手机上的按钮、面板边框）。 */
+  frame(x, y, w, h, fill, stroke) {
+    const ctx = this.ctx;
+    ctx.fillStyle = fill;
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(Math.round(x) + 0.5, Math.round(y) + 0.5, Math.round(w) - 1, Math.round(h) - 1);
+  }
   text(s, x, y, color = "#fff", bold = false) {
     const ctx = this.ctx;
     ctx.font = FONT;
@@ -2963,18 +3127,416 @@ function goldStr(n) {
 function inside(r2, x, y) {
   return x >= r2.x && y >= r2.y && x < r2.x + r2.w && y < r2.y + r2.h;
 }
+function distTo(r2, x, y) {
+  return Math.hypot(Math.max(r2.x - x, 0, x - (r2.x + r2.w)), Math.max(r2.y - y, 0, y - (r2.y + r2.h)));
+}
 
-// src/ui/classic/classic.ts
-var BOARD_W = 800;
-var BOARD_H = 251;
-var LINE_H = 14;
-var MAX_MENU = 10;
-var CHAT_LINES = 9;
+// src/ui/classic/layout.ts
 var CHAT_COLOR = {
   system: ["#fff", "#000"],
   good: ["#9cff8a", "#000"],
   bad: ["#fff", "#c00"],
   item: ["#ff0", "#000"]
+};
+var BOARD_W = 800;
+var BOARD_H = 251;
+var CHAT_LINES = 9;
+var BoardLayout = class {
+  constructor(h, touchSkills) {
+    this.h = h;
+    this.touchSkills = touchSkills;
+    this.kind = "board";
+    this.itemMenu = false;
+    this.settingsRowH = 19;
+  }
+  boardX() {
+    return Math.round((this.h.W - BOARD_W) / 2);
+  }
+  beltRects() {
+    const bx = this.boardX();
+    const by = this.h.H - BOARD_H;
+    return Array.from({ length: 6 }, (_, i) => ({ x: bx + 285 + 43 * i, y: by + 59, w: 32, h: 29 }));
+  }
+  bagOrigin(merchantOpen) {
+    return { x: (merchantOpen ? 475 : 0) + this.h.safe.left, y: 0 };
+  }
+  stateOrigin() {
+    return { x: this.h.W - 232 - this.h.safe.right, y: 0 };
+  }
+  merchantOrigin() {
+    return { x: this.h.safe.left, y: 0 };
+  }
+  miniMapRight() {
+    return { x: this.h.W - this.h.safe.right, y: this.h.safe.top };
+  }
+  dialogOrigin(w, hh) {
+    return { x: Math.round((this.h.W - w) / 2), y: Math.max(0, Math.round((this.h.H - BOARD_H - hh) / 2)) };
+  }
+  drawHud(now) {
+    this.drawBottom();
+    if (this.touchSkills) this.drawTouchSkills();
+  }
+  drawBottom() {
+    const { g, p, catalog, world } = this.h;
+    const H = this.h.H;
+    const bx = this.boardX();
+    const by = H - BOARD_H;
+    this.h.area({ x: bx, y: by + 40, w: BOARD_W, h: BOARD_H - 40 });
+    this.h.area({ x: bx, y: by, w: 190, h: 40 });
+    this.h.area({ x: bx + 610, y: by, w: 190, h: 40 });
+    g.rect(bx + 208, by + 120, 387, 124, "#000");
+    g.img(MAIN, 1, bx, by);
+    g.img(MAIN, 12, bx + 748, by + 79);
+    const s = p.stats;
+    if (p.job === 0 && p.level < 28) {
+      const full = g.size(MAIN, 5);
+      if (full) {
+        g.imgPart(MAIN, 5, bx + 38, by + 90, 0, 0, full.w - 2, full.h);
+        const top = Math.round(full.h / s.maxHp * (s.maxHp - p.hp));
+        g.imgPart(MAIN, 6, bx + 38, by + 90 + top, 0, top, full.w - 2, full.h - top);
+      }
+    } else drawOrb(g, p, bx + 40, by + 91);
+    const hpText = `${p.hp}/${s.maxHp}`;
+    const mpText = `${p.mp}/${s.maxMp}`;
+    g.text(hpText, bx + 86 - g.width(hpText) / 2, by + 186, "#fff", true);
+    g.text(mpText, bx + 86 - g.width(mpText) / 2, by + 200, "#9fc6ff", true);
+    g.text(String(p.level), bx + 660, H - 104, "#fff", true);
+    const bar = g.size(MAIN, 7);
+    if (bar) {
+      const need = catalog.expToNext(p.level);
+      const er = need === Infinity ? 1 : p.exp / need;
+      g.imgPart(MAIN, 7, bx + 666, H - 73, 0, 0, Math.round(bar.w * Math.min(1, er)), bar.h);
+      const wr = world.bagWeight(p) / Math.max(1, s.maxBagWeight);
+      g.imgPart(MAIN, 7, bx + 666, H - 40, 0, 0, Math.round(bar.w * Math.min(1, wr)), bar.h);
+    }
+    this.h.chat.slice(-CHAT_LINES).forEach((l, i) => {
+      const [fg, bg] = CHAT_COLOR[l.color];
+      g.rect(bx + 208, H - 130 + i * 12, g.width(l.text), 12, bg);
+      g.text(l.text, bx + 208, H - 130 + i * 12, fg);
+    });
+    this.h.button({ img: 8, x: bx + 643, y: by + 61, w: 24, h: 24, onClick: () => this.h.toggleState(0) });
+    this.h.button({ img: 9, x: bx + 682, y: by + 41, w: 24, h: 22, onClick: () => this.h.toggleBag() });
+    this.h.button({ img: 10, x: bx + 722, y: by + 21, w: 24, h: 23, onClick: () => this.h.toggleState(3) });
+    this.h.button({ img: 11, x: bx + 764, y: by + 11, w: 24, h: 23, onClick: () => this.h.toggleSettings() });
+    this.beltRects().forEach((r2, i) => {
+      const it = p.belt[i];
+      if (it && !this.h.beltInHand(i)) g.imgCenter("items", catalog.item(it.name).look, r2.x, r2.y, r2.w, r2.h);
+      g.text(String(i + 1), r2.x + 13, r2.y + 19, "#fff", true);
+    });
+    this.h.button({ img: 130, x: bx + 219, y: by + 104, w: 28, h: 13, always: true, onClick: () => this.h.toggleMiniMap() });
+    for (const [img, dx] of [[132, 249], [134, 279], [128, 309]]) {
+      this.h.button({ img, x: bx + dx, y: by + 104, w: 28, h: 13, always: true, onClick: () => this.h.message("\u5355\u673A\u7248\u6CA1\u6709\u8FD9\u4E2A\u529F\u80FD") });
+    }
+    this.h.button({ img: 136, x: bx + 530, y: by + 104, w: 28, h: 13, always: true, onClick: () => this.h.logout() });
+    this.h.button({ img: 138, x: bx + 560, y: by + 104, w: 28, h: 13, always: true, onClick: () => this.h.logout() });
+  }
+  /** 平板（触屏但屏幕大，用原版底栏）：右侧一列技能按钮，原版没有，触屏上没有 F1-F8。 */
+  drawTouchSkills() {
+    const { g, p, catalog, world } = this.h;
+    const keyed = p.skills.filter((s) => s.key > 0).sort((a, b) => a.key - b.key);
+    const x = (this.h.stateOpen ? this.stateOrigin().x : this.h.W - this.h.safe.right) - 44;
+    let y = this.h.H - BOARD_H - 44;
+    for (const ls of keyed) {
+      const def = catalog.skillsById.get(ls.id);
+      const r2 = { x, y, w: 36, h: 36 };
+      g.rect(r2.x - 2, r2.y - 2, r2.w + 4, r2.h + 4, "rgba(0,0,0,.55)");
+      g.img("magicon", def.effect * 2, r2.x + 2, r2.y + 1);
+      g.text(`F${ls.key}`, r2.x, r2.y + 24, "#ff0", true);
+      const cd = (p.cooldown.get(ls.id) ?? 0) - world.now;
+      if (cd > 0) g.rect(r2.x, r2.y, r2.w, Math.round(r2.h * Math.min(1, cd / Math.max(1, def.delay))), "rgba(0,0,0,.6)");
+      this.h.area(r2);
+      const key = ls.key;
+      this.h.button({ ...r2, img: -1, onClick: () => this.h.ctl.castByKeyAuto(key) });
+      y -= 42;
+    }
+  }
+};
+function drawOrb(g, p, x, y) {
+  const d = g.size(MAIN, 4);
+  if (!d) return;
+  const s = p.stats;
+  const half = Math.floor(d.w / 2);
+  const top = Math.round(d.h / s.maxHp * (s.maxHp - p.hp));
+  g.imgPart(MAIN, 4, x, y + top, 0, top, half - 1, d.h - top);
+  const mtop = Math.round(d.h / Math.max(1, s.maxMp) * (s.maxMp - p.mp));
+  g.imgPart(MAIN, 4, x + half + 1, y + mtop, half + 1, mtop, d.w - half - 2, d.h - mtop);
+}
+
+// src/game/joystick.ts
+var STICK_R = 56;
+var DEAD = 12;
+var RUN_AT = 0.6;
+var Joystick = class {
+  constructor() {
+    /** 按着摇杆的手指；没有是 null */
+    this.pointer = null;
+    this.base = { x: 0, y: 0 };
+    this.knob = { x: 0, y: 0 };
+  }
+  get active() {
+    return this.pointer !== null;
+  }
+  start(pointer, at) {
+    this.pointer = pointer;
+    this.base = at;
+    this.knob = at;
+  }
+  /** 手指移到 at：返回方向，在死区里返回 null */
+  move(at) {
+    const vx = at.x - this.base.x;
+    const vy = at.y - this.base.y;
+    const d = Math.hypot(vx, vy);
+    const k = d > STICK_R ? STICK_R / d : 1;
+    this.knob = { x: this.base.x + vx * k, y: this.base.y + vy * k };
+    if (d < DEAD) return null;
+    const sector = Math.round(Math.atan2(vy, vx) / (Math.PI / 4));
+    const a = sector * Math.PI / 4;
+    return { dx: Math.round(Math.cos(a)), dy: Math.round(Math.sin(a)), run: d >= STICK_R * RUN_AT };
+  }
+  end() {
+    this.pointer = null;
+  }
+};
+
+// src/ui/classic/touch.ts
+var SLOT = 42;
+var GAP = 4;
+var ATTACK_R = 38;
+var SKILL_R = 22;
+var RINGS = [92, 152];
+var ANGLES = [180, 210, 240, 270];
+var CHAT_KEEP_MS = 12e3;
+var CHAT_MAX = 5;
+var WIDE = 700;
+var STATUS_H = 96;
+var TARGET_W = 210;
+var TouchLayout = class {
+  constructor(h) {
+    this.h = h;
+    this.kind = "touch";
+    this.itemMenu = true;
+    this.settingsRowH = 26;
+  }
+  get L() {
+    return this.h.safe.left;
+  }
+  get R() {
+    return this.h.W - this.h.safe.right;
+  }
+  get T() {
+    return this.h.safe.top;
+  }
+  get B() {
+    return this.h.H - this.h.safe.bottom;
+  }
+  get wide() {
+    return this.h.W >= WIDE;
+  }
+  // ---------------- 窗口位置 ----------------
+  bagOrigin(merchantOpen) {
+    if (this.wide) return { x: merchantOpen ? this.R - 336 : this.L, y: this.T };
+    return { x: Math.max(0, Math.round((this.h.W - 336) / 2)), y: this.T + (merchantOpen ? 381 : 0) };
+  }
+  stateOrigin(bagOpen) {
+    if (this.wide) return { x: this.R - 232, y: this.T };
+    return { x: Math.round((this.h.W - 232) / 2), y: this.T + (bagOpen ? 270 : 0) };
+  }
+  merchantOrigin() {
+    return { x: this.wide ? this.L : Math.max(0, Math.round((this.h.W - 416) / 2)), y: this.T };
+  }
+  miniMapRight() {
+    return { x: this.R, y: this.T };
+  }
+  dialogOrigin(w, hh) {
+    return { x: Math.max(0, Math.round((this.h.W - w) / 2)), y: Math.max(this.T, Math.round((this.h.H - hh) / 2)) };
+  }
+  /** 摇杆没按着时的位置（左下） */
+  stickHome() {
+    return { x: this.L + STICK_R + 30, y: this.B - STICK_R - 24 };
+  }
+  beltRects() {
+    const total = 6 * SLOT + 5 * GAP;
+    if (!this.wide) {
+      const y2 = this.attackCenter().y - RINGS[1] - SKILL_R - 12 - SLOT;
+      return Array.from({ length: 6 }, (_, i) => ({ x: this.L + 8 + i * (SLOT + GAP), y: y2, w: SLOT, h: SLOT }));
+    }
+    const left = this.stickHome().x + STICK_R + 16;
+    const right = this.attackCenter().x - RINGS[1] - SKILL_R - 6;
+    const x0 = Math.round(left + Math.max(0, (right - left - total) / 2));
+    const y = this.B - SLOT - 6;
+    return Array.from({ length: 6 }, (_, i) => ({ x: x0 + i * (SLOT + GAP), y, w: SLOT, h: SLOT }));
+  }
+  // ---------------- HUD ----------------
+  drawHud(now) {
+    this.drawStatus();
+    this.drawChat();
+    this.drawTarget();
+    this.drawStick();
+    this.drawBelt();
+    this.drawMenuButtons();
+    this.drawAttack();
+    this.drawSkills(now);
+  }
+  drawStatus() {
+    const { g, p, catalog } = this.h;
+    const x = this.L + 4;
+    const y = this.T + 4;
+    this.h.area({ x: this.L, y: this.T, w: 200, h: STATUS_H });
+    g.circle(x + 47, y + 46, 49, "rgba(0,0,0,.55)");
+    drawOrb(g, p, x + 1, y + 1);
+    const s = p.stats;
+    const need = catalog.expToNext(p.level);
+    const exp = need === Infinity ? "\u6EE1\u7EA7" : `${(100 * p.exp / need).toFixed(1)}%`;
+    const tx = x + 98;
+    g.text(`\u8840 ${p.hp}/${s.maxHp}`, tx, y + 24, "#ff8a8a", true);
+    g.text(`\u9B54 ${p.mp}/${s.maxMp}`, tx, y + 40, "#9fc6ff", true);
+    g.text(`${p.level} \u7EA7  ${exp}`, tx, y + 56, "#fff", true);
+  }
+  drawChat() {
+    const { g } = this.h;
+    const t = performance.now();
+    const lines = this.h.chat.slice(-CHAT_MAX).filter((l) => t - l.at < CHAT_KEEP_MS);
+    const maxW = this.wide ? Math.min(this.h.W * 0.42, 360) : this.R - this.L - 236;
+    lines.forEach((l, i) => {
+      const [fg, bg] = CHAT_COLOR[l.color];
+      let text = l.text;
+      while (text.length > 4 && g.width(text) > maxW) text = text.slice(0, -2);
+      if (text !== l.text) text += "\u2026";
+      const y = this.T + STATUS_H + 4 + i * 14;
+      g.rect(this.L + 4, y, g.width(text) + 4, 14, bg === "#000" ? "rgba(0,0,0,.5)" : bg);
+      g.text(text, this.L + 6, y + 1, fg);
+    });
+  }
+  /** 锁定的怪：名字、等级、血条、攻防、经验（倍率后）。右上角 × 取消锁定。 */
+  drawTarget() {
+    const { g, ctl, catalog } = this.h;
+    const t = ctl.focused();
+    if (!t || t.kind !== "monster") return;
+    const x = Math.round((this.h.W - TARGET_W) / 2);
+    const y = this.wide ? this.T + 50 : this.T + 172;
+    const hh = 70;
+    this.h.area({ x, y, w: TARGET_W, h: hh });
+    g.frame(x, y, TARGET_W, hh, "rgba(10,7,3,.8)", t.master ? "#5a8a5a" : "#8a3a2a");
+    const tag = t.master ? "\uFF08\u5B9D\u5B9D\uFF09" : t.def.undead ? "\uFF08\u4E0D\u6B7B\u7CFB\uFF09" : "";
+    g.text(`${catalog.displayName(t.def.name)}  ${t.def.level} \u7EA7${tag}`, x + 6, y + 5, t.master ? "#9cff8a" : "#ffe08a", true);
+    const ratio = Math.max(0, Math.min(1, t.hp / t.maxHp));
+    g.rect(x + 6, y + 22, TARGET_W - 12, 10, "#300");
+    g.rect(x + 6, y + 22, Math.round((TARGET_W - 12) * ratio), 10, t.master ? "#2ecc71" : "#d33");
+    const hp = `${t.hp}/${t.maxHp}`;
+    g.text(hp, x + (TARGET_W - g.width(hp)) / 2, y + 21, "#fff", true);
+    g.text(`\u653B\u51FB ${t.dc[0]}-${t.dc[1]}  \u9632\u5FA1 ${t.ac[0]}-${t.ac[1]}  \u9B54\u9632 ${t.mac[0]}-${t.mac[1]}`, x + 6, y + 37, "#ddd");
+    g.text(`\u7ECF\u9A8C ${t.def.exp * RATES.exp}`, x + 6, y + 52, "#c0c0c0");
+    const close = { x: x + TARGET_W - 30, y, w: 30, h: 22 };
+    g.text("\xD7", close.x + 11, close.y + 4, "#f88", true);
+    this.h.button({ ...close, img: -1, onClick: () => ctl.unlock() });
+  }
+  drawStick() {
+    const { g } = this.h;
+    const js = this.h.joystick;
+    const base = js.active ? js.base : this.stickHome();
+    const knob = js.active ? js.knob : base;
+    g.circle(base.x, base.y, STICK_R, js.active ? "rgba(0,0,0,.35)" : "rgba(0,0,0,.2)", "rgba(216,162,74,.6)");
+    g.circle(knob.x, knob.y, 22, js.active ? "rgba(216,162,74,.75)" : "rgba(216,162,74,.35)", "#d8a24a");
+  }
+  drawBelt() {
+    const { g, p, catalog } = this.h;
+    this.beltRects().forEach((r2, i) => {
+      g.frame(r2.x, r2.y, r2.w, r2.h, "rgba(0,0,0,.55)", "#8a6a3a");
+      this.h.area(r2);
+      const it = p.belt[i];
+      if (it && !this.h.beltInHand(i)) g.imgCenter("items", catalog.item(it.name).look, r2.x, r2.y, r2.w, r2.h);
+      g.text(String(i + 1), r2.x + 3, r2.y + 2, "#ffe08a", true);
+    });
+  }
+  /** 包裹、状态、技能、设置、小地图。 */
+  drawMenuButtons() {
+    const { g } = this.h;
+    const items = [
+      { icon: 9, onClick: () => this.h.toggleBag() },
+      { icon: 8, onClick: () => this.h.toggleState(0) },
+      { icon: 10, onClick: () => this.h.toggleState(3) },
+      { icon: 11, onClick: () => this.h.toggleSettings() },
+      { icon: "\u5730\u56FE", onClick: () => this.h.toggleMiniMap() }
+    ];
+    const size = 40;
+    const step2 = size + 4;
+    const right = this.wide ? this.R - 236 : this.R;
+    const y = this.wide ? this.T + 4 : this.T + 126;
+    items.forEach((it, i) => {
+      const r2 = { x: right - (items.length - i) * step2, y, w: size, h: size };
+      const pressed = this.h.isPressed(r2);
+      g.frame(r2.x, r2.y, r2.w, r2.h, pressed ? "rgba(90,70,30,.85)" : "rgba(0,0,0,.55)", "#8a6a3a");
+      if (typeof it.icon === "number") g.imgScaled(MAIN, it.icon, r2.x + size / 2, r2.y + size / 2, 1.4);
+      else g.text(it.icon, r2.x + (size - g.width(it.icon)) / 2, r2.y + 14, "#ffe08a", true);
+      this.h.area(r2);
+      this.h.button({ ...r2, img: -1, onClick: it.onClick });
+    });
+  }
+  attackCenter() {
+    return { x: this.R - ATTACK_R - 24, y: this.B - ATTACK_R - 24 };
+  }
+  drawAttack() {
+    const { g } = this.h;
+    const c = this.attackCenter();
+    const r2 = { x: c.x - ATTACK_R, y: c.y - ATTACK_R, w: ATTACK_R * 2, h: ATTACK_R * 2 };
+    g.circle(c.x, c.y, ATTACK_R, this.h.isPressed(r2) ? "rgba(140,40,20,.85)" : "rgba(60,20,10,.7)", "#d8a24a");
+    const t = "\u653B\u51FB";
+    g.text(t, c.x - g.width(t) / 2, c.y - 6, "#ffe08a", true);
+    this.h.area(r2);
+    this.h.button({ ...r2, img: -1, onClick: () => this.h.ctl.attackNearest() });
+  }
+  /** F1-F8 按键位摆；没设快捷键的主动技能顺次补进空位（只是显示，不改存档里的快捷键）。 */
+  slots() {
+    const all = this.h.ctl.activeSkills();
+    const byKey = new Map(all.filter((s) => s.key > 0 && s.key <= 8).map((s) => [s.key, s]));
+    const loose = all.filter((s) => !(s.key > 0 && s.key <= 8));
+    const out = [];
+    for (let k = 1; k <= 8; k++) {
+      const s = byKey.get(k) ?? loose.shift();
+      if (s) out.push({ id: s.id, key: k });
+    }
+    return out;
+  }
+  drawSkills(now) {
+    const { g, p, catalog, world } = this.h;
+    const c = this.attackCenter();
+    for (const slot of this.slots()) {
+      const def = catalog.skillsById.get(slot.id);
+      const ls = p.skills.find((s) => s.id === slot.id);
+      if (!def || !ls) continue;
+      const ring = RINGS[slot.key <= 4 ? 0 : 1];
+      const a = ANGLES[(slot.key - 1) % 4] * Math.PI / 180;
+      const cx = c.x + ring * Math.cos(a);
+      const cy = c.y + ring * Math.sin(a);
+      const r2 = { x: cx - SKILL_R, y: cy - SKILL_R, w: SKILL_R * 2, h: SKILL_R * 2 };
+      g.circle(cx, cy, SKILL_R, this.h.isPressed(r2) ? "rgba(90,70,30,.9)" : "rgba(0,0,0,.6)", "#8a6a3a");
+      g.imgCenter("magicon", def.effect * 2, r2.x, r2.y, r2.w, r2.h);
+      const cd = (p.cooldown.get(slot.id) ?? 0) - world.now;
+      if (cd > 0) {
+        g.circle(cx, cy, SKILL_R, "rgba(0,0,0,.6)");
+        const t = (cd / 1e3).toFixed(cd < 1e4 ? 1 : 0);
+        g.text(t, cx - g.width(t) / 2, cy - 6, "#fff", true);
+      } else if (p.mp < manaCost(def, ls.level)) g.circle(cx, cy, SKILL_R, "rgba(0,0,80,.45)");
+      g.text(`F${slot.key}`, r2.x - 2, r2.y - 4, "#ff0", true);
+      this.h.area(r2);
+      const id = slot.id;
+      this.h.button({ ...r2, img: -1, onClick: () => this.h.ctl.castSkillAuto(id) });
+    }
+  }
+};
+
+// src/ui/classic/classic.ts
+var LINE_H = 14;
+var MAX_MENU = 10;
+var USE_LABEL = {
+  potion: "\u4F7F\u7528",
+  scroll: "\u4F7F\u7528",
+  book: "\u5B66\u4E60",
+  bundle: "\u62C6\u5F00",
+  equip: "\u7A7F\u6234",
+  amulet: "\u88C5\u5907",
+  material: null,
+  other: null
 };
 var EQUIP_RECTS = [
   ["necklace", { x: 168, y: 87, w: 34, h: 31 }],
@@ -2987,11 +3549,12 @@ var EQUIP_RECTS = [
   ["dress", { x: 96, y: 122, w: 53, h: 112 }]
 ];
 var ClassicUi = class {
-  constructor(g, world, ctl, catalog) {
+  constructor(g, world, ctl, catalog, touch) {
     this.g = g;
     this.world = world;
     this.ctl = ctl;
     this.catalog = catalog;
+    this.touch = touch;
     this.chat = [];
     this.hand = null;
     this.mouse = { x: -1, y: -1 };
@@ -3011,27 +3574,40 @@ var ClassicUi = class {
     this.menuIndex = -1;
     this.sellSpot = null;
     this.links = [];
+    /** 手机左侧虚拟摇杆（输入层改它，触屏布局画它） */
+    this.joystick = new Joystick();
+    /** 手机：点了物品弹出的操作菜单 */
+    this.itemMenu = null;
     /** 每帧算出的界面占用区域（点在里面就不传给地图） */
     this.areas = [];
     this.buttons = [];
+    /** 登记顺序（后登记的在上层）：被上层窗口盖住的按钮点不到 */
+    this.z = 0;
     this.W = 800;
     this.H = 600;
-    /** 安全区（刘海、圆角），逻辑像素；触屏按钮和贴边的小地图要避开 */
+    /** 安全区（刘海、圆角），界面像素；触屏按钮和贴边的小地图要避开 */
     this.safe = { left: 0, right: 0, top: 0, bottom: 0 };
-    /** 触屏设备：在右侧画技能按钮（原版没有，手机上没有 F1-F8） */
-    this.touch = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
     /** 退出按钮：存档后回到登录画面 */
     this.onLogout = () => {
     };
     /** 点按钮时（放按钮音效） */
     this.onButton = () => {
     };
+    /** 物品菜单这一帧画在哪（点在里面不关菜单） */
+    this.menuRect = null;
+    this.layout = new BoardLayout(this, touch);
+  }
+  /** 切换布局（屏幕大小变了时）。 */
+  setLayout(kind) {
+    if (kind === this.layout.kind) return;
+    this.layout = kind === "touch" ? new TouchLayout(this) : new BoardLayout(this, this.touch);
+    this.itemMenu = null;
   }
   get p() {
     return this.world.player;
   }
   message(text, color = "system") {
-    this.chat.push({ text, color });
+    this.chat.push({ text, color, at: performance.now() });
     if (this.chat.length > 200) this.chat.splice(0, this.chat.length - 200);
   }
   openNpc(npc) {
@@ -3048,20 +3624,39 @@ var ClassicUi = class {
     this.bagOpen = false;
     this.settingsOpen = false;
     this.keyDlg = null;
+    this.itemMenu = null;
     this.cancelHand();
   }
   toggleBag() {
     this.bagOpen = !this.bagOpen;
+    this.itemMenu = null;
   }
   toggleState(page) {
+    this.itemMenu = null;
     if (this.stateOpen && this.statePage === page) this.stateOpen = false;
     else {
       this.stateOpen = true;
       this.statePage = page;
     }
   }
+  toggleSettings() {
+    this.settingsOpen = !this.settingsOpen;
+  }
+  logout() {
+    this.onLogout();
+  }
   cancelHand() {
     this.hand = null;
+  }
+  beltInHand(i) {
+    return this.isHandFrom("belt", i);
+  }
+  area(r2) {
+    this.areas.push({ ...r2, z: this.z++ });
+  }
+  /** 登记一个点击区（不画） */
+  hit(b) {
+    this.buttons.push({ ...b, z: this.z++ });
   }
   // ======================= 绘制 =======================
   draw(W, H, now) {
@@ -3069,103 +3664,32 @@ var ClassicUi = class {
     this.H = H;
     this.areas = [];
     this.buttons = [];
-    this.drawBottom(now);
+    this.z = 0;
+    this.menuRect = null;
+    this.layout.drawHud(now);
     if (this.miniMap) this.drawMiniMap(now);
     if (this.npc) this.drawMerchant();
     if (this.bagOpen) this.drawBag();
     if (this.stateOpen) this.drawState();
     if (this.settingsOpen) this.drawSettings();
     if (this.keyDlg) this.drawKeyDlg();
-    if (this.touch) this.drawTouchSkills();
-    if (this.H > this.W * 1.2) {
-      const t = "\u6A2A\u8FC7\u6765\u73A9\u6548\u679C\u66F4\u597D";
-      this.g.text(t, (this.W - this.g.width(t)) / 2, 8, "#ff0", true);
-    }
-    this.drawHover();
+    if (this.itemMenu) this.drawItemMenu(this.itemMenu);
+    else this.drawHover();
     if (this.hand) {
       const def = this.catalog.item(this.hand.item.name);
       this.g.imgCenter("items", def.look, this.mouse.x - 20, this.mouse.y - 16, 40, 32);
     }
   }
   button(b) {
-    this.buttons.push(b);
-    if (b.always || this.pressed === b || this.pressed && this.pressed.img === b.img && this.pressed.x === b.x && this.pressed.y === b.y) {
+    this.hit(b);
+    if (b.img < 0) return;
+    if (b.always || this.isPressed(b)) {
       this.g.img(MAIN, b.always && this.isPressed(b) ? b.img + 1 : b.img, b.x, b.y);
     }
   }
-  isPressed(b) {
-    return !!this.pressed && this.pressed.img === b.img && this.pressed.x === b.x && this.pressed.y === b.y;
-  }
-  // ---------------- 底栏 ----------------
-  boardX() {
-    return Math.round((this.W - BOARD_W) / 2);
-  }
-  drawBottom(now) {
-    const g = this.g;
-    const bx = this.boardX();
-    const by = this.H - BOARD_H;
-    this.areas.push({ x: bx, y: by + 40, w: BOARD_W, h: BOARD_H - 40 }, { x: bx, y: by, w: 190, h: 40 }, { x: bx + 610, y: by, w: 190, h: 40 });
-    g.rect(bx + 208, by + 120, 387, 124, "#000");
-    g.img(MAIN, 1, bx, by);
-    g.img(MAIN, 12, bx + 748, by + 79);
-    const p = this.p;
-    const s = p.stats;
-    if (p.job === 0 && p.level < 28) {
-      const full = g.size(MAIN, 5);
-      if (full) {
-        g.imgPart(MAIN, 5, bx + 38, by + 90, 0, 0, full.w - 2, full.h);
-        const top = Math.round(full.h / s.maxHp * (s.maxHp - p.hp));
-        g.imgPart(MAIN, 6, bx + 38, by + 90 + top, 0, top, full.w - 2, full.h - top);
-      }
-    } else {
-      const d = g.size(MAIN, 4);
-      if (d) {
-        const half = Math.floor(d.w / 2);
-        const top = Math.round(d.h / s.maxHp * (s.maxHp - p.hp));
-        g.imgPart(MAIN, 4, bx + 40, by + 91 + top, 0, top, half - 1, d.h - top);
-        const mtop = Math.round(d.h / Math.max(1, s.maxMp) * (s.maxMp - p.mp));
-        g.imgPart(MAIN, 4, bx + 40 + half + 1, by + 91 + mtop, half + 1, mtop, d.w - half - 2, d.h - mtop);
-      }
-    }
-    const hpText = `${p.hp}/${s.maxHp}`;
-    const mpText = `${p.mp}/${s.maxMp}`;
-    g.text(hpText, bx + 86 - g.width(hpText) / 2, by + 186, "#fff", true);
-    g.text(mpText, bx + 86 - g.width(mpText) / 2, by + 200, "#9fc6ff", true);
-    g.text(String(p.level), bx + 660, this.H - 104, "#fff", true);
-    const bar = g.size(MAIN, 7);
-    if (bar) {
-      const need = this.catalog.expToNext(p.level);
-      const er = need === Infinity ? 1 : p.exp / need;
-      g.imgPart(MAIN, 7, bx + 666, this.H - 73, 0, 0, Math.round(bar.w * Math.min(1, er)), bar.h);
-      const wr = this.world.bagWeight(p) / Math.max(1, s.maxBagWeight);
-      g.imgPart(MAIN, 7, bx + 666, this.H - 40, 0, 0, Math.round(bar.w * Math.min(1, wr)), bar.h);
-    }
-    const lines = this.chat.slice(-CHAT_LINES);
-    lines.forEach((l, i) => {
-      const [fg, bg] = CHAT_COLOR[l.color];
-      const w = g.width(l.text);
-      g.rect(bx + 208, this.H - 130 + i * 12, w, 12, bg);
-      g.text(l.text, bx + 208, this.H - 130 + i * 12, fg);
-    });
-    const by0 = by;
-    this.button({ img: 8, x: bx + 643, y: by0 + 61, w: 24, h: 24, onClick: () => this.toggleState(0) });
-    this.button({ img: 9, x: bx + 682, y: by0 + 41, w: 24, h: 22, onClick: () => this.toggleBag() });
-    this.button({ img: 10, x: bx + 722, y: by0 + 21, w: 24, h: 23, onClick: () => this.toggleState(3) });
-    this.button({ img: 11, x: bx + 764, y: by0 + 11, w: 24, h: 23, onClick: () => this.settingsOpen = !this.settingsOpen });
-    for (let i = 0; i < 6; i++) {
-      const r2 = { x: bx + 285 + 43 * i, y: by + 59, w: 32, h: 29 };
-      const it = p.belt[i];
-      if (it && !(this.hand?.src.kind === "belt" && this.hand.src.index === i)) {
-        g.imgCenter("items", this.catalog.item(it.name).look, r2.x, r2.y, r2.w, r2.h);
-      }
-      g.text(String(i + 1), r2.x + 13, r2.y + 19, "#fff", true);
-    }
-    this.button({ img: 130, x: bx + 219, y: by + 104, w: 28, h: 13, always: true, onClick: () => this.toggleMiniMap() });
-    for (const [img, dx] of [[132, 249], [134, 279], [128, 309]]) {
-      this.button({ img, x: bx + dx, y: by + 104, w: 28, h: 13, always: true, onClick: () => this.message("\u5355\u673A\u7248\u6CA1\u6709\u8FD9\u4E2A\u529F\u80FD") });
-    }
-    this.button({ img: 136, x: bx + 530, y: by + 104, w: 28, h: 13, always: true, onClick: () => this.onLogout() });
-    this.button({ img: 138, x: bx + 560, y: by + 104, w: 28, h: 13, always: true, onClick: () => this.onLogout() });
+  isPressed(r2) {
+    const b = this.pressed;
+    return !!b && b.x === r2.x && b.y === r2.y && b.w === r2.w && b.h === r2.h;
   }
   toggleMiniMap() {
     this.miniMap = (this.miniMap + 1) % 3;
@@ -3181,7 +3705,9 @@ var ClassicUi = class {
     const my = p.y;
     const left = Math.max(0, Math.min(s.w - 120, mx - 60));
     const top = Math.max(0, Math.min(s.h - 120, my - 60));
-    return { idx: idx - 1, rc: { x: left, y: top, w: Math.min(120, s.w), h: Math.min(120, s.h) }, x: this.W - 120 - this.safe.right, y: this.safe.top };
+    const tr = this.layout.miniMapRight();
+    const w = Math.min(120, s.w);
+    return { idx: idx - 1, rc: { x: left, y: top, w, h: Math.min(120, s.h) }, x: tr.x - w, y: tr.y };
   }
   drawMiniMap(now) {
     const m = this.miniRect();
@@ -3191,8 +3717,8 @@ var ClassicUi = class {
     ctx.globalAlpha = this.miniMap === 1 ? 0.7 : 1;
     g.imgPart("mmap", m.idx, m.x, m.y, m.rc.x, m.rc.y, m.rc.w, m.rc.h);
     ctx.globalAlpha = 1;
-    this.areas.push({ x: m.x, y: m.y, w: m.rc.w, h: m.rc.h });
-    this.buttons.push({
+    this.area({ x: m.x, y: m.y, w: m.rc.w, h: m.rc.h });
+    this.hit({
       x: m.x,
       y: m.y,
       w: m.rc.w,
@@ -3217,36 +3743,15 @@ var ClassicUi = class {
     const it = this.ctl.intent;
     if (it.kind === "goto") dot(it.target.x, it.target.y, "#ff0", 3);
   }
-  // ---------------- 触屏技能按钮 ----------------
-  drawTouchSkills() {
-    const g = this.g;
-    const keyed = this.p.skills.filter((s) => s.key > 0).sort((a, b) => a.key - b.key);
-    const x = (this.stateOpen ? this.stateX() : this.W - this.safe.right) - 44;
-    let y = this.H - BOARD_H - 44;
-    for (const ls of keyed) {
-      const def = this.catalog.skillsById.get(ls.id);
-      const r2 = { x, y, w: 36, h: 36 };
-      g.rect(r2.x - 2, r2.y - 2, r2.w + 4, r2.h + 4, "rgba(0,0,0,.55)");
-      g.img("magicon", def.effect * 2, r2.x + 2, r2.y + 1);
-      g.text(`F${ls.key}`, r2.x, r2.y + 24, "#ff0", true);
-      const cd = (this.p.cooldown.get(ls.id) ?? 0) - this.world.now;
-      if (cd > 0) g.rect(r2.x, r2.y, r2.w, Math.round(r2.h * Math.min(1, cd / Math.max(1, def.delay))), "rgba(0,0,0,.6)");
-      this.areas.push(r2);
-      const key = ls.key;
-      this.buttons.push({ ...r2, img: -1, onClick: () => this.ctl.castByKey(key, void 0, this.p.pos) });
-      y -= 42;
-    }
-  }
   // ---------------- 状态窗 ----------------
-  stateX() {
-    return this.W - 232 - this.safe.right;
+  stateOrigin() {
+    return this.layout.stateOrigin(this.bagOpen);
   }
   drawState() {
     const g = this.g;
-    const x = this.stateX();
-    const y = 0;
+    const { x, y } = this.stateOrigin();
     const p = this.p;
-    this.areas.push({ x, y, w: 232, h: 325 });
+    this.area({ x, y, w: 232, h: 325 });
     g.img(MAIN, 370, x, y);
     const title = `${p.name}`;
     g.text(title, x + 116 - g.width(title) / 2, y + 23, "#ffe08a", true);
@@ -3335,7 +3840,7 @@ var ClassicUi = class {
       const m = i - top;
       const iconR = { x: bbx + 8, y: bby + 8 + m * 37, w: 31, h: 33 };
       g.img("magicon", def.effect * 2, iconR.x, iconR.y);
-      this.buttons.push({ ...iconR, img: -1, onClick: () => this.keyDlg = { skill: ls.id } });
+      this.hit({ ...iconR, img: -1, onClick: () => this.keyDlg = { skill: ls.id } });
       g.text(def.name, bbx + 48, bby + 8 + m * 37, "#c0c0c0");
       g.img(MAIN, 112, bbx + 48, bby + 23 + m * 37);
       g.img(MAIN, 111, bbx + 74, bby + 23 + m * 37);
@@ -3355,19 +3860,18 @@ var ClassicUi = class {
     });
   }
   // ---------------- 包裹 ----------------
-  bagX() {
-    return (this.npc ? 475 : 0) + this.safe.left;
+  bagOrigin() {
+    return this.layout.bagOrigin(!!this.npc);
   }
   gridCell(i) {
-    const x = this.bagX();
-    return { x: x + 20 + i % 8 * 36, y: 13 + Math.floor(i / 8) * 32, w: 36, h: 32 };
+    const { x, y } = this.bagOrigin();
+    return { x: x + 20 + i % 8 * 36, y: y + 13 + Math.floor(i / 8) * 32, w: 36, h: 32 };
   }
   drawBag() {
     const g = this.g;
-    const x = this.bagX();
-    const y = 0;
+    const { x, y } = this.bagOrigin();
     const p = this.p;
-    this.areas.push({ x, y, w: 336, h: 270 });
+    this.area({ x, y, w: 336, h: 270 });
     g.img(MAIN, 3, x, y);
     p.bag.forEach((it2, i) => {
       if (!it2 || this.isHandFrom("bag", i)) return;
@@ -3409,12 +3913,13 @@ var ClassicUi = class {
   }
   drawMerchant() {
     const g = this.g;
-    this.areas.push({ x: 0, y: 0, w: 416, h: 176 });
-    g.img(MAIN, 384, 0, 0);
+    const o = this.layout.merchantOrigin();
+    this.area({ x: o.x, y: o.y, w: 416, h: 176 });
+    g.img(MAIN, 384, o.x, o.y);
     this.links = [];
-    let ly = 20;
+    let ly = o.y + 20;
     for (const raw of this.npcText().split("\\")) {
-      let sx = 30;
+      let sx = o.x + 30;
       const re = /<([^/>]+)\/(@\w+)>/g;
       let last = 0;
       let m;
@@ -3430,9 +3935,14 @@ var ClassicUi = class {
       if (last < raw.length) g.text(raw.slice(last), sx, ly, "#fff", true);
       ly += 16;
     }
-    this.button({ img: 64, x: 399, y: 1, w: 16, h: 23, onClick: () => this.closeNpc() });
-    if (this.mode === "buy" || this.mode === "getback") this.drawMenu();
-    if (this.mode === "sell" || this.mode === "store") this.drawSell();
+    this.button({ img: 64, x: o.x + 399, y: o.y + 1, w: 16, h: 23, onClick: () => this.closeNpc() });
+    if (this.mode === "buy" || this.mode === "getback") this.drawMenu(o);
+    if (this.mode === "sell" || this.mode === "store") this.drawSell(o);
+  }
+  /** 商品列表第 m 行（屏幕上第几行）的点击区 */
+  menuRowRect(m) {
+    const o = this.layout.merchantOrigin();
+    return { x: o.x + 14, y: o.y + 176 + 32 + m * LINE_H, w: 265, h: LINE_H };
   }
   menuRows() {
     const n = this.npc;
@@ -3463,11 +3973,11 @@ var ClassicUi = class {
       }];
     });
   }
-  drawMenu() {
+  drawMenu(o) {
     const g = this.g;
-    const x = 0;
-    const y = 176;
-    this.areas.push({ x, y, w: 308, h: 205 });
+    const x = o.x;
+    const y = o.y + 176;
+    this.area({ x, y, w: 308, h: 205 });
     g.img(MAIN, 385, x, y);
     const store = this.mode === "getback";
     g.text(store ? "\u4FDD\u7BA1\u7269\u54C1" : "\u7269\u54C1\u5217\u8868", x + 19, y + 11, "#fff");
@@ -3482,13 +3992,16 @@ var ClassicUi = class {
       g.text(r2.name, x + 19, y + 32 + m * LINE_H, color);
       g.text(store ? r2.dura : r2.price, x + 156, y + 32 + m * LINE_H, color);
       if (!store) g.text(r2.dura, x + 245, y + 32 + m * LINE_H, color);
-      this.buttons.push({
-        x: x + 14,
-        y: y + 32 + m * LINE_H,
-        w: 265,
-        h: LINE_H,
+      const rr = this.menuRowRect(m);
+      this.hit({
+        ...rr,
         img: -1,
         onClick: () => {
+          if (this.layout.itemMenu) {
+            this.menuIndex = i;
+            this.openShopMenu(r2, rr);
+            return;
+          }
           if (this.menuIndex === i && this.isDouble(`menu${i}`)) r2.onBuy();
           this.menuIndex = i;
         }
@@ -3520,16 +4033,16 @@ var ClassicUi = class {
     });
     this.button({ img: 64, x: x + 291, y, w: 16, h: 23, onClick: () => this.mode = "talk" });
   }
-  drawSell() {
+  drawSell(o) {
     const g = this.g;
-    const x = 260;
-    const y = 176;
-    this.areas.push({ x, y, w: 140, h: 181 });
+    const x = o.x + 260;
+    const y = o.y + 176;
+    this.area({ x, y, w: 140, h: 181 });
     g.img(MAIN, 392, x, y);
     const store = this.mode === "store";
     g.text(store ? "\u653E\u5165\u8981\u4FDD\u7BA1\u7684\u7269\u54C1" : "\u653E\u5165\u8981\u51FA\u552E\u7684\u7269\u54C1", x + 12, y + 30, "#fff");
     const spot = { x: x + 27, y: y + 67, w: 61, h: 52 };
-    this.buttons.push({ ...spot, img: -1, onClick: () => this.clickSellSpot() });
+    this.hit({ ...spot, img: -1, onClick: () => this.clickSellSpot() });
     if (this.sellSpot) {
       const def = this.catalog.item(this.sellSpot.item.name);
       g.imgCenter("items", def.look, spot.x, spot.y, spot.w, spot.h);
@@ -3542,53 +4055,70 @@ var ClassicUi = class {
   drawSettings() {
     const g = this.g;
     const sz = g.size(MAIN, 204) ?? { w: 608, h: 327 };
-    const x = Math.round((this.W - sz.w) / 2);
-    const y = Math.max(0, Math.round((this.H - BOARD_H - sz.h) / 2));
-    this.areas.push({ x, y, w: sz.w, h: sz.h });
-    g.img(MAIN, 204, x, y);
-    g.rect(x + 50, y + 6, 70, 20, "#2a2a2a");
+    const rowH = this.layout.settingsRowH;
+    const classic = this.layout.kind === "board";
+    const w = classic ? sz.w : Math.min(sz.w, this.W - this.safe.left - this.safe.right - 8);
+    const h = classic ? sz.h : 40 + SETTING_LABELS.length * rowH + 12;
+    const { x, y } = this.layout.dialogOrigin(w, h);
+    this.area({ x, y, w, h });
+    if (classic) {
+      g.img(MAIN, 204, x, y);
+      g.rect(x + 50, y + 6, 70, 20, "#2a2a2a");
+    } else g.frame(x, y, w, h, "rgba(16,11,6,.96)", "#8a6a3a");
     g.text("\u4FBF\u5229\u8BBE\u7F6E", x + 56, y + 10, "#ffe08a", true);
     const s = this.ctl.settings;
+    const mid = (rowH - 14) / 2;
     SETTING_LABELS.forEach((item, i) => {
-      const ly = y + 40 + i * 19;
+      const ly = y + 40 + i * rowH;
       const v = s[item.key];
       if (item.kind === "bool") {
-        const box = { x: x + 30, y: ly, w: 14, h: 14 };
+        const box = { x: x + 30, y: ly + mid, w: 14, h: 14 };
         g.rect(box.x, box.y, box.w, box.h, "#000");
         g.rect(box.x + 1, box.y + 1, box.w - 2, box.h - 2, "#4a3a20");
         if (v) g.text("\u2713", box.x + 2, box.y + 1, "#ff0", true);
-        g.text(item.label, x + 52, ly + 1, "#fff");
-        this.buttons.push({ x: box.x, y: ly - 2, w: 400, h: 18, img: -1, onClick: () => {
+        g.text(item.label, x + 52, ly + mid + 1, "#fff");
+        this.hit({ x: box.x, y: ly, w: Math.min(400, w - 40), h: rowH - 1, img: -1, onClick: () => {
           s[item.key] = !v;
           this.ctl.onSettingsChanged();
         } });
       } else {
-        g.text(item.label, x + 52, ly + 1, "#fff");
-        const vx = x + 360;
-        g.text("\u25C0", vx, ly + 1, "#ff0", true);
-        g.text(`${v}%`, vx + 22, ly + 1, "#fff", true);
-        g.text("\u25B6", vx + 62, ly + 1, "#ff0", true);
-        this.buttons.push({ x: vx - 4, y: ly - 2, w: 20, h: 18, img: -1, onClick: () => {
+        g.text(item.label, x + 52, ly + mid + 1, "#fff");
+        const vx = classic ? x + 360 : x + w - 100;
+        g.text("\u25C0", vx, ly + mid + 1, "#ff0", true);
+        g.text(`${v}%`, vx + 22, ly + mid + 1, "#fff", true);
+        g.text("\u25B6", vx + 62, ly + mid + 1, "#ff0", true);
+        const bw = classic ? 20 : 32;
+        this.hit({ x: vx + 6 - bw / 2, y: ly, w: bw, h: rowH - 1, img: -1, onClick: () => {
           s[item.key] = Math.max(0, Number(v) - 5);
           this.ctl.onSettingsChanged();
         } });
-        this.buttons.push({ x: vx + 58, y: ly - 2, w: 20, h: 18, img: -1, onClick: () => {
+        this.hit({ x: vx + 68 - bw / 2, y: ly, w: bw, h: rowH - 1, img: -1, onClick: () => {
           s[item.key] = Math.min(95, Number(v) + 5);
           this.ctl.onSettingsChanged();
         } });
       }
     });
-    g.text("F1-F8 \u6280\u80FD  1-6 \u5FEB\u6377\u680F  \u7A7A\u683C \u6361\u53D6  Esc \u5173\u95ED  \u53F3\u952E\u8DD1\u6B65", x + 30, y + sz.h - 40, "#c0c0c0");
-    this.button({ img: 361, x: x + 514, y: y + 287, w: 80, h: 34, onClick: () => this.settingsOpen = false });
-    this.button({ img: 64, x: x + 584, y: y + 6, w: 16, h: 23, onClick: () => this.settingsOpen = false });
+    if (classic) {
+      g.text("F1-F8 \u6280\u80FD  1-6 \u5FEB\u6377\u680F  \u7A7A\u683C \u6361\u53D6  Esc \u5173\u95ED  \u53F3\u952E\u8DD1\u6B65", x + 30, y + sz.h - 40, "#c0c0c0");
+      this.button({ img: 361, x: x + 514, y: y + 287, w: 80, h: 34, onClick: () => this.settingsOpen = false });
+      this.button({ img: 64, x: x + 584, y: y + 6, w: 16, h: 23, onClick: () => this.settingsOpen = false });
+    } else {
+      const close = { x: x + w - 44, y: y + 4, w: 40, h: 30 };
+      g.frame(close.x, close.y, close.w, close.h, this.isPressed(close) ? "#7a5a2a" : "#3a2a16", "#c9a060");
+      g.text("\u5173\u95ED", close.x + 8, close.y + 9, "#ffe08a", true);
+      this.hit({ ...close, img: -1, onClick: () => this.settingsOpen = false });
+      const quit = { x: close.x - 50, y: y + 4, w: 44, h: 30 };
+      g.frame(quit.x, quit.y, quit.w, quit.h, this.isPressed(quit) ? "#7a5a2a" : "#3a2a16", "#c9a060");
+      g.text("\u9000\u51FA", quit.x + 10, quit.y + 9, "#ff8a8a", true);
+      this.hit({ ...quit, img: -1, onClick: () => this.onLogout() });
+    }
   }
   // ---------------- 技能快捷键 ----------------
   drawKeyDlg() {
     const g = this.g;
     const sz = g.size(MAIN, 229) ?? { w: 376, h: 179 };
-    const x = Math.round((this.W - sz.w) / 2);
-    const y = Math.round((this.H - BOARD_H - sz.h) / 2);
-    this.areas.push({ x, y, w: sz.w, h: sz.h });
+    const { x, y } = this.layout.dialogOrigin(sz.w, sz.h);
+    this.area({ x, y, w: sz.w, h: sz.h });
     g.img(MAIN, 229, x, y);
     const id = this.keyDlg.skill;
     const def = this.catalog.skillsById.get(id);
@@ -3600,9 +4130,9 @@ var ClassicUi = class {
       const k = i + 1;
       const r2 = { x: x + bx, y: y + 83, w: 32, h: 30 };
       g.img(MAIN, 232 + i * 2 + (ls?.key === k ? 1 : 0), r2.x, r2.y);
-      this.buttons.push({ ...r2, img: -1, onClick: () => this.setKey(id, k) });
+      this.hit({ ...r2, img: -1, onClick: () => this.setKey(id, k) });
     });
-    this.buttons.push({ x: x + 299, y: y + 83, w: 40, h: 30, img: -1, onClick: () => this.setKey(id, 0) });
+    this.hit({ x: x + 299, y: y + 83, w: 40, h: 30, img: -1, onClick: () => this.setKey(id, 0) });
     g.img(MAIN, 230, x + 299, y + 83);
     this.button({ img: 62, x: x + 222, y: y + 131, w: 80, h: 34, always: false, onClick: () => this.keyDlg = null });
   }
@@ -3620,17 +4150,20 @@ var ClassicUi = class {
       for (let i = 0; i < p.bag.length; i++) if (p.bag[i] && inside(this.gridCell(i), x, y)) return p.bag[i];
     }
     if (this.stateOpen && this.statePage === 0) {
-      const sx = this.stateX();
       for (const [slot, r2] of EQUIP_RECTS) {
-        if (p.equip[slot] && inside({ ...r2, x: sx + r2.x }, x, y)) return p.equip[slot];
+        if (p.equip[slot] && inside(this.equipRect(r2), x, y)) return p.equip[slot];
       }
     }
-    const bx = this.boardX();
-    const by = this.H - BOARD_H;
+    const belt = this.layout.beltRects();
     for (let i = 0; i < 6; i++) {
-      if (p.belt[i] && inside({ x: bx + 285 + 43 * i, y: by + 59, w: 32, h: 29 }, x, y)) return p.belt[i];
+      if (p.belt[i] && inside(belt[i], x, y)) return p.belt[i];
     }
     return null;
+  }
+  /** 装备格在屏幕上的位置 */
+  equipRect(r2) {
+    const o = this.stateOrigin();
+    return { ...r2, x: o.x + r2.x, y: o.y + r2.y };
   }
   drawHover() {
     if (this.hand) return;
@@ -3644,7 +4177,7 @@ var ClassicUi = class {
     } else if (this.npc && (this.mode === "buy" || this.mode === "getback")) {
       const rows = this.menuRows();
       for (let i = this.menuTop; i < Math.min(rows.length, this.menuTop + MAX_MENU); i++) {
-        if (inside({ x: 14, y: 176 + 32 + (i - this.menuTop) * LINE_H, w: 265, h: LINE_H }, this.mouse.x, this.mouse.y)) {
+        if (inside(this.menuRowRect(i - this.menuTop), this.mouse.x, this.mouse.y)) {
           const r2 = rows[i];
           const def = this.catalog.item(r2.defName);
           lines = itemLines(def, r2.item, this.p, null);
@@ -3654,14 +4187,16 @@ var ClassicUi = class {
       const nearby = [...this.world.actors.values()].filter((a) => a.kind === "monster" && !a.master && !a.dead);
       const avgA = nearby.length ? Math.round(nearby.reduce((s, m) => s + m.agility, 0) / nearby.length) : 15;
       const avgH = nearby.length ? Math.round(nearby.reduce((s, m) => s + m.hit, 0) / nearby.length) : 8;
-      if (inside({ x: this.stateX() + 40, y: 90, w: 180, h: 150 }, this.mouse.x, this.mouse.y)) {
+      const so = this.stateOrigin();
+      if (inside({ x: so.x + 40, y: so.y + 90, w: 180, h: 150 }, this.mouse.x, this.mouse.y)) {
         lines = statLines(this.p.stats, this.p, avgA, avgH);
       }
     } else if (this.stateOpen && this.statePage === 3) {
       const top = this.magicPage * 5;
       for (let i = top; i < Math.min(top + 5, this.p.skills.length); i++) {
         const m = i - top;
-        if (inside({ x: this.stateX() + 46, y: 60 + m * 37, w: 170, h: 33 }, this.mouse.x, this.mouse.y)) {
+        const so = this.stateOrigin();
+        if (inside({ x: so.x + 46, y: so.y + 60 + m * 37, w: 170, h: 33 }, this.mouse.x, this.mouse.y)) {
           const ls = this.p.skills[i];
           const def = this.catalog.skillsById.get(ls.id);
           lines = [
@@ -3694,12 +4229,19 @@ var ClassicUi = class {
       this.hand = null;
       return true;
     }
-    for (let i = this.buttons.length - 1; i >= 0; i--) {
-      const b = this.buttons[i];
-      if (inside(b, x, y)) {
-        this.pressed = b;
+    if (this.itemMenu && this.menuRect) {
+      const r2 = this.menuRect;
+      if (inside(r2, x, y)) {
+        const b2 = this.buttonAt(x, y);
+        if (b2 && inside(r2, b2.x + 1, b2.y + 1)) this.pressed = b2;
         return true;
       }
+      this.itemMenu = null;
+    }
+    const b = this.buttonAt(x, y);
+    if (b) {
+      this.pressed = b;
+      return true;
     }
     for (const l of this.links) {
       if (inside(l.rect, x, y)) {
@@ -3716,10 +4258,39 @@ var ClassicUi = class {
     }
     return onUi;
   }
+  /** 点到的按钮（后登记的在上面）。手机上原版小按钮（关闭×等）很小，没正好点中时允许偏 8 像素。 */
+  buttonAt(x, y) {
+    for (let i = this.buttons.length - 1; i >= 0; i--) {
+      const b = this.buttons[i];
+      if (inside(b, x, y)) return this.coveredAbove(b.z, x, y) ? void 0 : b;
+    }
+    const slop = this.touchSlop();
+    if (!slop) return void 0;
+    let best;
+    let bd = slop;
+    for (let i = this.buttons.length - 1; i >= 0; i--) {
+      const b = this.buttons[i];
+      if (b.w * b.h > 40 * 40) continue;
+      const d = distTo(b, x, y);
+      if (d < bd && !this.coveredAbove(b.z, x, y)) {
+        best = b;
+        bd = d;
+      }
+    }
+    return best;
+  }
+  /** (x, y) 处有比 z 后登记的界面区域盖着（按钮在下层窗口里，被上层窗口挡住） */
+  coveredAbove(z, x, y) {
+    return this.areas.some((r2) => r2.z > z && inside(r2, x, y));
+  }
+  /** 手机上按钮点击允许偏出的距离（界面像素）；电脑 0 */
+  touchSlop() {
+    return this.layout.kind === "touch" ? 8 : 0;
+  }
   pointerUp(x, y) {
     const b = this.pressed;
     this.pressed = null;
-    if (b && inside(b, x, y)) {
+    if (b && distTo(b, x, y) <= this.touchSlop()) {
       this.onButton();
       b.onClick();
     }
@@ -3742,12 +4313,22 @@ var ClassicUi = class {
     if (!s || s.kind !== kind) return false;
     return s.kind === "equip" ? s.slot === at : s.index === at;
   }
+  /**
+   * 点物品格。电脑（原版）：点一下拿起、再点放下，双击使用。
+   * 手机：没拿着东西时点一下弹出说明和操作菜单；选了「移动」拿在手上后，再点格子放下（同电脑）。
+   */
   clickSlots(x, y) {
     const p = this.p;
+    const menu = this.layout.itemMenu && !this.hand;
     if (this.bagOpen) {
       for (let i = 0; i < p.bag.length; i++) {
-        if (!inside(this.gridCell(i), x, y)) continue;
+        const cell = this.gridCell(i);
+        if (!inside(cell, x, y)) continue;
         const it = p.bag[i];
+        if (menu) {
+          if (it) this.openBagMenu(i, it, cell);
+          return true;
+        }
         if (it && this.isDouble(`bag${i}`) && (!this.hand || this.hand.item === it)) {
           this.hand = null;
           this.useOrEquip(it);
@@ -3758,9 +4339,14 @@ var ClassicUi = class {
       }
     }
     if (this.stateOpen && this.statePage === 0) {
-      const sx = this.stateX();
       for (const [slot, r2] of EQUIP_RECTS) {
-        if (!inside({ ...r2, x: sx + r2.x }, x, y)) continue;
+        const er = this.equipRect(r2);
+        if (!inside(er, x, y)) continue;
+        if (menu) {
+          const it = p.equip[slot];
+          if (it) this.openEquipMenu(slot, it, er);
+          return true;
+        }
         if (this.hand) {
           if (this.hand.src.kind === "equip") {
             this.hand = null;
@@ -3775,18 +4361,154 @@ var ClassicUi = class {
         return true;
       }
     }
-    const bx = this.boardX();
-    const by = this.H - BOARD_H;
+    const belt = this.layout.beltRects();
     for (let i = 0; i < 6; i++) {
-      if (!inside({ x: bx + 285 + 43 * i, y: by + 59, w: 32, h: 29 }, x, y)) continue;
+      if (!inside(belt[i], x, y)) continue;
+      const it = p.belt[i];
       if (this.hand) this.placeIntoBelt(i);
-      else if (p.belt[i]) {
-        const why = this.world.useItem(p, p.belt[i].uid);
-        if (why) this.message(why, "bad");
-      }
+      else if (it && menu && this.bagOpen) this.openBeltMenu(i, it, belt[i]);
+      else if (it) this.useOrEquip(it);
       return true;
     }
     return false;
+  }
+  // ---------------- 手机：物品菜单 ----------------
+  /** 物品说明（装备和身上同部位的比较） */
+  describe(it) {
+    const def = this.catalog.item(it.name);
+    const k = itemKind(def);
+    const cur = k.kind === "equip" ? this.p.equip[k.slots[0]] : null;
+    return itemLines(def, it, this.p, cur && cur !== it ? this.catalog.item(cur.name) : null);
+  }
+  openBagMenu(i, it, anchor) {
+    const p = this.p;
+    const def = this.catalog.item(it.name);
+    const kind = itemKind(def).kind;
+    const actions = [];
+    const src = { kind: "bag", index: i };
+    if (this.npc && this.mode === "sell") actions.push({ label: `\u5356\u51FA ${Math.floor(def.price / 2)} \u91D1\u5E01`, run: () => this.sellOrStore(src, it) });
+    if (this.npc && this.mode === "store") actions.push({ label: "\u4FDD\u7BA1", run: () => this.sellOrStore(src, it) });
+    const use = USE_LABEL[kind];
+    if (use) actions.push({ label: use, run: () => this.useOrEquip(it) });
+    if ((kind === "potion" || kind === "scroll") && p.belt.includes(null)) {
+      actions.push({
+        label: "\u653E\u5FEB\u6377\u680F",
+        run: () => {
+          const slot = p.belt.indexOf(null);
+          if (slot < 0 || p.bag[i] !== it) return;
+          p.bag[i] = null;
+          p.belt[slot] = it;
+        }
+      });
+    }
+    actions.push({ label: "\u79FB\u52A8", run: () => this.hand = { src, item: it } });
+    actions.push({ label: "\u4E22\u5F03", run: () => this.dropFrom(src, it) });
+    this.itemMenu = { lines: this.describe(it), actions, anchor };
+  }
+  openEquipMenu(slot, it, anchor) {
+    this.itemMenu = {
+      lines: this.describe(it),
+      anchor,
+      actions: [{ label: "\u8131\u4E0B", run: () => this.unequip(slot, it) }]
+    };
+  }
+  openBeltMenu(i, it, anchor) {
+    const p = this.p;
+    this.itemMenu = {
+      lines: this.describe(it),
+      anchor,
+      actions: [
+        { label: "\u4F7F\u7528", run: () => this.useOrEquip(it) },
+        {
+          label: "\u653E\u56DE\u5305\u88F9",
+          run: () => {
+            const slot = p.bag.indexOf(null);
+            if (slot < 0) return this.message("\u5305\u88F9\u6EE1\u4E86", "bad");
+            if (p.belt[i] !== it) return;
+            p.belt[i] = null;
+            p.bag[slot] = it;
+          }
+        }
+      ]
+    };
+  }
+  openShopMenu(row, anchor) {
+    const def = this.catalog.item(row.defName);
+    const getback = this.mode === "getback";
+    this.itemMenu = {
+      lines: itemLines(def, row.item, this.p, null),
+      anchor,
+      keepOpen: !getback,
+      actions: [{ label: getback ? "\u53D6\u56DE" : `\u8D2D\u4E70 ${row.price}`, run: () => row.onBuy() }]
+    };
+  }
+  unequip(slot, it) {
+    const p = this.p;
+    if (p.equip[slot] !== it) return;
+    if (!p.bag.includes(null)) return this.message("\u5305\u88F9\u6EE1\u4E86", "bad");
+    p.equip[slot] = null;
+    this.world.recalc(p);
+    p.bag[p.bag.indexOf(null)] = it;
+  }
+  dropFrom(src, it) {
+    this.hand = { src, item: it };
+    const taken = this.takeHand();
+    if (taken) this.world.dropAt(this.p.pos, taken);
+  }
+  sellOrStore(src, it) {
+    this.sellSpot = { src, item: it };
+    this.confirmSell();
+  }
+  drawItemMenu(m) {
+    const g = this.g;
+    const LH = 15;
+    const BTN_H = 32;
+    const pad = 6;
+    const btnW = m.actions.map((a2) => Math.max(56, g.width(a2.label) + 20));
+    const textW = Math.max(...m.lines.map((l) => g.width(l.text)));
+    const btnRowW = btnW.reduce((s, w2) => s + w2 + 6, -6);
+    const w = Math.min(this.W - 8, Math.max(textW, btnRowW) + pad * 2);
+    const rows = [[]];
+    let rowW = 0;
+    m.actions.forEach((a2, i) => {
+      const bw = btnW[i];
+      if (rowW > 0 && rowW + 6 + bw > w - pad * 2) {
+        rows.push([]);
+        rowW = 0;
+      }
+      rows[rows.length - 1].push({ a: a2, w: bw });
+      rowW += (rowW > 0 ? 6 : 0) + bw;
+    });
+    const h = pad + m.lines.length * LH + 4 + rows.length * (BTN_H + 6) + pad - 6;
+    const a = m.anchor;
+    let x = a.x + a.w + 4;
+    if (x + w > this.W - this.safe.right) x = a.x - w - 4;
+    x = Math.max(this.safe.left + 2, Math.min(x, this.W - this.safe.right - w - 2));
+    const y = Math.max(this.safe.top + 2, Math.min(a.y, this.H - this.safe.bottom - h - 2));
+    this.menuRect = { x, y, w, h };
+    this.area(this.menuRect);
+    g.frame(x, y, w, h, "rgba(10,7,3,.94)", "#8a6a3a");
+    const color = { title: "#ff0", good: "#7cff7c", bad: "#f55", dim: "#aaa", gold: "#ffd96b" };
+    m.lines.forEach((l, i) => g.text(l.text, x + pad, y + pad + i * LH, color[l.tone ?? ""] ?? "#fff"));
+    let by = y + pad + m.lines.length * LH + 4;
+    for (const row of rows) {
+      let bx = x + pad;
+      for (const { a: act, w: bw } of row) {
+        const r2 = { x: bx, y: by, w: bw, h: BTN_H };
+        g.frame(r2.x, r2.y, r2.w, r2.h, this.isPressed(r2) ? "#7a5a2a" : "#3a2a16", "#c9a060");
+        g.text(act.label, r2.x + (bw - g.width(act.label)) / 2, r2.y + 10, "#ffe08a", true);
+        this.hit({
+          ...r2,
+          img: -1,
+          onClick: () => {
+            act.run();
+            if (!m.keepOpen) this.itemMenu = null;
+          }
+        });
+        bx += bw + 6;
+      }
+      by += BTN_H + 6;
+    }
   }
   useOrEquip(it) {
     const why = this.world.useItem(this.p, it.uid);
@@ -3869,9 +4591,11 @@ var ClassicUi = class {
         break;
       case "@sell":
         this.mode = "sell";
+        if (this.layout.itemMenu) this.message("\u70B9\u5305\u88F9\u91CC\u7684\u7269\u54C1\uFF0C\u9009\u300C\u5356\u51FA\u300D");
         break;
       case "@store":
         this.mode = "store";
+        if (this.layout.itemMenu) this.message("\u70B9\u5305\u88F9\u91CC\u7684\u7269\u54C1\uFF0C\u9009\u300C\u4FDD\u7BA1\u300D");
         break;
       case "@getback":
         this.mode = "getback";
@@ -3930,6 +4654,25 @@ var ClassicUi = class {
     }
   }
 };
+
+// src/ui/viewport.ts
+var clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+function chooseViewport(cssW, cssH, coarsePointer2) {
+  const fit800 = Math.min(cssW / 800, cssH / 600);
+  const short = Math.min(cssW, cssH);
+  if (coarsePointer2 && short < 600) {
+    return {
+      kind: "touch",
+      worldZoom: Math.max(fit800, short / 560),
+      // 横屏按高 390 排得下商店+商品列表，竖屏按宽 420 排得下商人对话框
+      uiScale: clamp(Math.min(cssW / 420, cssH / 390), 0.9, 1.3)
+    };
+  }
+  return { kind: "board", worldZoom: fit800, uiScale: fit800 };
+}
+function coarsePointer() {
+  return typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+}
 
 // src/audio/audio.ts
 var Audio = class {
@@ -4113,7 +4856,8 @@ async function main() {
   const canvas = $("#game");
   const renderer = new Renderer(canvas, sprites, world, catalog);
   const ctl = new Controller(world, settings);
-  const ui = new ClassicUi(new Gfx(renderer.context, sprites), world, ctl, catalog);
+  const touch = coarsePointer();
+  const ui = new ClassicUi(new Gfx(renderer.context, sprites), world, ctl, catalog, touch);
   ctl.onMessage = (t, c) => ui.message(t, c);
   ctl.onTalk = (id) => {
     const npc = world.actors.get(id);
@@ -4141,22 +4885,32 @@ async function main() {
     applyView();
     void persist();
   };
+  let view = chooseViewport(window.innerWidth, window.innerHeight, touch);
   const fit = () => {
-    renderer.resize(window.innerWidth, window.innerHeight);
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    view = chooseViewport(w, h, touch);
+    renderer.resize(w, h, view.worldZoom);
+    renderer.centerY = view.kind === "touch" ? 0.5 : 0.47;
+    ui.setLayout(view.kind);
     const css = getComputedStyle(document.documentElement);
-    const inset = (name) => (parseFloat(css.getPropertyValue(name)) || 0) / renderer.zoom;
+    const inset = (name) => (parseFloat(css.getPropertyValue(name)) || 0) / view.uiScale;
     ui.safe = { left: inset("--safe-l"), right: inset("--safe-r"), top: inset("--safe-t"), bottom: inset("--safe-b") };
   };
   fit();
   window.addEventListener("resize", fit);
-  bindInput(canvas, renderer, ctl, ui);
+  window.addEventListener("orientationchange", () => setTimeout(fit, 300));
+  bindInput(canvas, renderer, ctl, ui, () => view.uiScale);
   await Promise.race([
     renderer.preloadAround(player.pos, (d, t) => status(`\u52A0\u8F7D\u753B\u9762\u2026 ${d}/${t}`)),
     new Promise((r2) => setTimeout(r2, 3e4))
   ]);
   await sprites.preload("prguse", [1, 3, 370]);
   window.__mir = { world, renderer, ctl, sprites, ui };
-  ui.message("\u6B22\u8FCE\u6765\u5230\u739B\u6CD5\u5927\u9646\u3002F9 \u5305\u88F9\uFF0CF10 \u72B6\u6001\uFF0CF11 \u6280\u80FD\uFF0C\u53F3\u4E0B\u89D2\u6309\u94AE\u4E5F\u53EF\u4EE5\u6253\u5F00\u3002", "good");
+  ui.message(
+    view.kind === "touch" ? "\u6B22\u8FCE\u6765\u5230\u739B\u6CD5\u5927\u9646\u3002\u5DE6\u8FB9\u6447\u6746\u8D70\u8DEF\uFF08\u63A8\u8FDC\u4E86\u8DD1\uFF09\uFF1B\u70B9\u602A\u9501\u5B9A\uFF0C\u53F3\u4E0B\u89D2\u300C\u653B\u51FB\u300D\u6253\u5B83\uFF1B\u70B9\u7269\u54C1\u770B\u8BF4\u660E\u548C\u64CD\u4F5C\u3002" : "\u6B22\u8FCE\u6765\u5230\u739B\u6CD5\u5927\u9646\u3002F9 \u5305\u88F9\uFF0CF10 \u72B6\u6001\uFF0CF11 \u6280\u80FD\uFF0C\u53F3\u4E0B\u89D2\u6309\u94AE\u4E5F\u53EF\u4EE5\u6253\u5F00\u3002",
+    "good"
+  );
   status("");
   $("#loading").classList.add("hidden");
   let saving = false;
@@ -4210,8 +4964,10 @@ async function main() {
       }
     }
     world.events = [];
+    renderer.targetActor = view.kind === "touch" ? ctl.focused()?.id ?? 0 : 0;
     renderer.draw();
-    ui.draw(renderer.width, renderer.height, world.now);
+    renderer.scaleTo(view.uiScale);
+    ui.draw(window.innerWidth / view.uiScale, window.innerHeight / view.uiScale, world.now);
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);

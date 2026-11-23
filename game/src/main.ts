@@ -12,6 +12,7 @@ import { bindInput } from './game/input';
 import { loadSettings } from './game/settings';
 import { HttpSaveStore, type SaveData, type SaveStore, fromSave, toSave } from './save/save';
 import { ClassicUi } from './ui/classic/classic';
+import { type Viewport, chooseViewport, coarsePointer } from './ui/viewport';
 import { Gfx } from './ui/classic/gfx';
 import { Audio } from './audio/audio';
 
@@ -117,7 +118,8 @@ async function main(): Promise<void> {
   const canvas = $<HTMLCanvasElement>('#game');
   const renderer = new Renderer(canvas, sprites, world, catalog);
   const ctl = new Controller(world, settings);
-  const ui = new ClassicUi(new Gfx(renderer.context, sprites), world, ctl, catalog);
+  const touch = coarsePointer();
+  const ui = new ClassicUi(new Gfx(renderer.context, sprites), world, ctl, catalog, touch);
   ctl.onMessage = (t, c) => ui.message(t, c);
   ctl.onTalk = (id) => {
     const npc = world.actors.get(id);
@@ -145,22 +147,36 @@ async function main(): Promise<void> {
     applyView();
     void persist();
   };
+  let view: Viewport = chooseViewport(window.innerWidth, window.innerHeight, touch);
   const fit = (): void => {
-    renderer.resize(window.innerWidth, window.innerHeight);
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    view = chooseViewport(w, h, touch);
+    renderer.resize(w, h, view.worldZoom);
+    // 手机布局底下没有高底栏，人物放正中
+    renderer.centerY = view.kind === 'touch' ? 0.5 : 0.47;
+    ui.setLayout(view.kind);
     const css = getComputedStyle(document.documentElement);
-    const inset = (name: string): number => (parseFloat(css.getPropertyValue(name)) || 0) / renderer.zoom;
+    const inset = (name: string): number => (parseFloat(css.getPropertyValue(name)) || 0) / view.uiScale;
     ui.safe = { left: inset('--safe-l'), right: inset('--safe-r'), top: inset('--safe-t'), bottom: inset('--safe-b') };
   };
   fit();
   window.addEventListener('resize', fit);
-  bindInput(canvas, renderer, ctl, ui);
+  // iOS 转屏后 innerWidth 有时晚一帧才更新
+  window.addEventListener('orientationchange', () => setTimeout(fit, 300));
+  bindInput(canvas, renderer, ctl, ui, () => view.uiScale);
   await Promise.race([
     renderer.preloadAround(player.pos, (d, t) => status(`加载画面… ${d}/${t}`)),
     new Promise((r) => setTimeout(r, 30_000)),
   ]);
   await sprites.preload('prguse', [1, 3, 370]);
   (window as unknown as Record<string, unknown>).__mir = { world, renderer, ctl, sprites, ui };
-  ui.message('欢迎来到玛法大陆。F9 包裹，F10 状态，F11 技能，右下角按钮也可以打开。', 'good');
+  ui.message(
+    view.kind === 'touch'
+      ? '欢迎来到玛法大陆。左边摇杆走路（推远了跑）；点怪锁定，右下角「攻击」打它；点物品看说明和操作。'
+      : '欢迎来到玛法大陆。F9 包裹，F10 状态，F11 技能，右下角按钮也可以打开。',
+    'good',
+  );
   status('');
   $('#loading').classList.add('hidden');
 
@@ -217,8 +233,10 @@ async function main(): Promise<void> {
       }
     }
     world.events = [];
+    renderer.targetActor = view.kind === 'touch' ? (ctl.focused()?.id ?? 0) : 0;
     renderer.draw();
-    ui.draw(renderer.width, renderer.height, world.now);
+    renderer.scaleTo(view.uiScale);
+    ui.draw(window.innerWidth / view.uiScale, window.innerHeight / view.uiScale, world.now);
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);

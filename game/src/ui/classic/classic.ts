@@ -6,25 +6,21 @@
  */
 import type { Catalog } from '../../data/defs';
 import type { Npc, Player } from '../../world/entities';
-import { type EquipSlot, type ItemInstance, itemKind, newItem } from '../../world/items';
+import { type EquipSlot, type ItemInstance, type ItemKind, itemKind, newItem } from '../../world/items';
 import { manaCost } from '../../world/combat';
 import type { World } from '../../world/world';
 import type { Controller } from '../../game/controller';
 import { SETTING_LABELS } from '../../game/settings';
 import { JOB_NAME } from '../../world/rules';
 import { type Line, itemLines, statLines } from '../describe';
-import { Gfx, MAIN, type Rect, goldStr, inside } from './gfx';
+import type { LayoutKind } from '../viewport';
+import { Gfx, MAIN, type Rect, distTo, goldStr, inside } from './gfx';
+import { BoardLayout, type Button, type ChatColor, type ChatLine, type Insets, type Layout, type Pt, type UiHost } from './layout';
+import { TouchLayout } from './touch';
+import { Joystick } from '../../game/joystick';
 
-const BOARD_W = 800;
-const BOARD_H = 251;
 const LINE_H = 14; // 商品列表行高
 const MAX_MENU = 10;
-const CHAT_LINES = 9;
-
-type ChatColor = 'system' | 'good' | 'bad' | 'item';
-const CHAT_COLOR: Record<ChatColor, [string, string]> = {
-  system: ['#fff', '#000'], good: ['#9cff8a', '#000'], bad: ['#fff', '#c00'], item: ['#ff0', '#000'],
-};
 
 /** 手上拿着的物品：从哪里拿起来的（放下前物品留在原处，不会丢）。 */
 type HandSource = { kind: 'bag'; index: number } | { kind: 'belt'; index: number } | { kind: 'equip'; slot: EquipSlot };
@@ -35,18 +31,24 @@ interface Hand {
 
 type MerchantMode = 'talk' | 'buy' | 'sell' | 'store' | 'getback';
 
-export interface Insets {
-  left: number;
-  right: number;
-  top: number;
-  bottom: number;
+/** 手机上点一下物品（包裹、身上、快捷栏、商品列表）弹出的说明 + 操作菜单 */
+interface ItemMenu {
+  lines: Line[];
+  actions: MenuAction[];
+  /** 被点的格子，菜单摆在它旁边 */
+  anchor: Rect;
+  /** 做完操作后菜单留着（连续买药） */
+  keepOpen?: boolean;
 }
 
-interface Button extends Rect {
-  img: number;
-  /** 平时也画（不是底图的一部分） */
-  always?: boolean;
-  onClick: () => void;
+/** 物品菜单里「使用」按钮叫什么；没法直接用的是 null */
+const USE_LABEL: Record<ItemKind['kind'], string | null> = {
+  potion: '使用', scroll: '使用', book: '学习', bundle: '拆开', equip: '穿戴', amulet: '装备', material: null, other: null,
+};
+
+interface MenuAction {
+  label: string;
+  run: () => void;
 }
 
 const EQUIP_RECTS: [EquipSlot, Rect][] = [
@@ -60,8 +62,8 @@ const EQUIP_RECTS: [EquipSlot, Rect][] = [
   ['dress', { x: 96, y: 122, w: 53, h: 112 }],
 ];
 
-export class ClassicUi {
-  private chat: { text: string; color: ChatColor }[] = [];
+export class ClassicUi implements UiHost {
+  readonly chat: ChatLine[] = [];
   private hand: Hand | null = null;
   private mouse = { x: -1, y: -1 };
   private pressed: Button | null = null;
@@ -81,30 +83,46 @@ export class ClassicUi {
   private menuIndex = -1;
   private sellSpot: Hand | null = null;
   private links: { rect: Rect; cmd: string }[] = [];
+  /** 手机左侧虚拟摇杆（输入层改它，触屏布局画它） */
+  readonly joystick = new Joystick();
+  /** 手机：点了物品弹出的操作菜单 */
+  private itemMenu: ItemMenu | null = null;
 
   /** 每帧算出的界面占用区域（点在里面就不传给地图） */
-  private areas: Rect[] = [];
-  private buttons: Button[] = [];
+  private areas: (Rect & { z: number })[] = [];
+  private buttons: (Button & { z: number })[] = [];
+  /** 登记顺序（后登记的在上层）：被上层窗口盖住的按钮点不到 */
+  private z = 0;
   W = 800;
   H = 600;
-  /** 安全区（刘海、圆角），逻辑像素；触屏按钮和贴边的小地图要避开 */
+  /** 安全区（刘海、圆角），界面像素；触屏按钮和贴边的小地图要避开 */
   safe: Insets = { left: 0, right: 0, top: 0, bottom: 0 };
-  /** 触屏设备：在右侧画技能按钮（原版没有，手机上没有 F1-F8） */
-  readonly touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  layout: Layout;
 
   constructor(
-    private readonly g: Gfx,
-    private readonly world: World,
-    private readonly ctl: Controller,
-    private readonly catalog: Catalog,
-  ) {}
+    readonly g: Gfx,
+    readonly world: World,
+    readonly ctl: Controller,
+    readonly catalog: Catalog,
+    /** 触屏为主的设备（平板用原版底栏时右侧加一列技能键） */
+    private readonly touch: boolean,
+  ) {
+    this.layout = new BoardLayout(this, touch);
+  }
+
+  /** 切换布局（屏幕大小变了时）。 */
+  setLayout(kind: LayoutKind): void {
+    if (kind === this.layout.kind) return;
+    this.layout = kind === 'touch' ? new TouchLayout(this) : new BoardLayout(this, this.touch);
+    this.itemMenu = null;
+  }
 
   get p(): Player {
     return this.world.player;
   }
 
   message(text: string, color: ChatColor = 'system'): void {
-    this.chat.push({ text, color });
+    this.chat.push({ text, color, at: performance.now() });
     if (this.chat.length > 200) this.chat.splice(0, this.chat.length - 200);
   }
 
@@ -123,14 +141,17 @@ export class ClassicUi {
     this.bagOpen = false;
     this.settingsOpen = false;
     this.keyDlg = null;
+    this.itemMenu = null;
     this.cancelHand();
   }
 
   toggleBag(): void {
     this.bagOpen = !this.bagOpen;
+    this.itemMenu = null;
   }
 
   toggleState(page: number): void {
+    this.itemMenu = null;
     if (this.stateOpen && this.statePage === page) this.stateOpen = false;
     else {
       this.stateOpen = true;
@@ -138,8 +159,29 @@ export class ClassicUi {
     }
   }
 
+  toggleSettings(): void {
+    this.settingsOpen = !this.settingsOpen;
+  }
+
+  logout(): void {
+    this.onLogout();
+  }
+
   cancelHand(): void {
     this.hand = null;
+  }
+
+  beltInHand(i: number): boolean {
+    return this.isHandFrom('belt', i);
+  }
+
+  area(r: Rect): void {
+    this.areas.push({ ...r, z: this.z++ });
+  }
+
+  /** 登记一个点击区（不画） */
+  private hit(b: Button): void {
+    this.buttons.push({ ...b, z: this.z++ });
   }
 
   // ======================= 绘制 =======================
@@ -149,114 +191,34 @@ export class ClassicUi {
     this.H = H;
     this.areas = [];
     this.buttons = [];
-    this.drawBottom(now);
+    this.z = 0;
+    this.menuRect = null;
+    this.layout.drawHud(now);
     if (this.miniMap) this.drawMiniMap(now);
     if (this.npc) this.drawMerchant();
     if (this.bagOpen) this.drawBag();
     if (this.stateOpen) this.drawState();
     if (this.settingsOpen) this.drawSettings();
     if (this.keyDlg) this.drawKeyDlg();
-    if (this.touch) this.drawTouchSkills();
-    if (this.H > this.W * 1.2) {
-      const t = '横过来玩效果更好';
-      this.g.text(t, (this.W - this.g.width(t)) / 2, 8, '#ff0', true);
-    }
-    this.drawHover();
+    if (this.itemMenu) this.drawItemMenu(this.itemMenu);
+    else this.drawHover();
     if (this.hand) {
       const def = this.catalog.item(this.hand.item.name);
       this.g.imgCenter('items', def.look, this.mouse.x - 20, this.mouse.y - 16, 40, 32);
     }
   }
 
-  private button(b: Button): void {
-    this.buttons.push(b);
-    if (b.always || this.pressed === b || (this.pressed && this.pressed.img === b.img && this.pressed.x === b.x && this.pressed.y === b.y)) {
+  button(b: Button): void {
+    this.hit(b);
+    if (b.img < 0) return;
+    if (b.always || this.isPressed(b)) {
       this.g.img(MAIN, b.always && this.isPressed(b) ? b.img + 1 : b.img, b.x, b.y);
     }
   }
 
-  private isPressed(b: Button): boolean {
-    return !!this.pressed && this.pressed.img === b.img && this.pressed.x === b.x && this.pressed.y === b.y;
-  }
-
-  // ---------------- 底栏 ----------------
-
-  private boardX(): number {
-    return Math.round((this.W - BOARD_W) / 2);
-  }
-
-  private drawBottom(now: number): void {
-    const g = this.g;
-    const bx = this.boardX();
-    const by = this.H - BOARD_H;
-    this.areas.push({ x: bx, y: by + 40, w: BOARD_W, h: BOARD_H - 40 }, { x: bx, y: by, w: 190, h: 40 }, { x: bx + 610, y: by, w: 190, h: 40 });
-    // 下半部分不透明（原版 Draw(..., FALSE)），上半部分透明叠在地图上
-    g.rect(bx + 208, by + 120, 387, 124, '#000');
-    g.img(MAIN, 1, bx, by);
-    g.img(MAIN, 12, bx + 748, by + 79); // 白天
-    const p = this.p;
-    const s = p.stats;
-    if (p.job === 0 && p.level < 28) {
-      const full = g.size(MAIN, 5);
-      if (full) {
-        g.imgPart(MAIN, 5, bx + 38, by + 90, 0, 0, full.w - 2, full.h);
-        const top = Math.round((full.h / s.maxHp) * (s.maxHp - p.hp));
-        g.imgPart(MAIN, 6, bx + 38, by + 90 + top, 0, top, full.w - 2, full.h - top);
-      }
-    } else {
-      const d = g.size(MAIN, 4);
-      if (d) {
-        const half = Math.floor(d.w / 2);
-        const top = Math.round((d.h / s.maxHp) * (s.maxHp - p.hp));
-        g.imgPart(MAIN, 4, bx + 40, by + 91 + top, 0, top, half - 1, d.h - top);
-        const mtop = Math.round((d.h / Math.max(1, s.maxMp)) * (s.maxMp - p.mp));
-        g.imgPart(MAIN, 4, bx + 40 + half + 1, by + 91 + mtop, half + 1, mtop, d.w - half - 2, d.h - mtop);
-      }
-    }
-    // 血蓝数值（原版没有，为了看得清楚）
-    const hpText = `${p.hp}/${s.maxHp}`;
-    const mpText = `${p.mp}/${s.maxMp}`;
-    g.text(hpText, bx + 86 - g.width(hpText) / 2, by + 186, '#fff', true);
-    g.text(mpText, bx + 86 - g.width(mpText) / 2, by + 200, '#9fc6ff', true);
-    g.text(String(p.level), bx + 660, this.H - 104, '#fff', true);
-    const bar = g.size(MAIN, 7);
-    if (bar) {
-      const need = this.catalog.expToNext(p.level);
-      const er = need === Infinity ? 1 : p.exp / need;
-      g.imgPart(MAIN, 7, bx + 666, this.H - 73, 0, 0, Math.round(bar.w * Math.min(1, er)), bar.h);
-      const wr = this.world.bagWeight(p) / Math.max(1, s.maxBagWeight);
-      g.imgPart(MAIN, 7, bx + 666, this.H - 40, 0, 0, Math.round(bar.w * Math.min(1, wr)), bar.h);
-    }
-    // 聊天/系统消息
-    const lines = this.chat.slice(-CHAT_LINES);
-    lines.forEach((l, i) => {
-      const [fg, bg] = CHAT_COLOR[l.color];
-      const w = g.width(l.text);
-      g.rect(bx + 208, this.H - 130 + i * 12, w, 12, bg);
-      g.text(l.text, bx + 208, this.H - 130 + i * 12, fg);
-    });
-    // 功能按钮：状态、包裹、技能、设置
-    const by0 = by;
-    this.button({ img: 8, x: bx + 643, y: by0 + 61, w: 24, h: 24, onClick: () => this.toggleState(0) });
-    this.button({ img: 9, x: bx + 682, y: by0 + 41, w: 24, h: 22, onClick: () => this.toggleBag() });
-    this.button({ img: 10, x: bx + 722, y: by0 + 21, w: 24, h: 23, onClick: () => this.toggleState(3) });
-    this.button({ img: 11, x: bx + 764, y: by0 + 11, w: 24, h: 23, onClick: () => (this.settingsOpen = !this.settingsOpen) });
-    // 快捷栏
-    for (let i = 0; i < 6; i++) {
-      const r = { x: bx + 285 + 43 * i, y: by + 59, w: 32, h: 29 };
-      const it = p.belt[i];
-      if (it && !(this.hand?.src.kind === 'belt' && this.hand.src.index === i)) {
-        g.imgCenter('items', this.catalog.item(it.name).look, r.x, r.y, r.w, r.h);
-      }
-      g.text(String(i + 1), r.x + 13, r.y + 19, '#fff', true);
-    }
-    // 底栏小按钮：小地图、交易、行会、组队、能力、退出（后几个单机用不上，只画样子）
-    this.button({ img: 130, x: bx + 219, y: by + 104, w: 28, h: 13, always: true, onClick: () => this.toggleMiniMap() });
-    for (const [img, dx] of [[132, 249], [134, 279], [128, 309]] as const) {
-      this.button({ img, x: bx + dx, y: by + 104, w: 28, h: 13, always: true, onClick: () => this.message('单机版没有这个功能') });
-    }
-    this.button({ img: 136, x: bx + 530, y: by + 104, w: 28, h: 13, always: true, onClick: () => this.onLogout() });
-    this.button({ img: 138, x: bx + 560, y: by + 104, w: 28, h: 13, always: true, onClick: () => this.onLogout() });
+  isPressed(r: Rect): boolean {
+    const b = this.pressed;
+    return !!b && b.x === r.x && b.y === r.y && b.w === r.w && b.h === r.h;
   }
 
   /** 退出按钮：存档后回到登录画面 */
@@ -265,7 +227,6 @@ export class ClassicUi {
   toggleMiniMap(): void {
     this.miniMap = (this.miniMap + 1) % 3;
   }
-
   // ---------------- 小地图（PlayScn.DrawMiniMap） ----------------
 
   private miniRect(): { idx: number; rc: Rect; x: number; y: number } | null {
@@ -278,7 +239,9 @@ export class ClassicUi {
     const my = p.y;
     const left = Math.max(0, Math.min(s.w - 120, mx - 60));
     const top = Math.max(0, Math.min(s.h - 120, my - 60));
-    return { idx: idx - 1, rc: { x: left, y: top, w: Math.min(120, s.w), h: Math.min(120, s.h) }, x: this.W - 120 - this.safe.right, y: this.safe.top };
+    const tr = this.layout.miniMapRight();
+    const w = Math.min(120, s.w);
+    return { idx: idx - 1, rc: { x: left, y: top, w, h: Math.min(120, s.h) }, x: tr.x - w, y: tr.y };
   }
 
   private drawMiniMap(now: number): void {
@@ -289,8 +252,8 @@ export class ClassicUi {
     ctx.globalAlpha = this.miniMap === 1 ? 0.7 : 1;
     g.imgPart('mmap', m.idx, m.x, m.y, m.rc.x, m.rc.y, m.rc.w, m.rc.h);
     ctx.globalAlpha = 1;
-    this.areas.push({ x: m.x, y: m.y, w: m.rc.w, h: m.rc.h });
-    this.buttons.push({
+    this.area({ x: m.x, y: m.y, w: m.rc.w, h: m.rc.h });
+    this.hit({
       x: m.x, y: m.y, w: m.rc.w, h: m.rc.h, img: -1,
       onClick: () => {
         // 点小地图走过去（原版没有，方便）
@@ -313,41 +276,17 @@ export class ClassicUi {
     if (it.kind === 'goto') dot(it.target.x, it.target.y, '#ff0', 3);
   }
 
-  // ---------------- 触屏技能按钮 ----------------
-
-  private drawTouchSkills(): void {
-    const g = this.g;
-    const keyed = this.p.skills.filter((s) => s.key > 0).sort((a, b) => a.key - b.key);
-    // 状态窗开着时挤到它左边，免得被盖住
-    const x = (this.stateOpen ? this.stateX() : this.W - this.safe.right) - 44;
-    let y = this.H - BOARD_H - 44;
-    for (const ls of keyed) {
-      const def = this.catalog.skillsById.get(ls.id)!;
-      const r = { x, y, w: 36, h: 36 };
-      g.rect(r.x - 2, r.y - 2, r.w + 4, r.h + 4, 'rgba(0,0,0,.55)');
-      g.img('magicon', def.effect * 2, r.x + 2, r.y + 1);
-      g.text(`F${ls.key}`, r.x, r.y + 24, '#ff0', true);
-      const cd = (this.p.cooldown.get(ls.id) ?? 0) - this.world.now;
-      if (cd > 0) g.rect(r.x, r.y, r.w, Math.round((r.h * Math.min(1, cd / Math.max(1, def.delay)))), 'rgba(0,0,0,.6)');
-      this.areas.push(r);
-      const key = ls.key;
-      this.buttons.push({ ...r, img: -1, onClick: () => this.ctl.castByKey(key, undefined, this.p.pos) });
-      y -= 42;
-    }
-  }
-
   // ---------------- 状态窗 ----------------
 
-  private stateX(): number {
-    return this.W - 232 - this.safe.right;
+  private stateOrigin(): Pt {
+    return this.layout.stateOrigin(this.bagOpen);
   }
 
   private drawState(): void {
     const g = this.g;
-    const x = this.stateX();
-    const y = 0;
+    const { x, y } = this.stateOrigin();
     const p = this.p;
-    this.areas.push({ x, y, w: 232, h: 325 });
+    this.area({ x, y, w: 232, h: 325 });
     g.img(MAIN, 370, x, y);
     // 名字（标题栏）
     const title = `${p.name}`;
@@ -440,7 +379,7 @@ export class ClassicUi {
       const m = i - top;
       const iconR = { x: bbx + 8, y: bby + 8 + m * 37, w: 31, h: 33 };
       g.img('magicon', def.effect * 2, iconR.x, iconR.y);
-      this.buttons.push({ ...iconR, img: -1, onClick: () => (this.keyDlg = { skill: ls.id }) });
+      this.hit({ ...iconR, img: -1, onClick: () => (this.keyDlg = { skill: ls.id }) });
       g.text(def.name, bbx + 48, bby + 8 + m * 37, '#c0c0c0');
       g.img(MAIN, 112, bbx + 48, bby + 23 + m * 37);
       g.img(MAIN, 111, bbx + 74, bby + 23 + m * 37);
@@ -457,21 +396,20 @@ export class ClassicUi {
 
   // ---------------- 包裹 ----------------
 
-  private bagX(): number {
-    return (this.npc ? 475 : 0) + this.safe.left;
+  private bagOrigin(): Pt {
+    return this.layout.bagOrigin(!!this.npc);
   }
 
   private gridCell(i: number): Rect {
-    const x = this.bagX();
-    return { x: x + 20 + (i % 8) * 36, y: 13 + Math.floor(i / 8) * 32, w: 36, h: 32 };
+    const { x, y } = this.bagOrigin();
+    return { x: x + 20 + (i % 8) * 36, y: y + 13 + Math.floor(i / 8) * 32, w: 36, h: 32 };
   }
 
   private drawBag(): void {
     const g = this.g;
-    const x = this.bagX();
-    const y = 0;
+    const { x, y } = this.bagOrigin();
     const p = this.p;
-    this.areas.push({ x, y, w: 336, h: 270 });
+    this.area({ x, y, w: 336, h: 270 });
     g.img(MAIN, 3, x, y);
     p.bag.forEach((it, i) => {
       if (!it || this.isHandFrom('bag', i)) return;
@@ -513,12 +451,13 @@ export class ClassicUi {
 
   private drawMerchant(): void {
     const g = this.g;
-    this.areas.push({ x: 0, y: 0, w: 416, h: 176 });
-    g.img(MAIN, 384, 0, 0);
+    const o = this.layout.merchantOrigin();
+    this.area({ x: o.x, y: o.y, w: 416, h: 176 });
+    g.img(MAIN, 384, o.x, o.y);
     this.links = [];
-    let ly = 20;
+    let ly = o.y + 20;
     for (const raw of this.npcText().split('\\')) {
-      let sx = 30;
+      let sx = o.x + 30;
       const re = /<([^/>]+)\/(@\w+)>/g;
       let last = 0;
       let m: RegExpExecArray | null;
@@ -534,9 +473,15 @@ export class ClassicUi {
       if (last < raw.length) g.text(raw.slice(last), sx, ly, '#fff', true);
       ly += 16;
     }
-    this.button({ img: 64, x: 399, y: 1, w: 16, h: 23, onClick: () => this.closeNpc() });
-    if (this.mode === 'buy' || this.mode === 'getback') this.drawMenu();
-    if (this.mode === 'sell' || this.mode === 'store') this.drawSell();
+    this.button({ img: 64, x: o.x + 399, y: o.y + 1, w: 16, h: 23, onClick: () => this.closeNpc() });
+    if (this.mode === 'buy' || this.mode === 'getback') this.drawMenu(o);
+    if (this.mode === 'sell' || this.mode === 'store') this.drawSell(o);
+  }
+
+  /** 商品列表第 m 行（屏幕上第几行）的点击区 */
+  private menuRowRect(m: number): Rect {
+    const o = this.layout.merchantOrigin();
+    return { x: o.x + 14, y: o.y + 176 + 32 + m * LINE_H, w: 265, h: LINE_H };
   }
 
   private menuRows(): { name: string; price: string; dura: string; onBuy: () => void; item: ItemInstance | null; defName: string }[] {
@@ -561,11 +506,11 @@ export class ClassicUi {
     });
   }
 
-  private drawMenu(): void {
+  private drawMenu(o: Pt): void {
     const g = this.g;
-    const x = 0;
-    const y = 176;
-    this.areas.push({ x, y, w: 308, h: 205 });
+    const x = o.x;
+    const y = o.y + 176;
+    this.area({ x, y, w: 308, h: 205 });
     g.img(MAIN, 385, x, y);
     const store = this.mode === 'getback';
     g.text(store ? '保管物品' : '物品列表', x + 19, y + 11, '#fff');
@@ -580,9 +525,15 @@ export class ClassicUi {
       g.text(r.name, x + 19, y + 32 + m * LINE_H, color);
       g.text(store ? r.dura : r.price, x + 156, y + 32 + m * LINE_H, color);
       if (!store) g.text(r.dura, x + 245, y + 32 + m * LINE_H, color);
-      this.buttons.push({
-        x: x + 14, y: y + 32 + m * LINE_H, w: 265, h: LINE_H, img: -1,
+      const rr = this.menuRowRect(m);
+      this.hit({
+        ...rr, img: -1,
         onClick: () => {
+          if (this.layout.itemMenu) {
+            this.menuIndex = i;
+            this.openShopMenu(r, rr);
+            return;
+          }
           if (this.menuIndex === i && this.isDouble(`menu${i}`)) r.onBuy();
           this.menuIndex = i;
         },
@@ -605,16 +556,16 @@ export class ClassicUi {
     this.button({ img: 64, x: x + 291, y, w: 16, h: 23, onClick: () => (this.mode = 'talk') });
   }
 
-  private drawSell(): void {
+  private drawSell(o: Pt): void {
     const g = this.g;
-    const x = 260;
-    const y = 176;
-    this.areas.push({ x, y, w: 140, h: 181 });
+    const x = o.x + 260;
+    const y = o.y + 176;
+    this.area({ x, y, w: 140, h: 181 });
     g.img(MAIN, 392, x, y);
     const store = this.mode === 'store';
     g.text(store ? '放入要保管的物品' : '放入要出售的物品', x + 12, y + 30, '#fff');
     const spot = { x: x + 27, y: y + 67, w: 61, h: 52 };
-    this.buttons.push({ ...spot, img: -1, onClick: () => this.clickSellSpot() });
+    this.hit({ ...spot, img: -1, onClick: () => this.clickSellSpot() });
     if (this.sellSpot) {
       const def = this.catalog.item(this.sellSpot.item.name);
       g.imgCenter('items', def.look, spot.x, spot.y, spot.w, spot.h);
@@ -629,36 +580,56 @@ export class ClassicUi {
   private drawSettings(): void {
     const g = this.g;
     const sz = g.size(MAIN, 204) ?? { w: 608, h: 327 };
-    const x = Math.round((this.W - sz.w) / 2);
-    const y = Math.max(0, Math.round((this.H - BOARD_H - sz.h) / 2));
-    this.areas.push({ x, y, w: sz.w, h: sz.h });
-    g.img(MAIN, 204, x, y);
-    g.rect(x + 50, y + 6, 70, 20, '#2a2a2a');
+    const rowH = this.layout.settingsRowH;
+    // 电脑用原版设置窗底图；手机行高加大、窗宽随屏幕，画成同色调的面板
+    const classic = this.layout.kind === 'board';
+    const w = classic ? sz.w : Math.min(sz.w, this.W - this.safe.left - this.safe.right - 8);
+    const h = classic ? sz.h : 40 + SETTING_LABELS.length * rowH + 12;
+    const { x, y } = this.layout.dialogOrigin(w, h);
+    this.area({ x, y, w, h });
+    if (classic) {
+      g.img(MAIN, 204, x, y);
+      g.rect(x + 50, y + 6, 70, 20, '#2a2a2a');
+    } else g.frame(x, y, w, h, 'rgba(16,11,6,.96)', '#8a6a3a');
     g.text('便利设置', x + 56, y + 10, '#ffe08a', true);
     const s = this.ctl.settings as unknown as Record<string, number | boolean>;
+    const mid = (rowH - 14) / 2;
     SETTING_LABELS.forEach((item, i) => {
-      const ly = y + 40 + i * 19;
+      const ly = y + 40 + i * rowH;
       const v = s[item.key];
       if (item.kind === 'bool') {
-        const box = { x: x + 30, y: ly, w: 14, h: 14 };
+        const box = { x: x + 30, y: ly + mid, w: 14, h: 14 };
         g.rect(box.x, box.y, box.w, box.h, '#000');
         g.rect(box.x + 1, box.y + 1, box.w - 2, box.h - 2, '#4a3a20');
         if (v) g.text('✓', box.x + 2, box.y + 1, '#ff0', true);
-        g.text(item.label, x + 52, ly + 1, '#fff');
-        this.buttons.push({ x: box.x, y: ly - 2, w: 400, h: 18, img: -1, onClick: () => { s[item.key] = !v; this.ctl.onSettingsChanged(); } });
+        g.text(item.label, x + 52, ly + mid + 1, '#fff');
+        this.hit({ x: box.x, y: ly, w: Math.min(400, w - 40), h: rowH - 1, img: -1, onClick: () => { s[item.key] = !v; this.ctl.onSettingsChanged(); } });
       } else {
-        g.text(item.label, x + 52, ly + 1, '#fff');
-        const vx = x + 360;
-        g.text('◀', vx, ly + 1, '#ff0', true);
-        g.text(`${v}%`, vx + 22, ly + 1, '#fff', true);
-        g.text('▶', vx + 62, ly + 1, '#ff0', true);
-        this.buttons.push({ x: vx - 4, y: ly - 2, w: 20, h: 18, img: -1, onClick: () => { s[item.key] = Math.max(0, Number(v) - 5); this.ctl.onSettingsChanged(); } });
-        this.buttons.push({ x: vx + 58, y: ly - 2, w: 20, h: 18, img: -1, onClick: () => { s[item.key] = Math.min(95, Number(v) + 5); this.ctl.onSettingsChanged(); } });
+        g.text(item.label, x + 52, ly + mid + 1, '#fff');
+        const vx = classic ? x + 360 : x + w - 100;
+        g.text('◀', vx, ly + mid + 1, '#ff0', true);
+        g.text(`${v}%`, vx + 22, ly + mid + 1, '#fff', true);
+        g.text('▶', vx + 62, ly + mid + 1, '#ff0', true);
+        const bw = classic ? 20 : 32;
+        this.hit({ x: vx + 6 - bw / 2, y: ly, w: bw, h: rowH - 1, img: -1, onClick: () => { s[item.key] = Math.max(0, Number(v) - 5); this.ctl.onSettingsChanged(); } });
+        this.hit({ x: vx + 68 - bw / 2, y: ly, w: bw, h: rowH - 1, img: -1, onClick: () => { s[item.key] = Math.min(95, Number(v) + 5); this.ctl.onSettingsChanged(); } });
       }
     });
-    g.text('F1-F8 技能  1-6 快捷栏  空格 捡取  Esc 关闭  右键跑步', x + 30, y + sz.h - 40, '#c0c0c0');
-    this.button({ img: 361, x: x + 514, y: y + 287, w: 80, h: 34, onClick: () => (this.settingsOpen = false) });
-    this.button({ img: 64, x: x + 584, y: y + 6, w: 16, h: 23, onClick: () => (this.settingsOpen = false) });
+    if (classic) {
+      g.text('F1-F8 技能  1-6 快捷栏  空格 捡取  Esc 关闭  右键跑步', x + 30, y + sz.h - 40, '#c0c0c0');
+      this.button({ img: 361, x: x + 514, y: y + 287, w: 80, h: 34, onClick: () => (this.settingsOpen = false) });
+      this.button({ img: 64, x: x + 584, y: y + 6, w: 16, h: 23, onClick: () => (this.settingsOpen = false) });
+    } else {
+      // 手机：右上角大关闭键，旁边是退出（存档回登录画面；手机上没有原版底栏的退出按钮）
+      const close = { x: x + w - 44, y: y + 4, w: 40, h: 30 };
+      g.frame(close.x, close.y, close.w, close.h, this.isPressed(close) ? '#7a5a2a' : '#3a2a16', '#c9a060');
+      g.text('关闭', close.x + 8, close.y + 9, '#ffe08a', true);
+      this.hit({ ...close, img: -1, onClick: () => (this.settingsOpen = false) });
+      const quit = { x: close.x - 50, y: y + 4, w: 44, h: 30 };
+      g.frame(quit.x, quit.y, quit.w, quit.h, this.isPressed(quit) ? '#7a5a2a' : '#3a2a16', '#c9a060');
+      g.text('退出', quit.x + 10, quit.y + 9, '#ff8a8a', true);
+      this.hit({ ...quit, img: -1, onClick: () => this.onLogout() });
+    }
   }
 
   // ---------------- 技能快捷键 ----------------
@@ -666,9 +637,8 @@ export class ClassicUi {
   private drawKeyDlg(): void {
     const g = this.g;
     const sz = g.size(MAIN, 229) ?? { w: 376, h: 179 };
-    const x = Math.round((this.W - sz.w) / 2);
-    const y = Math.round((this.H - BOARD_H - sz.h) / 2);
-    this.areas.push({ x, y, w: sz.w, h: sz.h });
+    const { x, y } = this.layout.dialogOrigin(sz.w, sz.h);
+    this.area({ x, y, w: sz.w, h: sz.h });
     g.img(MAIN, 229, x, y);
     const id = this.keyDlg!.skill;
     const def = this.catalog.skillsById.get(id)!;
@@ -680,9 +650,9 @@ export class ClassicUi {
       const k = i + 1;
       const r = { x: x + bx, y: y + 83, w: 32, h: 30 };
       g.img(MAIN, 232 + i * 2 + (ls?.key === k ? 1 : 0), r.x, r.y);
-      this.buttons.push({ ...r, img: -1, onClick: () => this.setKey(id, k) });
+      this.hit({ ...r, img: -1, onClick: () => this.setKey(id, k) });
     });
-    this.buttons.push({ x: x + 299, y: y + 83, w: 40, h: 30, img: -1, onClick: () => this.setKey(id, 0) });
+    this.hit({ x: x + 299, y: y + 83, w: 40, h: 30, img: -1, onClick: () => this.setKey(id, 0) });
     g.img(MAIN, 230, x + 299, y + 83);
     this.button({ img: 62, x: x + 222, y: y + 131, w: 80, h: 34, always: false, onClick: () => (this.keyDlg = null) });
   }
@@ -703,17 +673,21 @@ export class ClassicUi {
       for (let i = 0; i < p.bag.length; i++) if (p.bag[i] && inside(this.gridCell(i), x, y)) return p.bag[i]!;
     }
     if (this.stateOpen && this.statePage === 0) {
-      const sx = this.stateX();
       for (const [slot, r] of EQUIP_RECTS) {
-        if (p.equip[slot] && inside({ ...r, x: sx + r.x }, x, y)) return p.equip[slot];
+        if (p.equip[slot] && inside(this.equipRect(r), x, y)) return p.equip[slot];
       }
     }
-    const bx = this.boardX();
-    const by = this.H - BOARD_H;
+    const belt = this.layout.beltRects();
     for (let i = 0; i < 6; i++) {
-      if (p.belt[i] && inside({ x: bx + 285 + 43 * i, y: by + 59, w: 32, h: 29 }, x, y)) return p.belt[i]!;
+      if (p.belt[i] && inside(belt[i]!, x, y)) return p.belt[i]!;
     }
     return null;
+  }
+
+  /** 装备格在屏幕上的位置 */
+  private equipRect(r: Rect): Rect {
+    const o = this.stateOrigin();
+    return { ...r, x: o.x + r.x, y: o.y + r.y };
   }
 
   private drawHover(): void {
@@ -728,7 +702,7 @@ export class ClassicUi {
     } else if (this.npc && (this.mode === 'buy' || this.mode === 'getback')) {
       const rows = this.menuRows();
       for (let i = this.menuTop; i < Math.min(rows.length, this.menuTop + MAX_MENU); i++) {
-        if (inside({ x: 14, y: 176 + 32 + (i - this.menuTop) * LINE_H, w: 265, h: LINE_H }, this.mouse.x, this.mouse.y)) {
+        if (inside(this.menuRowRect(i - this.menuTop), this.mouse.x, this.mouse.y)) {
           const r = rows[i]!;
           const def = this.catalog.item(r.defName);
           lines = itemLines(def, r.item, this.p, null);
@@ -738,14 +712,16 @@ export class ClassicUi {
       const nearby = [...this.world.actors.values()].filter((a) => a.kind === 'monster' && !a.master && !a.dead) as { agility: number; hit: number }[];
       const avgA = nearby.length ? Math.round(nearby.reduce((s, m) => s + m.agility, 0) / nearby.length) : 15;
       const avgH = nearby.length ? Math.round(nearby.reduce((s, m) => s + m.hit, 0) / nearby.length) : 8;
-      if (inside({ x: this.stateX() + 40, y: 90, w: 180, h: 150 }, this.mouse.x, this.mouse.y)) {
+      const so = this.stateOrigin();
+      if (inside({ x: so.x + 40, y: so.y + 90, w: 180, h: 150 }, this.mouse.x, this.mouse.y)) {
         lines = statLines(this.p.stats, this.p, avgA, avgH);
       }
     } else if (this.stateOpen && this.statePage === 3) {
       const top = this.magicPage * 5;
       for (let i = top; i < Math.min(top + 5, this.p.skills.length); i++) {
         const m = i - top;
-        if (inside({ x: this.stateX() + 46, y: 60 + m * 37, w: 170, h: 33 }, this.mouse.x, this.mouse.y)) {
+        const so = this.stateOrigin();
+        if (inside({ x: so.x + 46, y: so.y + 60 + m * 37, w: 170, h: 33 }, this.mouse.x, this.mouse.y)) {
           const ls = this.p.skills[i]!;
           const def = this.catalog.skillsById.get(ls.id)!;
           lines = [
@@ -781,13 +757,21 @@ export class ClassicUi {
       this.hand = null;
       return true;
     }
-    // 从上往下找按钮
-    for (let i = this.buttons.length - 1; i >= 0; i--) {
-      const b = this.buttons[i]!;
-      if (inside(b, x, y)) {
-        this.pressed = b;
+    // 物品菜单在最上层：点在菜单里只算菜单的按钮；点在外面就关掉它，再照常处理（点别的物品直接换成它的菜单）
+    if (this.itemMenu && this.menuRect) {
+      const r = this.menuRect;
+      if (inside(r, x, y)) {
+        const b = this.buttonAt(x, y);
+        if (b && inside(r, b.x + 1, b.y + 1)) this.pressed = b;
         return true;
       }
+      this.itemMenu = null;
+    }
+    // 从上往下找按钮
+    const b = this.buttonAt(x, y);
+    if (b) {
+      this.pressed = b;
+      return true;
     }
     for (const l of this.links) {
       if (inside(l.rect, x, y)) {
@@ -806,13 +790,46 @@ export class ClassicUi {
     return onUi;
   }
 
+  /** 点到的按钮（后登记的在上面）。手机上原版小按钮（关闭×等）很小，没正好点中时允许偏 8 像素。 */
+  private buttonAt(x: number, y: number): Button | undefined {
+    for (let i = this.buttons.length - 1; i >= 0; i--) {
+      const b = this.buttons[i]!;
+      if (inside(b, x, y)) return this.coveredAbove(b.z, x, y) ? undefined : b;
+    }
+    const slop = this.touchSlop();
+    if (!slop) return undefined;
+    let best: Button | undefined;
+    let bd = slop;
+    for (let i = this.buttons.length - 1; i >= 0; i--) {
+      const b = this.buttons[i]!;
+      // 大块的点击区（技能键、小地图、商品行）不放宽，免得抢了旁边的点击
+      if (b.w * b.h > 40 * 40) continue;
+      const d = distTo(b, x, y);
+      if (d < bd && !this.coveredAbove(b.z, x, y)) {
+        best = b;
+        bd = d;
+      }
+    }
+    return best;
+  }
+
+  /** (x, y) 处有比 z 后登记的界面区域盖着（按钮在下层窗口里，被上层窗口挡住） */
+  private coveredAbove(z: number, x: number, y: number): boolean {
+    return this.areas.some((r) => r.z > z && inside(r, x, y));
+  }
+
+  /** 手机上按钮点击允许偏出的距离（界面像素）；电脑 0 */
+  private touchSlop(): number {
+    return this.layout.kind === 'touch' ? 8 : 0;
+  }
+
   /** 点按钮时（放按钮音效） */
   onButton: () => void = () => {};
 
   pointerUp(x: number, y: number): void {
     const b = this.pressed;
     this.pressed = null;
-    if (b && inside(b, x, y)) {
+    if (b && distTo(b, x, y) <= this.touchSlop()) {
       this.onButton();
       b.onClick();
     }
@@ -840,12 +857,22 @@ export class ClassicUi {
     return s.kind === 'equip' ? s.slot === at : s.index === at;
   }
 
+  /**
+   * 点物品格。电脑（原版）：点一下拿起、再点放下，双击使用。
+   * 手机：没拿着东西时点一下弹出说明和操作菜单；选了「移动」拿在手上后，再点格子放下（同电脑）。
+   */
   private clickSlots(x: number, y: number): boolean {
     const p = this.p;
+    const menu = this.layout.itemMenu && !this.hand;
     if (this.bagOpen) {
       for (let i = 0; i < p.bag.length; i++) {
-        if (!inside(this.gridCell(i), x, y)) continue;
+        const cell = this.gridCell(i);
+        if (!inside(cell, x, y)) continue;
         const it = p.bag[i];
+        if (menu) {
+          if (it) this.openBagMenu(i, it, cell);
+          return true;
+        }
         if (it && this.isDouble(`bag${i}`) && (!this.hand || this.hand.item === it)) {
           this.hand = null;
           this.useOrEquip(it);
@@ -856,9 +883,14 @@ export class ClassicUi {
       }
     }
     if (this.stateOpen && this.statePage === 0) {
-      const sx = this.stateX();
       for (const [slot, r] of EQUIP_RECTS) {
-        if (!inside({ ...r, x: sx + r.x }, x, y)) continue;
+        const er = this.equipRect(r);
+        if (!inside(er, x, y)) continue;
+        if (menu) {
+          const it = p.equip[slot];
+          if (it) this.openEquipMenu(slot, it, er);
+          return true;
+        }
         if (this.hand) {
           if (this.hand.src.kind === 'equip') {
             this.hand = null;
@@ -873,18 +905,169 @@ export class ClassicUi {
         return true;
       }
     }
-    const bx = this.boardX();
-    const by = this.H - BOARD_H;
+    const belt = this.layout.beltRects();
     for (let i = 0; i < 6; i++) {
-      if (!inside({ x: bx + 285 + 43 * i, y: by + 59, w: 32, h: 29 }, x, y)) continue;
+      if (!inside(belt[i]!, x, y)) continue;
+      const it = p.belt[i];
       if (this.hand) this.placeIntoBelt(i);
-      else if (p.belt[i]) {
-        const why = this.world.useItem(p, p.belt[i]!.uid);
-        if (why) this.message(why, 'bad');
-      }
+      // 手机上开着包裹时点快捷栏：弹菜单（可以放回包裹）；平时点一下就喝
+      else if (it && menu && this.bagOpen) this.openBeltMenu(i, it, belt[i]!);
+      else if (it) this.useOrEquip(it);
       return true;
     }
     return false;
+  }
+
+  // ---------------- 手机：物品菜单 ----------------
+
+  /** 物品说明（装备和身上同部位的比较） */
+  private describe(it: ItemInstance): Line[] {
+    const def = this.catalog.item(it.name);
+    const k = itemKind(def);
+    const cur = k.kind === 'equip' ? this.p.equip[k.slots[0]!] : null;
+    return itemLines(def, it, this.p, cur && cur !== it ? this.catalog.item(cur.name) : null);
+  }
+
+  private openBagMenu(i: number, it: ItemInstance, anchor: Rect): void {
+    const p = this.p;
+    const def = this.catalog.item(it.name);
+    const kind = itemKind(def).kind;
+    const actions: MenuAction[] = [];
+    const src: HandSource = { kind: 'bag', index: i };
+    if (this.npc && this.mode === 'sell') actions.push({ label: `卖出 ${Math.floor(def.price / 2)} 金币`, run: () => this.sellOrStore(src, it) });
+    if (this.npc && this.mode === 'store') actions.push({ label: '保管', run: () => this.sellOrStore(src, it) });
+    const use = USE_LABEL[kind];
+    if (use) actions.push({ label: use, run: () => this.useOrEquip(it) });
+    if ((kind === 'potion' || kind === 'scroll') && p.belt.includes(null)) {
+      actions.push({
+        label: '放快捷栏',
+        run: () => {
+          const slot = p.belt.indexOf(null);
+          if (slot < 0 || p.bag[i] !== it) return;
+          p.bag[i] = null;
+          p.belt[slot] = it;
+        },
+      });
+    }
+    actions.push({ label: '移动', run: () => (this.hand = { src, item: it }) });
+    actions.push({ label: '丢弃', run: () => this.dropFrom(src, it) });
+    this.itemMenu = { lines: this.describe(it), actions, anchor };
+  }
+
+  private openEquipMenu(slot: EquipSlot, it: ItemInstance, anchor: Rect): void {
+    this.itemMenu = {
+      lines: this.describe(it),
+      anchor,
+      actions: [{ label: '脱下', run: () => this.unequip(slot, it) }],
+    };
+  }
+
+  private openBeltMenu(i: number, it: ItemInstance, anchor: Rect): void {
+    const p = this.p;
+    this.itemMenu = {
+      lines: this.describe(it),
+      anchor,
+      actions: [
+        { label: '使用', run: () => this.useOrEquip(it) },
+        {
+          label: '放回包裹',
+          run: () => {
+            const slot = p.bag.indexOf(null);
+            if (slot < 0) return this.message('包裹满了', 'bad');
+            if (p.belt[i] !== it) return;
+            p.belt[i] = null;
+            p.bag[slot] = it;
+          },
+        },
+      ],
+    };
+  }
+
+  private openShopMenu(row: { onBuy: () => void; item: ItemInstance | null; defName: string; price: string }, anchor: Rect): void {
+    const def = this.catalog.item(row.defName);
+    const getback = this.mode === 'getback';
+    this.itemMenu = {
+      lines: itemLines(def, row.item, this.p, null),
+      anchor,
+      keepOpen: !getback,
+      actions: [{ label: getback ? '取回' : `购买 ${row.price}`, run: () => row.onBuy() }],
+    };
+  }
+
+  private unequip(slot: EquipSlot, it: ItemInstance): void {
+    const p = this.p;
+    if (p.equip[slot] !== it) return;
+    if (!p.bag.includes(null)) return this.message('包裹满了', 'bad');
+    p.equip[slot] = null;
+    this.world.recalc(p);
+    p.bag[p.bag.indexOf(null)] = it;
+  }
+
+  private dropFrom(src: HandSource, it: ItemInstance): void {
+    this.hand = { src, item: it };
+    const taken = this.takeHand();
+    if (taken) this.world.dropAt(this.p.pos, taken);
+  }
+
+  private sellOrStore(src: HandSource, it: ItemInstance): void {
+    this.sellSpot = { src, item: it };
+    this.confirmSell();
+  }
+
+  /** 物品菜单这一帧画在哪（点在里面不关菜单） */
+  private menuRect: Rect | null = null;
+
+  private drawItemMenu(m: ItemMenu): void {
+    const g = this.g;
+    const LH = 15;
+    const BTN_H = 32;
+    const pad = 6;
+    const btnW = m.actions.map((a) => Math.max(56, g.width(a.label) + 20));
+    const textW = Math.max(...m.lines.map((l) => g.width(l.text)));
+    const btnRowW = btnW.reduce((s, w) => s + w + 6, -6);
+    const w = Math.min(this.W - 8, Math.max(textW, btnRowW) + pad * 2);
+    // 按钮一行放不下就折行
+    const rows: { a: MenuAction; w: number }[][] = [[]];
+    let rowW = 0;
+    m.actions.forEach((a, i) => {
+      const bw = btnW[i]!;
+      if (rowW > 0 && rowW + 6 + bw > w - pad * 2) {
+        rows.push([]);
+        rowW = 0;
+      }
+      rows[rows.length - 1]!.push({ a, w: bw });
+      rowW += (rowW > 0 ? 6 : 0) + bw;
+    });
+    const h = pad + m.lines.length * LH + 4 + rows.length * (BTN_H + 6) + pad - 6;
+    // 优先摆在格子右边，放不下就左边；纵向尽量和格子顶对齐
+    const a = m.anchor;
+    let x = a.x + a.w + 4;
+    if (x + w > this.W - this.safe.right) x = a.x - w - 4;
+    x = Math.max(this.safe.left + 2, Math.min(x, this.W - this.safe.right - w - 2));
+    const y = Math.max(this.safe.top + 2, Math.min(a.y, this.H - this.safe.bottom - h - 2));
+    this.menuRect = { x, y, w, h };
+    this.area(this.menuRect);
+    g.frame(x, y, w, h, 'rgba(10,7,3,.94)', '#8a6a3a');
+    const color: Record<string, string> = { title: '#ff0', good: '#7cff7c', bad: '#f55', dim: '#aaa', gold: '#ffd96b' };
+    m.lines.forEach((l, i) => g.text(l.text, x + pad, y + pad + i * LH, color[l.tone ?? ''] ?? '#fff'));
+    let by = y + pad + m.lines.length * LH + 4;
+    for (const row of rows) {
+      let bx = x + pad;
+      for (const { a: act, w: bw } of row) {
+        const r = { x: bx, y: by, w: bw, h: BTN_H };
+        g.frame(r.x, r.y, r.w, r.h, this.isPressed(r) ? '#7a5a2a' : '#3a2a16', '#c9a060');
+        g.text(act.label, r.x + (bw - g.width(act.label)) / 2, r.y + 10, '#ffe08a', true);
+        this.hit({
+          ...r, img: -1,
+          onClick: () => {
+            act.run();
+            if (!m.keepOpen) this.itemMenu = null;
+          },
+        });
+        bx += bw + 6;
+      }
+      by += BTN_H + 6;
+    }
   }
 
   private useOrEquip(it: ItemInstance): void {
@@ -975,9 +1158,11 @@ export class ClassicUi {
         break;
       case '@sell':
         this.mode = 'sell';
+        if (this.layout.itemMenu) this.message('点包裹里的物品，选「卖出」');
         break;
       case '@store':
         this.mode = 'store';
+        if (this.layout.itemMenu) this.message('点包裹里的物品，选「保管」');
         break;
       case '@getback':
         this.mode = 'getback';

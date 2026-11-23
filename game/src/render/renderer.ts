@@ -49,6 +49,8 @@ export class Renderer {
   height = 600;
   zoom = 1;
   hoverActor = 0;
+  /** 锁定的目标（手机）：脚下画一个圈 */
+  targetActor = 0;
   hoverItem: GroundItem | null = null;
   view: ViewOptions = { showHpBars: true, showItemNames: true, showMonsterNames: true };
 
@@ -67,17 +69,26 @@ export class Renderer {
     this.ctx = ctx;
   }
 
-  resize(cssW: number, cssH: number): void {
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    // 按原版 800x600 的比例缩放：至少看到 800 宽、600 高
-    this.zoom = Math.min(cssW / 800, cssH / 600);
+  private dpr = 1;
+  /** 人物在画面纵向的位置：原版底栏高，人物略偏上 */
+  centerY = 0.47;
+
+  /** 画布铺满窗口；zoom 是地图的缩放（CSS 像素 / 逻辑像素），由 ui/viewport 按设备定。 */
+  resize(cssW: number, cssH: number, zoom: number): void {
+    this.dpr = Math.min(2, window.devicePixelRatio || 1);
+    this.zoom = zoom;
     this.width = Math.round(cssW / this.zoom);
     this.height = Math.round(cssH / this.zoom);
-    this.canvas.width = Math.round(cssW * dpr);
-    this.canvas.height = Math.round(cssH * dpr);
+    this.canvas.width = Math.round(cssW * this.dpr);
+    this.canvas.height = Math.round(cssH * this.dpr);
     this.canvas.style.width = `${cssW}px`;
     this.canvas.style.height = `${cssH}px`;
-    this.ctx.setTransform(dpr * this.zoom, 0, 0, dpr * this.zoom, 0, 0);
+    this.scaleTo(this.zoom);
+  }
+
+  /** 把画布坐标切到「1 单位 = scale 个 CSS 像素」：地图用 zoom，界面用自己的缩放。 */
+  scaleTo(scale: number): void {
+    this.ctx.setTransform(this.dpr * scale, 0, 0, this.dpr * scale, 0, 0);
     this.ctx.imageSmoothingEnabled = false;
   }
 
@@ -91,11 +102,26 @@ export class Renderer {
     return { x: Math.floor((lx + this.camX) / UNITX), y: Math.floor((ly + this.camY) / UNITY) };
   }
 
-  /** 逻辑像素下的角色（取最靠前的一个）。 */
-  actorAt(lx: number, ly: number): Actor | undefined {
+  /**
+   * 逻辑像素下的角色（取最靠前的一个）。slop > 0 时（触屏）正中没点到任何角色，
+   * 就取点击框外 slop 以内离得最近的一个；exclude 是不参与放宽的角色（自己）。
+   */
+  actorAt(lx: number, ly: number, slop = 0, exclude = 0): Actor | undefined {
     let best: Hit | undefined;
     for (const h of this.hits) {
       if (lx >= h.x && lx < h.x + h.w && ly >= h.y && ly < h.y + h.h && (!best || h.row >= best.row)) best = h;
+    }
+    if (best || slop <= 0) return best?.actor;
+    let bd = slop;
+    for (const h of this.hits) {
+      if (h.actor.id === exclude) continue;
+      const dx = Math.max(h.x - lx, 0, lx - (h.x + h.w));
+      const dy = Math.max(h.y - ly, 0, ly - (h.y + h.h));
+      const d = Math.hypot(dx, dy);
+      if (d <= bd) {
+        best = h;
+        bd = d;
+      }
     }
     return best?.actor;
   }
@@ -171,9 +197,10 @@ export class Renderer {
     const now = w.now;
     const ctx = this.ctx;
     const me = w.player;
+    this.scaleTo(this.zoom);
     const mp = this.actorPixel(me, now);
     this.camX = Math.round(mp.x + UNITX / 2 - this.width / 2);
-    this.camY = Math.round(mp.y + UNITY / 2 - this.height * 0.47);
+    this.camY = Math.round(mp.y + UNITY / 2 - this.height * this.centerY);
 
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, this.width, this.height);
@@ -423,7 +450,14 @@ export class Renderer {
       const x = Math.round(px.x - this.camX + UNITX / 2);
       const y = Math.round(px.y - this.camY);
       if (x < -50 || x > this.width + 50 || y < -50 || y > this.height + 120) continue;
-      const hovered = a.id === this.hoverActor;
+      if (a.id === this.targetActor) {
+        ctx.strokeStyle = '#ff5a3a';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(x, y + UNITY / 2, 22, 10, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      const hovered = a.id === this.hoverActor || a.id === this.targetActor;
       if (a.kind === 'npc' || hovered || (a.kind === 'monster' && this.view.showMonsterNames) || a.kind === 'player') {
         const name = a.kind === 'player' ? a.name : a.kind === 'npc' ? a.def.name : w.catalog.displayName(a.def.name);
         const color = a.kind === 'npc' ? '#7fdcff' : a.kind === 'monster' ? (a.master ? '#9cff8a' : '#fff') : '#fff';
