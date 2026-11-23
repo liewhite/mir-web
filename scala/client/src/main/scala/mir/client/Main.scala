@@ -91,9 +91,15 @@ object Main:
 
     applyOptions(loadOptions())
     Input(canvas, renderer, client, ctl, ui, joystick, () => view.uiScale, () => dom.window.innerWidth / view.uiScale)
+    // 声音解锁：iOS 只认触摸松开/点击这类手势，所以几种都挂；捕获阶段先于游戏的处理，这一下的攻击声就能放出来（#1180）
     val unlock: js.Function1[dom.Event, Unit] = _ => audio.unlock()
-    dom.window.addEventListener("pointerdown", unlock)
-    dom.window.addEventListener("keydown", unlock)
+    for ev <- List("pointerdown", "pointerup", "touchend", "click", "keydown") do
+      dom.window.addEventListener(ev, unlock, useCapture = true)
+    // 切 App 回来：试着恢复声音，不成就等下一次手势
+    val wake: js.Function1[dom.Event, Unit] = _ => if dom.document.visibilityState == "visible" then audio.wake()
+    dom.document.addEventListener("visibilitychange", wake)
+    dom.window.addEventListener("pageshow", wake)
+    dom.window.addEventListener("focus", wake)
 
     def fit(): Unit =
       view = Viewport.choose(dom.window.innerWidth, dom.window.innerHeight)
