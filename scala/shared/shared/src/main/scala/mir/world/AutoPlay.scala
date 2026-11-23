@@ -1,7 +1,7 @@
 package mir.world
 
 import mir.core.*
-import mir.rules.ItemKind
+import mir.rules.{ItemKind, Skill}
 
 /**
  * 玩家的自动功能，按角色设置（CharSettings）在服务端执行：自动喝药、按住攻击（打到死）、被打还手、自动烈火、自动捡物。
@@ -24,7 +24,7 @@ object AutoPlay:
       case None => p.intent = Intent.Idle
       case Some(t) =>
         val d = p.cell.chebyshev(t.cell)
-        val longOk = p.longHitOn && p.skill(SkillId(12)).isDefined && d == 2 && inLine(p.cell, t.cell) &&
+        val longOk = p.longHitOn && p.knows(Skill.LongHit) && d == 2 && inLine(p.cell, t.cell) &&
           w.occupant(p.cell.step(p.cell.dirTo(t.cell))).isEmpty
         if d == 1 || longOk then
           maybeFire(w, p)
@@ -63,7 +63,7 @@ object AutoPlay:
     dx == 0 || dy == 0 || math.abs(dx) == math.abs(dy)
 
   private def maybeFire(w: World, p: Player): Unit =
-    val id = SkillId(26)
+    val id = Skill.FireSword.id
     if p.settings.autoFireSword && !p.fireReady && p.skill(id).isDefined && !p.cooldown.get(id).exists(_ > w.now) then
       Combat.cast(w, p, id, SpellTarget(p.cell, None)) match
         case _ => ()

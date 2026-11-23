@@ -3,7 +3,8 @@ package mir.client.game
 import mir.core.*
 import mir.protocol.{GameCmd, GroundView, Look, Tone}
 import mir.model.LearnedSkill
-import mir.world.{Combat, Path, PlayerOps, World}
+import mir.world.{Path, PlayerOps, World}
+import mir.rules.Skill
 
 /** 玩家想做的事：输入只改意图，每帧在自己空闲时推进一步。 */
 enum Intent:
@@ -80,7 +81,7 @@ final class Controller(client: GameClient):
   def goTo(cell: Cell): Unit = intent = Intent.GoTo(cell)
 
   /** 能主动放的技能（不是被动），按学会的顺序。 */
-  def activeSkills: List[LearnedSkill] = client.view.skills.filterNot(s => Combat.isPassive(s.id))
+  def activeSkills: List[LearnedSkill] = client.view.skills.filterNot(s => Skill.isPassive(s.id))
 
   def pickUpHere(): Unit = client.send(GameCmd.PickUp)
 

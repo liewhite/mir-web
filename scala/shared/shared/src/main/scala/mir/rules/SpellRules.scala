@@ -15,6 +15,8 @@ object SpellRules:
 
   /** 魔法锁定范围：目标格离自己超过这么多格放不出（MagicAttackRage） */
   val CastRange = 8
+  /** 放完一个魔法到能放下一个（毫秒），也是带冷却的魔法的最短冷却 */
+  val SpellIntervalMs = 800
   /** 爆裂火焰、冰咆哮：目标周围几格（FireBoomRage / SnowWindRange） */
   val BlastRadius = 1
   /** 地狱雷光：自己周围几格（ElecBlizzardRange） */

@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.{Catalog, DropDef, MapDef, MonsterActionTable, MonsterDef}
 import mir.model.*
 import mir.protocol.*
-import mir.rules.{ItemEffects, ItemKind, Leveling, PassiveSkills, Progress, Rates, Recovery, Rng, Rules}
+import mir.rules.{ItemEffects, ItemKind, Leveling, PassiveSkills, Progress, Rates, Recovery, Rng, Rules, Skill}
 
 import scala.collection.mutable
 
@@ -32,7 +32,7 @@ object World:
   val RunMs       = 600
   val HitAnimMs   = 510
   val SpellAnimMs = 600
-  val SpellInterval = 800
+  val SpellInterval = mir.rules.SpellRules.SpellIntervalMs
   /** 野蛮冲撞每冲一格的时长（原版跑步半圈）、冲完的晕眩（原版 g_dwDizzyDelayTime） */
   val RushStepMs  = RunMs / 2
   val RushDizzyMs = 300
@@ -756,8 +756,8 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
     val effects = p.worn.values.flatMap { it =>
       catalog.item(it.name).filter(d => it.dura > 0 && !ItemKind.of(d).isInstanceOf[ItemKind.Amulet]).map(ItemEffects.of)
     }
-    def lv(id: Int): Option[Int] = p.skill(SkillId(id)).map(_.level)
-    val base = Rules.computeStats(p.job, p.level, effects, PassiveSkills(oneSword = lv(3), spiritSword = lv(4), powerHit = lv(7)))
+    def lv(s: Skill): Option[Int] = p.skill(s.id).map(_.level)
+    val base = Rules.computeStats(p.job, p.level, effects, PassiveSkills(lv(Skill.OneSword), lv(Skill.SpiritSword), lv(Skill.PowerHit)))
     p.stats = base.copy(ac = p.buffedAc(base.ac), mac = p.buffedMac(base.mac))
     p.hp = math.min(p.hp, p.stats.maxHp)
     p.mp = math.min(p.mp, p.stats.maxMp)

@@ -4,8 +4,7 @@ import mir.client.input.{Joystick, Pt}
 import mir.core.*
 import mir.model.{ItemInstance, ItemPlace, Job}
 import mir.protocol.{GameCmd, Look}
-import mir.rules.Rates
-import mir.world.Combat
+import mir.rules.{Rates, Skill}
 
 /**
  * 常驻的 HUD：原版 800×251 底栏（照 FState.pas DBottom，TS 版 ui/classic/layout.ts），
@@ -220,7 +219,7 @@ final class Board(ui: ClassicUi):
             g.circle(cx, cy, sr, "rgba(0,0,0,.6)")
             val t = if cd < 10000 then f"${cd / 1000.0}%.1f" else (cd / 1000).toString
             g.text(t, cx - g.width(t) / 2, cy - 6, "#fff", bold = true)
-          else if m.stats.mp.value < Combat.manaCost(d, ls.level) then g.circle(cx, cy, sr, "rgba(0,0,80,.45)")
+          else if m.stats.mp.value < Skill.manaCost(d, ls.level) then g.circle(cx, cy, sr, "rgba(0,0,80,.45)")
           g.text(s"F$k", r.x - 2, r.y - 4, "#ff0", bold = true)
           ui.area(r)
           ui.button(Button(r, () => ui.ctl.castSkill(ls.id), onHold = Some(() =>

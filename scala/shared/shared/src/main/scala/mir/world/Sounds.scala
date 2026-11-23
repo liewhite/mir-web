@@ -59,4 +59,4 @@ object Sounds:
     case Fly   extends SpellPhase(1)
     case Burst extends SpellPhase(2)
 
-  def magic(skill: Int, phase: SpellPhase): Int = 10000 + skill * 10 + phase.k
+  def magic(skill: mir.core.SkillId, phase: SpellPhase): Int = 10000 + skill.value * 10 + phase.k

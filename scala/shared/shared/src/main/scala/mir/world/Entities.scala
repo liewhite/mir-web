@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.{MerchantDef, MonsterDef, MonsterLook, Span}
 import mir.model.*
 import mir.protocol.{ActionView, FieldView, GroundThing, GroundView, Look}
-import mir.rules.Stats
+import mir.rules.{Skill, Stats}
 
 import scala.collection.mutable
 
@@ -94,6 +94,9 @@ final class Player(id: ActorId, val charName: String, val job: Job, val sex: Sex
   def look: Look   = Look.Human(charName, job, sex, hair, worn.get(EquipSlot.Weapon).map(_.name), worn.get(EquipSlot.Dress).map(_.name))
 
   def skill(id: SkillId): Option[LearnedSkill] = skills.find(_.id == id)
+  def knows(s: Skill): Boolean                 = skill(s.id).isDefined
+  /** 学会的等级，没学会为 0 */
+  def skillLevel(s: Skill): Int                = skill(s.id).fold(0)(_.level)
 
 /** 玩家在服务端执行的自动意图。 */
 enum Intent:

@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.{ItemDef, MerchantService}
 import mir.model.*
 import mir.protocol.{GameCmd, ServerMsg, ChatKind, Tone}
-import mir.rules.{ItemKind, PotionRules, Pricing, Requirement, ScrollEffect, dressSex}
+import mir.rules.{ItemKind, PotionRules, Pricing, Requirement, ScrollEffect, Skill, dressSex}
 
 /**
  * 玩家指令的执行：移动、攻击、施法、物品、NPC 买卖存取、设置、说话。
@@ -184,7 +184,7 @@ object PlayerOps:
             _     <- Either.cond(p.skill(skill.id).isEmpty, (), "已经学会了")
           yield
             consumeOne(w, p, uid)
-            val key = Option.unless(Combat.isPassive(skill.id))((1 to 8).find(k => !p.skills.exists(_.key.contains(k)))).flatten
+            val key = Option.unless(Skill.isPassive(skill.id))((1 to 8).find(k => !p.skills.exists(_.key.contains(k)))).flatten
             p.skills += LearnedSkill(skill.id, 0, 0, key)
             w.recalc(p)
             w.notice(p, s"学会了 ${skill.name}", Tone.Good)
@@ -340,7 +340,7 @@ object PlayerOps:
     for
       i <- Some(p.skills.indexWhere(_.id == id)).filter(_ >= 0).toRight("还没学会这个技能")
       _ <- Either.cond(key.forall(k => k >= 1 && k <= 8), (), "快捷键只能是 F1–F8")
-      _ <- Either.cond(!Combat.isPassive(id) || key.isEmpty, (), "被动技能不用设快捷键")
+      _ <- Either.cond(!Skill.isPassive(id) || key.isEmpty, (), "被动技能不用设快捷键")
     yield
       key.foreach(k => p.skills.indices.foreach(j => if p.skills(j).key.contains(k) then p.skills(j) = p.skills(j).copy(key = None)))
       p.skills(i) = p.skills(i).copy(key = key)
