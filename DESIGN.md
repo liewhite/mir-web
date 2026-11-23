@@ -35,8 +35,8 @@
 - [x] 引擎骨架、战斗/怪物/掉落/升级（战士验证过打鸡）
 - [x] 界面：用户要求「尽量接近原版 UI」→ ui/classic 照 FState.pas 移植（底栏、状态窗4页、包裹、商人、菜单、出售/保管、快捷键、设置）
 - [x] 服务端 server/server.mjs（登录、存档、ETag 缓存）；本机 dev：`set -a; . server/dev.env` 后 node server.mjs，密码 test
-- [ ] 法师/道士技能实测（特效帧号要看图校准）
-- [ ] 骷髅洞（D001 入口 0:147,33）、传送、怪物攻击人实测
-- [ ] 手机操作、小地图
-- [ ] 部署 kaojiang（k3s Ingress + cert-manager，mir.leeliewhite.com 已解析）
-- [ ] 音效（Wav/ 目录已解出）
+- [x] 技能特效校准（tools/sheet.py 出帧号对照图）、骷髅洞、触屏技能按钮
+- [x] 部署 kaojiang：`mir/deploy/deploy.sh`（--init 首次）；systemd mir176（/opt/mir176，监听 cni0 10.42.0.1:18176），k3s ns mir176 Ingress；存档 /var/lib/mir176；密码 vault MIR176_PASSWORD
+- [x] 小地图、音效（tools/build_sounds.py → assets/sound/*.m4a）、远程怪、首屏预加载、物件 10 帧分块
+- [ ] 第二阶段地图：猪洞、沃玛、祖玛（build_assets.game_maps 加地图后重跑 build_assets/build_data）
+- [ ] 昼夜明暗、门（doorIndex）
