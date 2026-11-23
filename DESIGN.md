@@ -38,5 +38,6 @@
 - [x] 技能特效校准（tools/sheet.py 出帧号对照图）、骷髅洞、触屏技能按钮
 - [x] 部署 kaojiang：`mir/deploy/deploy.sh`（--init 首次）；systemd mir176（/opt/mir176，监听 cni0 10.42.0.1:18176），k3s ns mir176 Ingress；存档 /var/lib/mir176；密码 vault MIR176_PASSWORD
 - [x] 小地图、音效（tools/build_sounds.py → assets/sound/*.m4a）、远程怪、首屏预加载、物件 10 帧分块
+- [x] 手机布局（#1140，用户定）：`ui/viewport.ts` 按屏幕选布局——电脑/平板用原版底栏（`ui/classic/layout.ts` BoardLayout），触屏且短边 < 600 用手机布局（`ui/classic/touch.ts`）：界面与地图分开缩放、左半屏虚拟摇杆（`game/joystick.ts`）、点怪锁定并显示怪物信息、攻击键+F1–F8 技能环、物品点一下弹说明和操作菜单；安全区、添加到主屏幕全屏
 - [ ] 第二阶段地图：猪洞、沃玛、祖玛（build_assets.game_maps 加地图后重跑 build_assets/build_data）
 - [ ] 昼夜明暗、门（doorIndex）
