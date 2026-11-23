@@ -10,7 +10,8 @@ import zio.json.*
  * 物品重新编号（全服唯一）；便利设置取多人版有的那几项（只影响画面声音的开关留在客户端）。
  */
 object Migration:
-  private final case class TsItem(uid: Long, name: String, dura: Int, duraMax: Int)
+  /** count：#1159 起单机版物品带数量（一叠几个），更早的存档没有，按 1；进图时世界再合并同名的。 */
+  private final case class TsItem(uid: Long, name: String, dura: Int, duraMax: Int, count: Option[Int])
   private final case class TsPlace(map: String, x: Int, y: Int)
   private final case class TsSkill(id: Int, level: Int, train: Int, key: Int)
   private final case class TsPlayer(
@@ -39,7 +40,7 @@ object Migration:
                 case (acc, (k, it)) => acc.flatMap(m => EquipSlot.values.find(_.key == k).toRight(s"装备位不对：$k").map(s => m + (s -> it)))
               }
     yield
-      def item(t: TsItem) = ItemInstance(uids.next(), ItemName(t.name), t.dura, t.duraMax)
+      def item(t: TsItem) = ItemInstance(uids.next(), ItemName(t.name), t.dura, t.duraMax, t.count.filter(_ >= 1).getOrElse(1))
       CharacterData(
         name = name.getOrElse(p.name), job = job, sex = sex, hair = p.hair, level = p.level, exp = Exp(p.exp), gold = Gold(p.gold),
         hp = Hp(p.hp), mp = Mp(p.mp), place = Place(MapId(p.map), Cell(p.x, p.y)), dir = Dir.Down,
