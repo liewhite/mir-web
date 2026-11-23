@@ -646,6 +646,25 @@ function unwind(n) {
   return dirs.reverse();
 }
 
+// src/world/rates.ts
+var RATES = {
+  /** 打怪经验倍数 */
+  exp: 10,
+  /** 非装备物品（金币、药、书、材料）的掉落概率倍数，最高 100% */
+  drop: 20,
+  /** 高级装备（要求 20 级以上，或要求攻击/魔法/道术）的掉落概率下限 */
+  highEquipMin: 0.2,
+  highEquipLevel: 20
+};
+function dropChance(d, def) {
+  const base = d.numerator / d.denominator;
+  const scaled = Math.min(1, base * RATES.drop);
+  return def && isHighEquip(def) ? Math.max(scaled, RATES.highEquipMin) : scaled;
+}
+function isHighEquip(def) {
+  return itemKind(def).kind === "equip" && (def.need !== 0 || def.needLevel >= RATES.highEquipLevel);
+}
+
 // src/world/sounds.ts
 var S = {
   walkGround: [1, 2],
@@ -1346,7 +1365,7 @@ var World = class {
       const killer = this.actors.get(killerId);
       const owner = killer?.kind === "player" ? killer : killer?.kind === "monster" && killer.master ? this.actors.get(killer.master) : void 0;
       if (owner?.kind === "player" && !target.master) {
-        this.gainExp(owner, target.def.exp);
+        this.gainExp(owner, target.def.exp * RATES.exp);
         this.dropLoot(target);
       }
       if (target.master) {
@@ -1383,11 +1402,12 @@ var World = class {
       need = this.catalog.expToNext(p.level);
     }
   }
-  /** 按爆率表掉落（每行 numerator/denominator 的概率；金币数量 amount/2 + Random(amount)）。 */
+  /** 按爆率表掉落（概率按 rates.ts 换算；金币数量 amount/2 + Random(amount)）。 */
   dropLoot(m) {
     const table = this.catalog.data.drops[m.def.name] ?? [];
     for (const d of table) {
-      if (random(d.denominator) >= d.numerator) continue;
+      const def0 = d.item === "\u91D1\u5E01" ? null : this.catalog.itemsByName.get(d.item) ?? null;
+      if (Math.random() >= dropChance(d, def0)) continue;
       if (d.item === "\u91D1\u5E01") {
         const gold = Math.floor(d.amount / 2) + random(d.amount);
         if (gold > 0) this.dropAt(m.pos, { gold });

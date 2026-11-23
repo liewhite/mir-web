@@ -11,6 +11,7 @@ import {
 import { EQUIP_SLOTS, type EquipSlot, type ItemInstance, dressSex, itemEffects, itemKind, newItem, requirement } from './items';
 import { computeStats, random, type Stats } from './rules';
 import { findPath } from './path';
+import { RATES, dropChance } from './rates';
 import { S, monsterSound, struckBody, weaponSwing } from './sounds';
 
 export type GameEvent =
@@ -373,7 +374,7 @@ export class World {
       const owner = killer?.kind === 'player' ? killer : killer?.kind === 'monster' && killer.master
         ? this.actors.get(killer.master) : undefined;
       if (owner?.kind === 'player' && !target.master) {
-        this.gainExp(owner, target.def.exp);
+        this.gainExp(owner, target.def.exp * RATES.exp);
         this.dropLoot(target);
       }
       if (target.master) {
@@ -413,11 +414,12 @@ export class World {
     }
   }
 
-  /** 按爆率表掉落（每行 numerator/denominator 的概率；金币数量 amount/2 + Random(amount)）。 */
+  /** 按爆率表掉落（概率按 rates.ts 换算；金币数量 amount/2 + Random(amount)）。 */
   private dropLoot(m: Monster): void {
     const table: DropDef[] = this.catalog.data.drops[m.def.name] ?? [];
     for (const d of table) {
-      if (random(d.denominator) >= d.numerator) continue;
+      const def0 = d.item === '金币' ? null : this.catalog.itemsByName.get(d.item) ?? null;
+      if (Math.random() >= dropChance(d, def0)) continue;
       if (d.item === '金币') {
         const gold = Math.floor(d.amount / 2) + random(d.amount);
         if (gold > 0) this.dropAt(m.pos, { gold });
