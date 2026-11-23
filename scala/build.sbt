@@ -21,6 +21,9 @@ val V = new {
   val zioJson = "1.1.2"
   val scalajsDom = "2.8.1"
   val macrotask  = "1.1.1"
+  val zioHttp = "3.11.6"
+  val sqlite  = "3.54.1.0"
+  val bc      = "1.84" // 与 zio-http 带进来的 bcpkix、bcutil 同版本
 }
 
 // 测试读真实的游戏数据（tools/build_data.py 产出，不进 git；worktree 里 public/assets 软链到主仓库）
@@ -61,8 +64,31 @@ lazy val server = project
   .dependsOn(shared.jvm)
   .settings(zioTest)
   .settings(
-    libraryDependencies += "dev.zio" %% "zio" % V.zio,
-    Test / fork := true
+    libraryDependencies ++= Seq(
+      "dev.zio"          %% "zio"           % V.zio,
+      "dev.zio"          %% "zio-http"      % V.zioHttp,
+      "org.xerial"        % "sqlite-jdbc"   % V.sqlite,
+      "org.bouncycastle"  % "bcprov-jdk18on" % V.bc // scrypt（与旧 Node 服务端同参数）
+    ),
+    // zio-http 3.11.6 默认拉 zio-schema 1.8.7；统一到 1.9.1（与本机其他项目一致，免得重复下载）
+    dependencyOverrides ++= Seq("zio-schema", "zio-schema-json", "zio-schema-derivation").map("dev.zio" %% _ % "1.9.1"),
+    Compile / mainClass := Some("mir.server.Main"),
+    Test / fork := true,
+    Test / javaOptions ++= Seq("-Dfile.encoding=UTF-8", s"-Dmir.assets=${(ThisBuild / baseDirectory).value.getParentFile / "public" / "assets"}"),
+    // 部署包：单个 jar（deploy/jvm/deploy.sh 调 sbt server/assembly）
+    assembly / assemblyJarName := "mir176.jar",
+    assembly / packageOptions += Package.ManifestAttributes("Enable-Native-Access" -> "ALL-UNNAMED"),
+    assembly / assemblyMergeStrategy := {
+      case PathList("module-info.class")                            => MergeStrategy.discard
+      case PathList("META-INF", "versions", _, "module-info.class") => MergeStrategy.discard
+      case PathList("META-INF", xs @ _*) if xs.lastOption.contains("MANIFEST.MF") && xs.contains("OSGI-INF") => MergeStrategy.discard
+      case PathList("META-INF", "io.netty.versions.properties")     => MergeStrategy.first
+      case PathList("scala", "annotation", f) if f.startsWith("unroll.") => MergeStrategy.first
+      case "deriving.conf"                                          => MergeStrategy.first
+      case x =>
+        val old = (assembly / assemblyMergeStrategy).value
+        old(x)
+    }
   )
 
 // ---- 客户端（Scala.js）：#1155 ----

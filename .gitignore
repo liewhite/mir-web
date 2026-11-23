@@ -13,3 +13,4 @@ scala/project/project/
 
 # Scala.js 客户端产物（sbt client/fastLinkJS 或 fullLinkJS 生成）
 scala/client/web/js/
+deploy/jvm/jre.tar.gz*
