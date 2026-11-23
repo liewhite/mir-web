@@ -40,7 +40,7 @@
       - 进出：`join(CharacterData, Carried)` 返回本图对象编号；`leave` 取存档；换图（传送点、传送菜单、回城、复活）在 `Outbox.departures` 里交给服务端送去目的地图，`Carried`（宝宝、身上的限时状态、没回完的药，不进存档）跟着带过去（#1170）。
       - 战斗结算（#1170）：所有攻击（剑术、魔法、怪物各种出招、火墙、野蛮冲撞）都造一个 `Blow`（扣防/扣魔防/不扣/自爆各一半、威力、要不要判命中）交给 `World.strike`：敌我与在不在图上 → 命中 → 扣防 → `applyDamage`（红毒 ×1.2、魔法盾、扣血、被打动作、死亡经验），返回 `StrikeResult`（毒液毒气的附带效果按是否打到身上判）。身上的限时状态是 `Actor.statuses`（`Status`：中毒、魔法盾、隐身、麻痹、神圣战甲术、幽灵盾、定住、发狂），每次 tick 开头统一到期，怪的名字颜色（mood）和自己的 SelfStatus 都从它算。延时回调只有 `afterOn(对象, 毫秒)`：到点时对象已不在本图或已死就不跑。普通药分跳回血是 `Player.potions`。
       - `Inventory`（#1159）：身上和仓库物品进出，同名可叠的并叠、按格判满、重量按个数、拆分；进图时 normalize（旧存档补数量、合并）。`GameCmd.Sell/Deposit/Withdraw` 带 `count`（空 = 整叠）。
-      - `Behavior`（Race → 出招/藏身/附加本领）+ `MonsterAi`；`Combat`（普攻剑术、技能）；`PlayerOps`（指令：移动校验、物品、NPC 买卖存取，非法的回 Refused）；`AutoPlay`（自动喝药、按住攻击、还手、烈火、捡物，按角色设置在服务端跑）。
+      - `Behavior`（Race → 出招/藏身/附加本领；每种本领的状态是 `ExtraState`，存在 `Monster.extras`，加 Boss 本领只加 Extra/ExtraState 分支和 MonsterAi 里的处理，不往 Monster 加字段）+ `MonsterAi`；按外观 RaceImg 的画法和特效（钻地类、固定朝向、攻击帧、攻击特效、飞行物）只在 `mir.data.MonsterLook` 一张表，服务端 AI 和客户端 `Frames` 共用；`Combat`（普攻剑术、技能）；`PlayerOps`（指令：移动校验、物品、NPC 买卖存取，非法的回 Refused）；`AutoPlay`（自动喝药、按住攻击、还手、烈火、捡物，按角色设置在服务端跑）。
       - 视野：flush 时按切比雪夫 14 格算每个玩家的出现/消失，对象的动作/血量/外观按「和上次发出去的比，变了才发」，特效声音飘字只发给附近的人，自己的属性背包等变了才发。
       - 守卫按 Race 认（11/12/20/112），不再按名字（TS 版把沃玛卫士、祖玛卫士当成了守卫）。
     - `mir.view.ViewState`：客户端的视野副本，`apply(ServerMsg)` 纯函数折叠；测试里每一步都和世界对照。

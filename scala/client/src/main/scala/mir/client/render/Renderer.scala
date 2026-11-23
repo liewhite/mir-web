@@ -292,7 +292,7 @@ final class Renderer(canvas: dom.HTMLCanvasElement, sprites: SpriteStore, assets
       for
         d  <- catalog.monster(m.kind)
         t  <- catalog.actions(d)
-        f   = Frames.monster(t, Frames.monsterStyle(d.raceImg), a.action, a.dir, now, a.dead, m.cover)
+        f   = Frames.monster(t, mir.data.MonsterLook.of(d), a.action, a.dir, now, a.dead, m.cover)
         sp <- sprites.sprite(d.lib, d.offset + f)
       yield
         blit(sp, dx + sp.ox, dy + sp.oy)

@@ -1,16 +1,14 @@
 package mir.world
 
-import mir.core.MonsterName
-import mir.data.MonsterDef
+import mir.core.{Millis, MonsterName}
+import mir.data.{MissileFx, MonsterDef, MonsterLook}
+import mir.rules.Rng
 
 /**
  * 怪物行为的描述：按数据表的 Race（服务端怪物类型）决定怎么出招、会不会藏起来、能不能动、附加本领。
  * 出处：ref/Mir176 GameSrv WorldServer.MonGen.cs CreateMonster（Race → 类）与 M2Server/Monster/Monsters 目录下的各类；
- * 攻击特效照原版客户端 AxeMon.pas。照 TS 版 monster_ai.ts 移植，执行在 MonsterAi。
+ * 按外观（RaceImg）的画法和特效在 mir.data.MonsterLook。照 TS 版 monster_ai.ts 移植，执行在 MonsterAi。
  */
-
-/** 飞行物特效：图库、起始帧、16 方向之间的帧间隔（飞斧 10，箭 1）、帧数。 */
-final case class MissileFx(lib: String, base: Int, stride: Int, frames: Int)
 
 /** 出招方式。 */
 enum Strike:
@@ -47,7 +45,10 @@ enum Hiding:
   /** 石像，敌人到 2 格内醒来；wakeAll 时附近 7 格的石像一起醒（祖玛雕像、祖玛教主） */
   case Statue(wakeAll: Boolean)
 
-/** 附加本领。 */
+/**
+ * 附加本领（Boss 等少数怪才有）。每种本领在一只怪身上的状态是对应的 ExtraState，Monster 只存这些状态；
+ * 加一种本领：这里加一个分支、ExtraState 加它的状态、MonsterAi 的本领处理加一个分支。
+ */
 enum Extra:
   /** 死后几秒原地复活，血上限和经验减半（僵尸 ZilKinZombi） */
   case Revive
@@ -55,6 +56,32 @@ enum Extra:
   case SummonZuma
   /** 沃玛教主：被围住时瞬移到目标身后；血越少越狂暴（攻速、移速变快） */
   case CowKing
+
+  /** 刚刷出来时的状态。 */
+  def initial(using rng: Rng): ExtraState = this match
+    // 1/3 的僵尸能复活 1~3 次（ZilKinZombi.Create）
+    case Revive     => ExtraState.Revive(left = if rng.random(3) == 0 then rng.random(3) + 1 else 0, at = None, times = 0)
+    case SummonZuma => ExtraState.SummonZuma(level = 5, lastCheck = Millis.zero)
+    // 档位初值 0（CowKingMonster 构造 CrazyCount = 0）。TS 版和祖玛教主共用字段、初值误为 5，血刚好在第 5 档时第一次检查不狂暴
+    case CowKing    => ExtraState.CowKing(level = 0, rage = Rage.Calm, rageAt = Millis.zero, lastCheck = Millis.zero)
+
+/** 一项附加本领在某只怪身上的状态（不可变，处理完换新的）。 */
+enum ExtraState:
+  /** 还能复活几次、几时复活、已经复活过几次（每次经验减半） */
+  case Revive(left: Int, at: Option[Millis], times: Int)
+  /** 召唤档位（满血 5，血每掉 20% 召一批、档位减一）、上次检查时刻（每秒一次） */
+  case SummonZuma(level: Int, lastCheck: Millis)
+  /** 狂暴档位（按剩余血算，变了就准备狂暴）、狂暴阶段及开始时刻、上次检查时刻（每 30 秒一次） */
+  case CowKing(level: Int, rage: Rage, rageAt: Millis, lastCheck: Millis)
+
+  /** 打死给的经验倍数 */
+  def expScale: Double = this match
+    case Revive(_, _, times) => math.pow(0.5, times)
+    case _                   => 1.0
+
+/** 沃玛教主狂暴阶段：平静 → 准备（8 秒不出手）→ 狂暴（8 秒攻速、移速变快）→ 平静。 */
+enum Rage:
+  case Calm, Ready, Crazy
 
 final case class Behavior(
     strike: Strike,
@@ -67,10 +94,6 @@ final case class Behavior(
 )
 
 object Behavior:
-  private val Axe   = MissileFx("mon3", 447, 10, 3)
-  private val Thorn = MissileFx("mon3", 2967, 10, 3)
-  private val Arrow = MissileFx("effect", 272, 1, 1)
-
   /** 祖玛教主召唤的小怪 */
   val zumaMinions: Vector[MonsterName] = Vector("祖玛卫士", "祖玛雕像", "祖玛弓箭手", "楔蛾").map(MonsterName(_))
 
@@ -79,13 +102,7 @@ object Behavior:
     case 50 | 51 | 52 => Behavior(Strike.Melee, passive = true)
     case 82 | 119     => Behavior(Strike.Spit)
     case 85           => Behavior(Strike.Melee, hiding = Hiding.Burrow(4, 4), rooted = true)
-    case 87 =>
-      Behavior(Strike.Missile(7, d.raceImg match
-        case 15 => Some(Axe)
-        case 22 => Some(Thorn)
-        case _  => None
-      ))
-    case 104 | 112     => Behavior(Strike.Missile(7, Option.when(d.raceImg == 45)(Arrow)))
+    case 87 | 104 | 112 => Behavior(Strike.Missile(7, MonsterLook.of(d).missile))
     case 90 | 105 | 106 => Behavior(Strike.Gas)
     case 91            => Behavior(Strike.Magic)
     case 92            => Behavior(Strike.Split(0.5), extras = List(Extra.CowKing))
@@ -109,9 +126,3 @@ object Behavior:
 
   /** 动物：鸡（51）、鹿羊（52）、狼（53），原版 Animal = true，诱惑之光对它们无效（WorldServer.MonGen.cs）。 */
   def isAnimal(d: MonsterDef): Boolean = Set(51, 52, 53).contains(d.race)
-
-  /** 不朝向任何方向的怪（原版客户端 TKillingHerb / TBeeQueen 家族只有一个方向）。 */
-  def fixedDir(d: MonsterDef): Boolean = Set(33, 34, 35, 43).contains(d.raceImg)
-
-  /** 原版 TKillingHerb 家族：钻出用走路帧、钻回用 ActDeath。 */
-  def herbLike(d: MonsterDef): Boolean = Set(13, 33, 34, 35).contains(d.raceImg)

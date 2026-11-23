@@ -1,7 +1,7 @@
 package mir.client.render
 
 import mir.core.*
-import mir.data.{ActionInfo, MonsterActionTable}
+import mir.data.{ActionInfo, MonsterActionTable, MonsterLook}
 import mir.model.{ActKind, Cover, HitStyle, Sex}
 import mir.protocol.ActionView
 
@@ -75,21 +75,8 @@ object Frames:
     case HitStyle.Fire   => Some(3390)
     case HitStyle.Normal => None
 
-  /** 怪物画法上的差别（原版客户端按 RaceImg 选的类：TKillingHerb、TSculptureMon 等）。 */
-  final case class MonsterStyle(
-      /** 食人花家族（TKillingHerb）：站立不分方向，钻出用走路帧、钻回用 ActDeath */
-      herb: Boolean,
-      /** ActDeath 只有一个方向（变异骷髅 23、祖玛雕像 48、祖玛教主 49） */
-      deathNoDir: Boolean,
-      /** 攻击用 ActCritical（触龙神 33） */
-      criticalAttack: Boolean
-  )
-
-  def monsterStyle(raceImg: Int): MonsterStyle =
-    MonsterStyle(Set(13, 33, 34, 35).contains(raceImg), Set(23, 48, 49).contains(raceImg), raceImg == 33)
-
-  /** 怪物当前帧（相对该怪的起始帧）。石像状态（祖玛雕像没醒时）停在 ActDeath 第一帧。 */
-  def monster(t: MonsterActionTable, style: MonsterStyle, a: ActionView, dir: Dir, now: Millis, dead: Boolean, cover: Cover): Int =
+  /** 怪物当前帧（相对该怪的起始帧），画法差别按外观查 MonsterLook（和服务端共用）。石像状态（祖玛雕像没醒时）停在 ActDeath 第一帧。 */
+  def monster(t: MonsterActionTable, style: MonsterLook, a: ActionView, dir: Dir, now: Millis, dead: Boolean, cover: Cover): Int =
     val deathDir = if style.deathNoDir then 0 else dir.code
     def stand    = looped(t.stand, a, if style.herb then 0 else dir.code, now)
     if dead then
@@ -104,8 +91,7 @@ object Frames:
         case ActKind.Backstep =>
           if t.walk.frames > 0 then backstep(t.walk, a, dir, now) else pick(t.stand, dir.code, 0)
         case ActKind.Attack | ActKind.Heavy | ActKind.Spell =>
-          val info = if style.criticalAttack then t.critical else t.attack
-          once(info, a, dir, now)
+          once(style.attackAction(t), a, dir, now)
         case ActKind.Struck => if t.struck.frames > 0 then once(t.struck, a, dir, now) else stand
         case ActKind.DigUp =>
           if style.herb then pick(t.walk, 0, frameOf(t.walk, a, now, loop = false))

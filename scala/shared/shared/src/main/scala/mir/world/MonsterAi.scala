@@ -12,23 +12,23 @@ import mir.rules.Rng
 object MonsterAi:
   import Sounds.MonsterCry
 
-  /** 刚刷出来：按行为设好藏身状态、复活次数等。 */
+  /** 刚刷出来：按行为设好藏身状态、各项本领的初始状态。 */
   def init(w: World, m: Monster): Unit =
     given Rng = w.rngOf
-    if Behavior.fixedDir(m.defn) then m.dir = Dir.Up
+    if m.style.fixedDir then m.dir = Dir.Up
     m.behavior.hiding match
       case Hiding.Burrow(_, _) | Hiding.DigOut | Hiding.Centipede => m.cover = Cover.Buried
       case Hiding.Statue(_) =>
         m.cover = Cover.Stone
-        if m.defn.raceImg == 49 then m.dir = Dir.DownLeft
+        m.style.statueDir.foreach(m.dir = _)
       case Hiding.Never => m.cover = Cover.Open
-    if m.behavior.extras.contains(Extra.Revive) && w.rngOf.random(3) == 0 then m.revivesLeft = w.rngOf.random(3) + 1
+    m.extras = m.behavior.extras.map(_.initial).toVector
     m.bornAt = w.now
 
   def think(w: World, m: Monster): Unit =
     val rng = w.rngOf
     if w.now >= m.nextThink && w.now >= m.busyUntil then
-      if m.dead then tryRevive(w, m)
+      if m.dead then updateExtras(m)(deadTick(w, m, _))
       else if m.statuses.has(StatusKind.Seized) then
         // 被定住（诱惑之光、困魔咒）：站着不动不打
         m.nextThink = w.now + 200
@@ -38,7 +38,7 @@ object MonsterAi:
         if m.action.kind != ActKind.Stand && w.now >= m.action.startedAt + m.action.duration then w.setAction(m, ActKind.Stand, 0)
         val b = m.behavior
         if updateCover(w, m, b) then
-          b.extras.foreach(extraTick(w, m, _))
+          updateExtras(m)(extraTick(w, m, _))
           if !m.dead then
             b.strike match
               case Strike.Explode if w.now - m.bornAt > 60_000 => explode(w, m)
@@ -117,7 +117,7 @@ object MonsterAi:
       case _ => true
 
   private def digAnim(w: World, m: Monster, kind: ActKind): Int =
-    val info = w.actTable(m).map(t => if kind == ActKind.DigDown || !Behavior.herbLike(m.defn) then t.death else t.walk)
+    val info = w.actTable(m).map(t => if kind == ActKind.DigDown || !m.style.herb then t.death else t.walk)
     val dur  = info.fold(600)(i => math.max(300, i.frames * i.frameTime))
     w.setAction(m, kind, dur)
     m.busyUntil = w.now + dur
@@ -150,8 +150,8 @@ object MonsterAi:
 
   /** 攻击动作：按动作表放动画，播声音和特效。返回动画时长。 */
   private def swing(w: World, m: Monster, t: Option[Actor]): Int =
-    if !Behavior.fixedDir(m.defn) then t.foreach(t => w.face(m, m.cell.dirTo(t.cell)))
-    val info = w.actTable(m).map(tab => if m.defn.raceImg == 33 then tab.critical else tab.attack)
+    if !m.style.fixedDir then t.foreach(t => w.face(m, m.cell.dirTo(t.cell)))
+    val info = w.actTable(m).map(m.style.attackAction)
     val anim = info.fold(600)(i => i.frames * i.frameTime)
     w.setAction(m, ActKind.Attack, anim)
     m.busyUntil = w.now + anim
@@ -160,20 +160,9 @@ object MonsterAi:
     attackFx(w, m, t, info.fold(6)(_.frames), info.fold(100)(_.frameTime))
     anim
 
-  /** 攻击时身上的特效（原版 TGasKuDeGi.LoadSurface 等：图库、起始帧、方向间隔 10）。 */
-  private final case class AttackFx(lib: String, base: Int, dir16: Boolean = false, extra: Int = 0, frames: Option[Int] = None)
-  private val attackFxByImg: Map[Int, AttackFx] = Map(
-    16 -> AttackFx("mon3", 1444), // 洞蛆毒气
-    20 -> AttackFx("mon4", 1800, extra = 1), // 火焰沃玛
-    21 -> AttackFx("mon4", 1900), // 沃玛教主
-    40 -> AttackFx("mon5", 350, dir16 = true), // 僵尸电光
-    49 -> AttackFx("mon7", 1680, frames = Some(9)), // 祖玛教主
-    52 -> AttackFx("mon4", 3590), // 楔蛾
-    53 -> AttackFx("mon3", 3590) // 粪虫
-  )
-
+  /** 攻击时身上的特效（按外观查 MonsterLook）。 */
   private def attackFx(w: World, m: Monster, t: Option[Actor], frames: Int, frameTime: Int): Unit =
-    attackFxByImg.get(m.defn.raceImg).foreach { f =>
+    m.style.attackFx.foreach { f =>
       val dir = (f.dir16, t) match
         case (true, Some(t)) => m.cell.dir16(t.cell)
         case (true, None)    => m.dir.code * 2
@@ -192,7 +181,7 @@ object MonsterAi:
       case Strike.Melee | Strike.Magic | Strike.Split(_) | Strike.Gas | Strike.Explode =>
         if d > 1 then false
         else
-          if !Behavior.fixedDir(m.defn) then w.face(m, m.cell.dirTo(t.cell))
+          if !m.style.fixedDir then w.face(m, m.cell.dirTo(t.cell))
           if ready(w, m) then
             b.strike match
               case Strike.Explode => explode(w, m)
@@ -298,34 +287,58 @@ object MonsterAi:
       }
 
   // ---------------- 附加本领 ----------------
+  // 每项本领的处理拿着它的旧状态、返回新状态；加一种本领在这几个 match 里各加一个分支。
 
-  private def extraTick(w: World, m: Monster, e: Extra): Unit = e match
-    case Extra.Revive => ()
-    case Extra.SummonZuma =>
-      if w.now - m.extraTick >= 1000 then
-        m.extraTick = w.now
-        val level = m.hp * 5 / m.maxHp
-        if m.hp >= m.maxHp then m.danger = 5
-        if m.danger > level && m.danger > 0 && m.target.isDefined then
-          m.danger -= 1
-          m.minions.filterInPlace(id => w.actor(id).exists(!_.dead))
-          val at = m.cell.step(m.dir)
-          val n  = w.rngOf.random(6) + 6
-          (0 until n).foreach { _ =>
-            if m.minions.size < 30 then
-              val kind = Behavior.zumaMinions(w.rngOf.random(Behavior.zumaMinions.size))
-              w.catalog.monster(kind).flatMap(w.spawnMonster(_, None, at, 2)).foreach { c =>
-                c.cover = Cover.Open
-                c.target = m.target
-                m.minions += c.id
-              }
-          }
-    case Extra.CowKing => cowKing(w, m)
+  private def updateExtras(m: Monster)(f: ExtraState => ExtraState): Unit =
+    m.extras = m.extras.map(f)
 
-  /** 沃玛教主 CowKingMonster.Run：每 30 秒检查一次。 */
-  private def cowKing(w: World, m: Monster): Unit =
-    if w.now - m.extraTick >= 30_000 then
-      m.extraTick = w.now
+  /** 活着时每回合 */
+  private def extraTick(w: World, m: Monster, s: ExtraState): ExtraState = s match
+    case r: ExtraState.Revive     => r
+    case z: ExtraState.SummonZuma => summonZuma(w, m, z)
+    case c: ExtraState.CowKing    => cowKing(w, m, c)
+
+  /** 死了以后每回合 */
+  private def deadTick(w: World, m: Monster, s: ExtraState): ExtraState = s match
+    case r: ExtraState.Revive => tryRevive(w, m, r)
+    case other                => other
+
+  /** 刚死时 */
+  def onDeath(w: World, m: Monster): Unit = updateExtras(m) {
+    // 会复活的定好复活时间，尸体留到复活
+    case r: ExtraState.Revive if r.left > 0 =>
+      val at = w.now + (w.rngOf.random(20) + 4) * 1000L
+      if m.removeAt < at + 1000 then m.removeAt = at + 1000
+      r.copy(at = Some(at))
+    case other => other
+  }
+
+  /** 祖玛教主：每秒看一次血，比上次召唤时掉了一档（20%）就召 6~11 只祖玛怪；回满血档位复原。 */
+  private def summonZuma(w: World, m: Monster, z: ExtraState.SummonZuma): ExtraState =
+    if w.now - z.lastCheck < 1000 then z
+    else
+      val hpLevel = m.hp * 5 / m.maxHp
+      val level   = if m.hp >= m.maxHp then 5 else z.level
+      if level > hpLevel && level > 0 && m.target.isDefined then
+        m.minions.filterInPlace(id => w.actor(id).exists(!_.dead))
+        val at = m.cell.step(m.dir)
+        val n  = w.rngOf.random(6) + 6
+        (0 until n).foreach { _ =>
+          if m.minions.size < 30 then
+            val kind = Behavior.zumaMinions(w.rngOf.random(Behavior.zumaMinions.size))
+            w.catalog.monster(kind).flatMap(w.spawnMonster(_, None, at, 2)).foreach { c =>
+              c.cover = Cover.Open
+              c.target = m.target
+              m.minions += c.id
+            }
+        }
+        ExtraState.SummonZuma(level - 1, w.now)
+      else ExtraState.SummonZuma(level, w.now)
+
+  /** 沃玛教主 CowKingMonster.Run：每 30 秒检查一次。被围住（8 格里 5 格走不了）就瞬移到目标身后，否则按血量狂暴。 */
+  private def cowKing(w: World, m: Monster, c: ExtraState.CowKing): ExtraState =
+    if w.now - c.lastCheck < 30_000 then c
+    else
       val jumped = m.target.flatMap(w.actor).filter(!_.dead).exists { t =>
         val blocked = Dir.values.count(d => !w.canEnter(m.cell.step(d)))
         blocked >= 5 && {
@@ -335,46 +348,41 @@ object MonsterAi:
           to.isDefined
         }
       }
-      if !jumped then
-        val before = m.danger
-        m.danger = 7 - m.hp / math.max(1, m.maxHp / 7)
-        if m.danger >= 2 && m.danger != before then
-          m.rage = Rage.Ready
-          m.rageAt = w.now
-        if m.rage == Rage.Ready then
-          if w.now - m.rageAt < 8000 then m.attackInterval = 10_000
-          else
-            m.rage = Rage.Crazy
-            m.rageAt = w.now
-        if m.rage == Rage.Crazy then
-          if w.now - m.rageAt < 8000 then
-            m.attackInterval = 500
-            m.walkInterval = 400
-          else
-            m.rage = Rage.Calm
-            m.attackInterval = m.defn.attackSpeed
-            m.walkInterval = m.defn.walkSpeed
-
-  /** 死了的僵尸过几秒爬起来（ZilKinZombi.Run）。 */
-  private def tryRevive(w: World, m: Monster): Unit =
-    m.reviveAt.filter(at => m.revivesLeft > 0 && w.now >= at).foreach { _ =>
-      if !w.canEnter(m.cell) then m.reviveAt = Some(w.now + 1000)
+      if jumped then c.copy(lastCheck = w.now)
       else
-        m.revivesLeft -= 1
-        m.reviveAt = None
+        val level = 7 - m.hp / math.max(1, m.maxHp / 7)
+        val (rage, rageAt) =
+          if level >= 2 && level != c.level then advanceRage(w, m, Rage.Ready, w.now)
+          else advanceRage(w, m, c.rage, c.rageAt)
+        ExtraState.CowKing(level, rage, rageAt, w.now)
+
+  /** 狂暴阶段往前走：准备 8 秒（几乎不出手）→ 狂暴 8 秒（攻速、移速变快）→ 平静（恢复数据表速度）。 */
+  private def advanceRage(w: World, m: Monster, rage: Rage, since: Millis): (Rage, Millis) = rage match
+    case Rage.Ready if w.now - since < 8000 =>
+      m.attackInterval = 10_000
+      (Rage.Ready, since)
+    case Rage.Ready => advanceRage(w, m, Rage.Crazy, w.now)
+    case Rage.Crazy if w.now - since < 8000 =>
+      m.attackInterval = 500
+      m.walkInterval = 400
+      (Rage.Crazy, since)
+    case Rage.Crazy =>
+      m.attackInterval = m.defn.attackSpeed
+      m.walkInterval = m.defn.walkSpeed
+      (Rage.Calm, since)
+    case Rage.Calm => (Rage.Calm, since)
+
+  /** 死了的僵尸过几秒爬起来（ZilKinZombi.Run）：血上限减半，再打死经验也减半。 */
+  private def tryRevive(w: World, m: Monster, r: ExtraState.Revive): ExtraState =
+    r.at.filter(at => r.left > 0 && w.now >= at) match
+      case None                         => r
+      case Some(_) if !w.canEnter(m.cell) => r.copy(at = Some(w.now + 1000))
+      case Some(_) =>
         m.maxHpNow = math.max(1, m.maxHpNow >> 1)
         m.hp = m.maxHpNow
-        m.expScale /= 2
         w.reviveMonster(m)
         digAnim(w, m, ActKind.DigUp)
-    }
-
-  /** 怪死时：会复活的定好复活时间，尸体留到复活。 */
-  def onDeath(w: World, m: Monster): Unit =
-    if m.revivesLeft > 0 then
-      val at = w.now + (w.rngOf.random(20) + 4) * 1000L
-      m.reviveAt = Some(at)
-      if m.removeAt < at + 1000 then m.removeAt = at + 1000
+        ExtraState.Revive(r.left - 1, None, r.times + 1)
 
   // ---------------- 移动 ----------------
 

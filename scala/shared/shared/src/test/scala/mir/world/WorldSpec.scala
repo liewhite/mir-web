@@ -133,6 +133,35 @@ object WorldSpec extends ZIOSpecDefault:
         s.run(3000)
         assertTrue(woke, k.minions.nonEmpty)
       },
+      test("会复活的僵尸：打死后原地爬起来，血上限和经验减半；次数用完就不再起来") {
+        val s   = sim()
+        val p   = join(s.w, "甲", Cell(30, 30))
+        val z   = put(s.w, "僵尸3", Cell(33, 30))
+        val max = z.maxHp
+        z.extras = Vector(ExtraState.Revive(left = 1, at = None, times = 0))
+        s.w.strike(Some(p), z, Blow(Defence.Pierce, 100_000)): Unit
+        val died = z.isDead
+        s.run(30_000)
+        val revived = !z.isDead && z.maxHp == max / 2 && z.expScale == 0.5
+        s.w.strike(Some(p), z, Blow(Defence.Pierce, 100_000)): Unit
+        s.run(30_000)
+        assertTrue(died, revived, z.isDead)
+      },
+      test("沃玛教主血少了先蓄力（几乎不出手），30 秒后检查转为狂暴（攻速、移速变快）") {
+        val s = sim()
+        join(s.w, "甲", Cell(30, 30))
+        val k = put(s.w, "沃玛教主", Cell(40, 40))
+        k.hp = k.maxHp * 3 / 10 // 狂暴档位 7 - 血/(上限/7) = 5
+        s.run(30_500)
+        val ready = (k.extras, k.attackInterval) match
+          case (Vector(ExtraState.CowKing(_, Rage.Ready, _, _)), 10_000) => true
+          case _                                                       => false
+        s.run(30_000)
+        val crazy = (k.extras, k.attackInterval, k.walkInterval) match
+          case (Vector(ExtraState.CowKing(_, Rage.Crazy, _, _)), 500, 400) => true
+          case _                                                         => false
+        assertTrue(ready, crazy)
+      },
       test("传送菜单：每个目的地都是游戏里有的地图，传到别的图交给服务端") {
         val s    = sim()
         val p    = join(s.w, "甲", Cell(30, 30))

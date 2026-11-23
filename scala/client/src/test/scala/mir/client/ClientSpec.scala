@@ -111,8 +111,8 @@ object ClientSpec extends ZIOSpecDefault:
       val ht    = catalog.actions(herb).get
       val dig   = ActionView(ActKind.DigUp, Millis(0), ht.walk.frames * 100)
       assertTrue(
-        Frames.monster(t, Frames.monsterStyle(m.raceImg), stand, Dir.Up, Millis(100), dead = false, Cover.Stone) == t.death.start,
-        Frames.monster(ht, Frames.monsterStyle(herb.raceImg), dig, Dir.Left, Millis(0), dead = false, Cover.Open) == ht.walk.start
+        Frames.monster(t, MonsterLook.of(m), stand, Dir.Up, Millis(100), dead = false, Cover.Stone) == t.death.start,
+        Frames.monster(ht, MonsterLook.of(herb), dig, Dir.Left, Millis(0), dead = false, Cover.Open) == ht.walk.start
       )
     },
     test("摇杆：死区不动、8 方向取整、推远了跑") {
