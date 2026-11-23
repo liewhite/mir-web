@@ -5,7 +5,7 @@ import scala.annotation.tailrec
 import mir.core.*
 import mir.model.*
 import mir.protocol.Tone
-import mir.rules.{Rng, SpellRules}
+import mir.rules.{Pace, Rng, SpellRules}
 
 /**
  * 战士野蛮冲撞（技能 27）：朝一个方向冲 max(2, 等级+1) 格。
@@ -17,13 +17,12 @@ import mir.rules.{Rng, SpellRules}
  * - 一步都没冲出去（推不动、贴墙）提示「冲撞力不够」。
  */
 private[world] object Rush:
-  import World.*
 
   /** 冲完的结果：自己冲了几格；算不算成功（原版只有推着对象冲出去才算，加熟练度）。 */
   final case class Result(moved: Int, succeeded: Boolean)
 
   def apply(w: World, p: Player, dir: Dir, level: Int)(using rng: Rng): Result =
-    w.face(p, dir)
+    w.grid.face(p, dir)
     val start = p.cell
     val steps = SpellRules.rushSteps(level)
 
@@ -41,20 +40,20 @@ private[world] object Rush:
           case None                           => shoveAlong(i + 1, pushes, moved, victim)
           case Some(front) if !pushable(front) => (pushes, moved, victim)
           case Some(front) =>
-            if level >= 3 then w.occupant(p.cell.step(dir, 2)).filter(pushable).foreach(w.pushBack(_, dir, 1))
-            if w.pushBack(front, dir, 1) != 1 then (pushes, moved, Some(front))
-            else shoveAlong(i + 1, pushes + 1, moved + (if w.shove(p, dir) then 1 else 0), Some(front))
+            if level >= 3 then w.occupant(p.cell.step(dir, 2)).filter(pushable).foreach(w.grid.pushBack(_, dir, 1))
+            if w.grid.pushBack(front, dir, 1) != 1 then (pushes, moved, Some(front))
+            else shoveAlong(i + 1, pushes + 1, moved + (if w.grid.shove(p, dir) then 1 else 0), Some(front))
 
     /** 面前没人时：一直冲。返回（走了几格、是不是撞了墙）；撞到别人就停，不算撞墙。 */
     @tailrec def dash(i: Int, moved: Int): (Int, Boolean) =
       if i >= steps then (moved, false)
-      else if w.shove(p, dir) then dash(i + 1, moved + 1)
+      else if w.grid.shove(p, dir) then dash(i + 1, moved + 1)
       else (moved, !w.terrain.walkable(p.cell.step(dir)))
 
     val result = w.occupant(start.step(dir)) match
       case Some(_) =>
         val (pushes, moved, victim) = shoveAlong(0, 0, 0, None)
-        victim.foreach(w.strike(Some(p), _, Blow(Defence.Armor, SpellRules.rushImpact(level, pushes))): Unit)
+        victim.foreach(w.vitals.strike(Some(p), _, Blow(Defence.Armor, SpellRules.rushImpact(level, pushes))): Unit)
         if moved == 0 then tooWeak(w, p)
         Result(moved, succeeded = moved > 0)
       case None =>
@@ -62,13 +61,13 @@ private[world] object Rush:
         if wall then
           tooWeak(w, p)
           // 原版：冲劲（等级+1 格）没用完就撞墙，自己挨一下（原版 0 级冲满 2 格时计数溢出也会挨，不照搬）
-          if moved < level + 1 then w.strike(None, p, Blow(Defence.Armor, SpellRules.rushCrash(level))): Unit
+          if moved < level + 1 then w.vitals.strike(None, p, Blow(Defence.Armor, SpellRules.rushCrash(level))): Unit
         Result(moved, succeeded = false)
 
-    val dur = math.max(1, result.moved) * RushStepMs
-    w.setAction(p, ActKind.Rush, dur, from = Option.when(result.moved > 0)(start))
-    p.busyUntil = w.now + dur + RushDizzyMs
-    if result.moved > 0 then w.arrived(p)
+    val dur = math.max(1, result.moved) * Pace.RushStepMs
+    w.grid.setAction(p, ActKind.Rush, dur, from = Option.when(result.moved > 0)(start))
+    p.busyUntil = w.now + dur + Pace.RushDizzyMs
+    if result.moved > 0 then w.grid.arrived(p)
     result
 
-  private def tooWeak(w: World, p: Player): Unit = w.notice(p, "冲撞力不够!!!", Tone.Bad)
+  private def tooWeak(w: World, p: Player): Unit = w.out.notice(p, "冲撞力不够!!!", Tone.Bad)

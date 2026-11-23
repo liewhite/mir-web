@@ -5,6 +5,7 @@ import mir.data.*
 import mir.model.*
 import mir.protocol.*
 import mir.rules.{Rng, SpellRules}
+import mir.terrain.Terrain
 import mir.rules.SpellRules.{TameOutcome, TameTarget}
 import mir.testkit.TestFiles
 import mir.view.ViewState
@@ -49,7 +50,7 @@ object SpellSpec extends ZIOSpecDefault:
     val p  = s.w.player(id).get
     p.skills ++= skills.map(k => LearnedSkill(SkillId(k), 3, 0, None))
     if charm then p.worn(EquipSlot.BraceletL) = ItemInstance(ItemUid(77L), ItemName("护身符"), 100_000, 100_000)
-    s.w.recalc(p)
+    s.w.vitals.recalc(p)
     p.stats = p.stats.copy(maxHp = 100_000, maxMp = 100_000)
     p.hp = 100_000
     p.mp = 100_000
@@ -58,7 +59,7 @@ object SpellSpec extends ZIOSpecDefault:
     p
 
   private def put(s: Sim, name: String, at: Cell): Monster =
-    s.w.spawnMonster(catalog.monster(MonsterName(name)).getOrElse(throw new AssertionError(name)), None, at, 0).get
+    s.w.spawner.spawnMonster(catalog.monster(MonsterName(name)).getOrElse(throw new AssertionError(name)), None, at, 0).get
 
   /** 把怪钉住不动（测试用：远远地定住，免得乱跑） */
   private def pin(m: Monster): Unit = m.statuses.put(Status.Seized, Millis(Long.MaxValue / 2))
@@ -130,7 +131,7 @@ object SpellSpec extends ZIOSpecDefault:
       var tries = 0
       while m.master.isEmpty && tries < 400 do
         if m.dead then m = put(s, "蛤蟆", Cell(32, 30))
-        if m.cell.chebyshev(p.cell) > 6 then s.w.teleportActor(m, Cell(32, 30))
+        if m.cell.chebyshev(p.cell) > 6 then s.w.grid.teleportActor(m, Cell(32, 30))
         s.cast(p, 20, Some(m), m.cell)
         s.run(1000)
         tries += 1
@@ -165,7 +166,7 @@ object SpellSpec extends ZIOSpecDefault:
       s.run(5000)
       val still = m.cell == at
       val rings = s.w.activeFields.count(_.effect == FieldEffect.HolyCurtain)
-      s.w.applyDamage(m, 1, Some(p.id))
+      s.w.vitals.damage(m, 1, Some(p.id))
       assertTrue(held, still, rings == 8, !m.statuses.has(StatusKind.Seized), s.view.fields.size == 8)
     },
     test("神圣战甲术、幽灵盾：没选自己人就加在自己身上，防御/魔防上限 + 等级/7+1，到时恢复") {
@@ -228,10 +229,10 @@ object SpellSpec extends ZIOSpecDefault:
       pin(m)
       m.maxHpNow = 10_000
       m.hp = 10_000
-      s.w.applyDamage(m, 100, Some(p.id))
+      s.w.vitals.damage(m, 100, Some(p.id))
       val plain = 10_000 - m.hp
-      s.w.poison(m, PoisonKind.Red, 60_000, 0, p.id)
-      s.w.applyDamage(m, 100, Some(p.id))
+      s.w.conditions.poison(m, PoisonKind.Red, 60_000, 0, p.id)
+      s.w.vitals.damage(m, 100, Some(p.id))
       assertTrue(plain == 100, 10_000 - plain - m.hp == 120)
     },
     test("地狱雷光、爆裂火焰打到范围里的怪") {

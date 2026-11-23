@@ -40,7 +40,7 @@ object Frames:
 
   /** 野蛮冲撞：每冲一格放半圈跑步帧，左右脚轮流（原版 ActRushLeft / ActRushRight）。 */
   private def rush(a: ActionView, dir: Dir, now: Millis): Int =
-    val per = mir.world.World.RushStepMs / 3.0
+    val per = mir.rules.Pace.RushStepMs / 3.0
     pick(HA.run, dir.code, ((math.max(0L, now - a.startedAt) / per).toInt) % HA.run.frames)
 
   /** 被推倒退：走路帧倒着放（原版 SM_BACKSTEP）。 */

@@ -2,6 +2,7 @@ package mir.world
 
 import mir.core.*
 import mir.rules.{ItemKind, Skill}
+import mir.terrain.Path
 
 /**
  * 玩家的自动功能，按角色设置（CharSettings）在服务端执行：自动喝药、按住攻击（打到死）、被打还手、自动烈火、自动捡物。
@@ -33,7 +34,7 @@ object AutoPlay:
         else if free(w, p) then approach(w, p, t.cell, adjacent = true)
 
   private def fetch(w: World, p: Player, id: GroundId): Unit =
-    w.ground.get(id) match
+    w.groundItem(id) match
       case None => p.intent = Intent.Idle
       case Some(g) if g.cell == p.cell =>
         PlayerOps.pickUp(w, p)
@@ -52,9 +53,9 @@ object AutoPlay:
 
   /** 走到目标旁边（或站上去）；走不了就转过去等一下。 */
   private def approach(w: World, p: Player, target: Cell, adjacent: Boolean): Unit =
-    val moved = Path.find(w.canEnter, p.cell, target, 3000, adjacent).flatMap(_.headOption).exists(w.move(p, _, run = false))
+    val moved = Path.find(w.canEnter, p.cell, target, 3000, adjacent).flatMap(_.headOption).exists(w.grid.move(p, _, run = false))
     if !moved then
-      w.face(p, p.cell.dirTo(target))
+      w.grid.face(p, p.cell.dirTo(target))
       p.busyUntil = w.now + 200
 
   private def inLine(a: Cell, b: Cell): Boolean =

@@ -5,6 +5,7 @@ import mir.core.*
 import mir.data.Catalog
 import mir.protocol.*
 import mir.rules.Rng
+import mir.terrain.Terrain
 import mir.world.*
 import org.scalajs.dom
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits.*

@@ -25,8 +25,8 @@ object Warrior:
       if p.fireReady then Effect.Fail("烈火已经准备好了")
       else
         p.fireReady = true
-        w.sound(p.cell, Sounds.fireHitReady)
-        w.notice(p, "烈火剑法准备好了", Tone.System)
+        w.out.sound(p.cell, Sounds.fireHitReady)
+        w.out.notice(p, "烈火剑法准备好了", Tone.System)
         Effect.Instant
 
   /** 野蛮冲撞：朝目标（没有就朝面向）冲。 */

@@ -48,7 +48,7 @@ lazy val shared = crossProject(JVMPlatform, JSPlatform)
   .settings(libraryDependencies += "dev.zio" %%% "zio-json" % V.zioJson)
   .jvmSettings(
     Test / fork := true,
-    Test / javaOptions ++= Seq("-Dfile.encoding=UTF-8", s"-Dmir.gameJson=${gameJson.value}", s"-Dmir.tsGolden=${tsGolden.value}")
+    Test / javaOptions ++= Seq("-Dfile.encoding=UTF-8", s"-Dmir.gameJson=${gameJson.value}", s"-Dmir.tsGolden=${tsGolden.value}", s"-Dmir.scalaRoot=${(ThisBuild / baseDirectory).value}")
   )
   .jsSettings(
     // 测试在 Node 里跑，用 CommonJS 才能 import node:fs 读 game.json

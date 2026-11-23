@@ -130,12 +130,12 @@ final class SpellCtx(
   def friendsAround(c: Cell, r: Int): Vector[Actor] = w.actorsNow.filter(a => isFriend(a) && a.cell.chebyshev(c) <= r)
 
   /** 魔法打一下：必中，扣魔防。 */
-  def hitMagic(t: Actor, power: Int): Unit = w.strike(Some(p), t, Blow(Defence.MagicArmor, power)): Unit
+  def hitMagic(t: Actor, power: Int): Unit = w.vitals.strike(Some(p), t, Blow(Defence.MagicArmor, power)): Unit
 
   def fx(lib: String, start: Int, frames: Int, frameTime: Int, at: Anchor, from: Option[Cell] = None, duration: Option[Int] = None): Unit =
-    w.effect(lib, start, frames, frameTime, at, from = from, duration = duration)
+    w.out.effect(lib, start, frames, frameTime, at, from = from, duration = duration)
 
-  def sound(at: Cell, phase: Sounds.SpellPhase): Unit = w.sound(at, Sounds.magic(skill.id, phase))
+  def sound(at: Cell, phase: Sounds.SpellPhase): Unit = w.out.sound(at, Sounds.magic(skill.id, phase))
 
   /** 符咒飞过去再在中心炸开（原版 TBujaukGroundEffect / TExploBujaukEffect：飞行 1160 起每方向 10 帧取 3 帧） */
   def charmFly(center: Cell, burst: Int, frames: Int, frameTime: Int): Unit =
@@ -153,7 +153,7 @@ final class SpellCtx(
       val left = it.dura - Durability.PerUse
       if left <= 0 then
         p.worn.remove(EquipSlot.BraceletL)
-        w.notice(p, s"${it.name.value} 用完了", Tone.Bad)
+        w.out.notice(p, s"${it.name.value} 用完了", Tone.Bad)
       else p.worn(EquipSlot.BraceletL) = it.copy(dura = left)
     }
 
@@ -166,9 +166,8 @@ final class SpellCtx(
     case _          => ""
 
   def healOne(who: Actor, heal: Int): Unit =
-    val v = math.max(0, math.min(heal, who.maxHp - who.hp))
-    who.hp += v
-    w.nearby(who.cell, ServerMsg.Heal(who.id, v))
+    val v = w.vitals.heal(who, heal)
+    w.out.nearby(who.cell, ServerMsg.Heal(who.id, v))
 
   /** 盯上放技能的人（怪还没目标时） */
   def provoke(m: Monster): Unit = if m.target.isEmpty then m.target = Some(p.id)

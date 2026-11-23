@@ -2,7 +2,7 @@ package mir.protocol
 
 import mir.core.*
 import mir.model.*
-import mir.rules.Stats
+import mir.rules.{Side, Stats}
 import zio.json.*
 
 /** 协议里用到的「看到的东西」：服务端只发客户端画面和界面需要的，不发怪物的内部状态。 */
@@ -16,8 +16,31 @@ enum Look:
   /** NPC：merchant 是 game.json merchants 里的下标（客户端据此取名字、外观、商品） */
   case Npc(merchant: MerchantRef)
 
+  /** 阵营（NPC 没有）；isGuard 认哪种怪是守卫（数据表 Catalog.isGuard）。 */
+  def side(isGuard: MonsterName => Boolean): Option[Side] = this match
+    case _: Human                           => Some(Side.Players)
+    case m: Monster if m.master.isDefined   => Some(Side.Players)
+    case m: Monster if isGuard(m.kind)      => Some(Side.Guards)
+    case m: Monster if m.mood == Mood.Crazy => Some(Side.Crazy)
+    case _: Monster                         => Some(Side.Wild)
+    case _: Npc                             => None
+
+  /** 露在外面打得到（埋着的、石像打不到）。 */
+  def exposed: Boolean = this match
+    case m: Monster => m.cover == Cover.Open
+    case _          => true
+
 object Look:
   given JsonCodec[Look] = DeriveJsonCodec.gen
+
+  /**
+   * 长这样的 a 能不能打长这样的 b：阵营敌对、b 露在外面。服务端结算和客户端选目标共用；
+   * 死活、是不是同一个由调用方看（外观里没有）。
+   */
+  def hostile(a: Look, b: Look, isGuard: MonsterName => Boolean): Boolean =
+    b.exposed && ((a.side(isGuard), b.side(isGuard)) match
+      case (Some(x), Some(y)) => Side.hostile(x, y)
+      case _                  => false)
 
 /** 一个动作：种类、开始时刻、持续多久；移动的起点；攻击的种类；施法的特效编号。 */
 final case class ActionView(

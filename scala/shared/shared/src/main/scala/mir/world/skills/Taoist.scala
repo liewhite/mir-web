@@ -42,7 +42,7 @@ object Taoist:
         amulet.flatten.toRight(Effect.Fail("左手镯位要装备灰色或黄色药粉")).map { kind =>
           consumeAmulet()
           val secs = SpellRules.poisonSecs(d, lv, sc, green = kind == PoisonKind.Green)
-          w.poison(t, kind, secs * 1000L, SpellRules.poisonTick(sc), p.id)
+          w.conditions.poison(t, kind, secs * 1000L, SpellRules.poisonTick(sc), p.id)
           t match
             case m: Monster => provoke(m)
             case _          => ()
@@ -78,7 +78,7 @@ object Taoist:
         val secs   = SpellRules.defenceUpSecs(d, lv, sc)
         val center = friendCenter
         friendsAround(center, SpellRules.DefenceRadius).foreach { a =>
-          w.defenceUp(a, magic = magic, SpellRules.defenceUpAmount(levelOf(a)), secs)
+          w.conditions.defenceUp(a, magic = magic, SpellRules.defenceUpAmount(levelOf(a)), secs)
         }
         charmFly(center, burst, 16, 50)
       })
@@ -97,13 +97,13 @@ object Taoist:
         val caught = enemiesAround(aim, SpellRules.GroupRadius).collect {
           case m: Monster if SpellRules.holyCurtainCatches(p.level, m.defn.level) => m
         }
-        caught.foreach(w.seize(_, secs))
+        caught.foreach(w.conditions.seize(_, secs))
         if caught.nonEmpty then
           List((-1, -2), (1, -2), (-2, -1), (2, -1), (-2, 1), (2, 1), (-1, 2), (1, 2)).foreach { (dx, dy) =>
-            w.addField(Cell(aim.x + dx, aim.y + dy), FieldEffect.HolyCurtain, secs * 1000L)
+            w.conditions.addField(Cell(aim.x + dx, aim.y + dy), FieldEffect.HolyCurtain, secs * 1000L)
           }
-          w.notice(p, s"困住 ${caught.size} 只怪 $secs 秒（挨打会醒）", Tone.System)
-        else w.notice(p, "没有困住怪（要比你低几级的怪才困得住）", Tone.System)
+          w.out.notice(p, s"困住 ${caught.size} 只怪 $secs 秒（挨打会醒）", Tone.System)
+        else w.out.notice(p, "没有困住怪（要比你低几级的怪才困得住）", Tone.System)
       })
 
   /** 召唤宝宝：同时只能有一只同名的，按技能等级加血加攻。 */
@@ -122,13 +122,12 @@ object Taoist:
             case None => Effect.Fail("召唤失败")
             case Some(md) =>
               consumeAmulet()
-              w.spawnMonster(md, None, p.cell.step(p.dir), 1).foreach { m =>
+              w.spawner.spawnMonster(md, None, p.cell.step(p.dir), 1).foreach { m =>
                 val boost = SpellRules.summonBoost(lv)
                 def scale(v: Int) = math.floor(v * boost + 0.5).toInt
                 m.master = Some(p.id)
                 m.petLevel = lv
-                m.maxHpNow = scale(md.hp)
-                m.hp = m.maxHpNow
+                w.vitals.setMaxHp(m, scale(md.hp))
                 m.dc = mir.data.Span(scale(md.dc.lo), scale(md.dc.hi))
                 p.pets += m.id
                 c.fx("magic", 1500, 10, 60, Anchor.OnActor(m.id))
@@ -140,10 +139,10 @@ object Taoist:
 
   /** 隐身：盯着他的怪（看不穿隐身的）丢掉目标。 */
   private def makeInvisible(w: World, a: Actor, secs: Int): Unit =
-    w.addStatus(a, Status.Invisible, secs * 1000L)
+    w.conditions.addStatus(a, Status.Invisible, secs * 1000L)
     w.monsters.filter(m => m.target.contains(a.id) && m.defn.coolEye == 0).foreach(_.target = None)
     a match
-      case q: Player => w.notice(q, s"隐身 $secs 秒（打怪或被打会现身）", Tone.System)
+      case q: Player => w.out.notice(q, s"隐身 $secs 秒（打怪或被打会现身）", Tone.System)
       case _         => ()
 
   object Invisible extends SkillHandler:
@@ -181,6 +180,6 @@ object Taoist:
             val name = displayName(a)
             if SpellRules.showHpWorks(lv) then
               val secs = SpellRules.showHpSecs(d, lv, sc)
-              w.notice(p, s"$name 血量 ${a.hp}/${a.maxHp}（看穿 $secs 秒）", Tone.System)
-            else w.notice(p, "心灵启示失败", Tone.System)
+              w.out.notice(p, s"$name 血量 ${a.hp}/${a.maxHp}（看穿 $secs 秒）", Tone.System)
+            else w.out.notice(p, "心灵启示失败", Tone.System)
           })

@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.{ItemDef, MerchantService}
 import mir.model.*
 import mir.protocol.{GameCmd, ServerMsg, ChatKind, Tone}
-import mir.rules.{ItemKind, PotionRules, Pricing, Requirement, ScrollEffect, Skill, dressSex}
+import mir.rules.{ItemKind, Pace, PotionRules, Pricing, Requirement, ScrollEffect, Skill, dressSex}
 
 /**
  * 玩家指令的执行：移动、攻击、施法、物品、NPC 买卖存取、设置、说话。
@@ -12,15 +12,12 @@ import mir.rules.{ItemKind, PotionRules, Pricing, Requirement, ScrollEffect, Ski
  * 物品逻辑照 TS 版 world.ts（useItem/equip/unequip/pickUp）和 ui/classic/classic.ts（挪位置、买卖、存取）移植。
  */
 object PlayerOps:
-  import World.*
-
-  /** 跟 NPC 说话、买卖要站在几格以内 */
-  val NpcRange = 6
+  import World.Slack
 
   def handle(w: World, p: Player, cmd: GameCmd): Unit = cmd match
     case GameCmd.Walk(from, dir) => step(w, p, from, dir, run = false)
     case GameCmd.Run(from, dir)  => step(w, p, from, dir, run = true)
-    case GameCmd.Turn(dir)       => if !p.dead then w.face(p, dir)
+    case GameCmd.Turn(dir)       => if !p.dead then w.grid.face(p, dir)
     case GameCmd.Attack(dir, target) =>
       if p.settings.stickyAttack then
         target.flatMap(w.actor).filter(w.isEnemy(p, _)).foreach(t => p.intent = Intent.Hunt(t.id, once = false))
@@ -29,17 +26,17 @@ object PlayerOps:
       report(w, p, Combat.cast(w, p, skill, SpellTarget(cell, target.flatMap(w.actor)), Slack))
     case GameCmd.SetSword(art, on) => Combat.setSword(w, p, art, on)
     case GameCmd.TalkTo(npc) =>
-      npcFor(w, p, npc, _ => true).fold(w.refuse(p, _), n => w.tell(p, ServerMsg.NpcOpened(n.id, n.ref)))
+      npcFor(w, p, npc, _ => true).fold(w.out.refuse(p, _), n => w.out.tell(p, ServerMsg.NpcOpened(n.id, n.ref)))
     case GameCmd.PickUp =>
       if !p.dead then pickUp(w, p): Unit
     case GameCmd.Revive =>
-      if p.dead then w.revivePlayer(p) else w.refuse(p, "你还活着")
+      if p.dead then w.vitals.revivePlayer(p) else w.out.refuse(p, "你还活着")
     case GameCmd.Teleport(dest) =>
       // 传送菜单：任意地方直接传到目的地（用户 #1139 定，不要钱、不看地图禁传标记）
       w.catalog.teleport(dest) match
-        case None              => w.refuse(p, "没有这个目的地")
-        case Some(_) if p.dead => w.refuse(p, "你已经死了")
-        case Some(t)           => w.transfer(p, Place(t.map, t.at))
+        case None              => w.out.refuse(p, "没有这个目的地")
+        case Some(_) if p.dead => w.out.refuse(p, "你已经死了")
+        case Some(t)           => w.roster.transfer(p, Place(t.map, t.at))
     case GameCmd.UseItem(uid)           => result(w, p, useItem(w, p, uid))
     case GameCmd.Equip(uid, slot)       => result(w, p, equip(w, p, uid, slot))
     case GameCmd.Unequip(slot)          => result(w, p, unequip(w, p, slot, None))
@@ -55,14 +52,14 @@ object PlayerOps:
     case GameCmd.Say(text) => say(w, p, text)
 
   private def report(w: World, p: Player, o: Outcome): Unit = o match
-    case Outcome.Refused(why) => w.refuse(p, why)
+    case Outcome.Refused(why) => w.out.refuse(p, why)
     case Outcome.Done | Outcome.Busy => ()
 
   /** 物品、NPC 操作：Left 是不行的原因。 */
   private type Result = Either[String, Unit]
   private val ok: Result = Right(())
 
-  private def result(w: World, p: Player, r: Result): Unit = r.left.foreach(w.refuse(p, _))
+  private def result(w: World, p: Player, r: Result): Unit = r.left.foreach(w.out.refuse(p, _))
 
   // ---------------- 移动 ----------------
 
@@ -71,12 +68,12 @@ object PlayerOps:
     val n     = if run then 2 else 1
     val clear = (1 to n).forall(k => w.canEnter(p.cell.step(dir, k)))
     if p.dead || from != p.cell || w.now + Slack < p.busyUntil || !clear then
-      w.tell(p, ServerMsg.MoveDenied(p.cell, p.dir))
+      w.out.tell(p, ServerMsg.MoveDenied(p.cell, p.dir))
     else
-      w.tell(p, ServerMsg.MoveOk)
+      w.out.tell(p, ServerMsg.MoveOk)
       p.intent = Intent.Idle
       p.manualUntil = w.now + 1000
-      w.move(p, dir, run): Unit
+      w.grid.move(p, dir, run): Unit
 
   // ---------------- 身上的物品 ----------------
 
@@ -118,20 +115,20 @@ object PlayerOps:
     here.count { g =>
       g.loot match
         case Loot.Coins(amount) =>
-          w.selfSound(p, Sounds.money)
+          w.out.selfSound(p, Sounds.money)
           p.gold = p.gold + amount
-          w.notice(p, s"捡到金币 ${amount.value}", Tone.Item)
+          w.out.notice(p, s"捡到金币 ${amount.value}", Tone.Item)
           w.removeGround(g.id)
           true
         case Loot.Item(it) =>
-          w.selfSound(p, Sounds.itemClick)
+          w.out.selfSound(p, Sounds.itemClick)
           defOf(w, it).flatMap(fits(p, _)) match
             case Left(why) =>
-              w.notice(p, why, Tone.Bad)
+              w.out.notice(p, why, Tone.Bad)
               false
             case Right(()) =>
               addToBag(w, p, it)
-              w.notice(p, s"捡到 ${label(it)}", Tone.Item)
+              w.out.notice(p, s"捡到 ${label(it)}", Tone.Item)
               w.removeGround(g.id)
               true
     } > 0
@@ -145,12 +142,10 @@ object PlayerOps:
       r          <- ItemKind.of(d) match
         case ItemKind.Potion(hp, mp, instant) =>
           consumeOne(w, p, uid)
-          w.selfSound(p, Sounds.eatDrug)
+          w.out.selfSound(p, Sounds.eatDrug)
           if instant then
-            val h = math.max(0, math.min(hp, p.stats.maxHp - p.hp))
-            p.hp += h
-            p.mp += math.max(0, math.min(mp, p.stats.maxMp - p.mp))
-            if h > 0 then w.nearby(p.cell, ServerMsg.Heal(p.id, h))
+            val h = w.vitals.heal(p, hp, mp)
+            if h > 0 then w.out.nearby(p.cell, ServerMsg.Heal(p.id, h))
           else
             // 普通药：分几跳慢慢回（PotionRules）
             p.potions = p.potions :+ PotionCourse(PotionRules.perTick(hp), PotionRules.perTick(mp), PotionRules.Ticks, w.now)
@@ -167,13 +162,13 @@ object PlayerOps:
                 ok
         case ItemKind.Scroll(ScrollEffect.Town | ScrollEffect.Escape) =>
           consumeOne(w, p, uid)
-          w.transfer(p, p.home)
+          w.roster.transfer(p, p.home)
           ok
         case ItemKind.Scroll(ScrollEffect.Random) =>
           consumeOne(w, p, uid)
           val rng = w.rngOf
           Iterator.fill(50)(Cell(rng.random(w.terrain.width), rng.random(w.terrain.height))).find(w.canEnter)
-            .foreach(c => w.transfer(p, Place(w.mapId, c)))
+            .foreach(c => w.roster.transfer(p, Place(w.mapId, c)))
           ok
         case ItemKind.Scroll(ScrollEffect.Other) => Left("这个暂时用不了")
         case ItemKind.Book(_, level) =>
@@ -186,8 +181,8 @@ object PlayerOps:
             consumeOne(w, p, uid)
             val key = Option.unless(Skill.isPassive(skill.id))((1 to 8).find(k => !p.skills.exists(_.key.contains(k)))).flatten
             p.skills += LearnedSkill(skill.id, 0, 0, key)
-            w.recalc(p)
-            w.notice(p, s"学会了 ${skill.name}", Tone.Good)
+            w.vitals.recalc(p)
+            w.out.notice(p, s"学会了 ${skill.name}", Tone.Good)
         case ItemKind.Equip(_) | ItemKind.Amulet(_) => equip(w, p, uid, None)
         case ItemKind.Material | ItemKind.Other     => Left("这个东西不能直接使用")
     yield r
@@ -219,7 +214,7 @@ object PlayerOps:
           case ItemPlace.Bag(_) => put(p, place, Some(o))
           case _                => if !addToBag(w, p, o) then put(p, place, Some(o))
       }
-      w.recalc(p)
+      w.vitals.recalc(p)
 
   /** 脱下：放到指定的空格，或包裹第一个空格。 */
   def unequip(w: World, p: Player, slot: EquipSlot, into: Option[ItemPlace]): Result =
@@ -230,7 +225,7 @@ object PlayerOps:
     yield
       p.worn.remove(slot)
       put(p, dest, Some(it))
-      w.recalc(p)
+      w.vitals.recalc(p)
 
   /** 在包裹、快捷栏、装备位之间挪（原版拖物品）。 */
   def moveItem(w: World, p: Player, uid: ItemUid, to: ItemPlace): Result =
@@ -283,7 +278,7 @@ object PlayerOps:
     for
       n <- w.actor(id).collect { case n: Npc => n }.toRight("找不到这个 NPC")
       _ <- Either.cond(!p.dead, (), "你已经死了")
-      _ <- Either.cond(p.cell.chebyshev(n.cell) <= NpcRange, (), "离得太远了")
+      _ <- Either.cond(p.cell.chebyshev(n.cell) <= Pace.NpcRange, (), "离得太远了")
       _ <- Either.cond(service(n.defn.service), (), s"${n.defn.name}不做这个")
     yield n
 
@@ -298,7 +293,7 @@ object PlayerOps:
     yield
       addToBag(w, p, it)
       p.gold = p.gold - Gold(Pricing.buy(d))
-      w.notice(p, s"买了 ${d.name.value}，花费 ${Pricing.buy(d)} 金币", Tone.Item)
+      w.out.notice(p, s"买了 ${d.name.value}，花费 ${Pricing.buy(d)} 金币", Tone.Item)
 
   /** 卖出一件的 n 个（None = 整叠），每个半价。 */
   def sell(w: World, p: Player, npc: ActorId, uid: ItemUid, n: Option[Int] = None): Result =
@@ -311,7 +306,7 @@ object PlayerOps:
     yield
       val price = Pricing.sell(d) * sold.count
       p.gold = p.gold + Gold(price)
-      w.notice(p, s"卖出 ${label(sold)}，得到 $price 金币", Tone.Item)
+      w.out.notice(p, s"卖出 ${label(sold)}，得到 $price 金币", Tone.Item)
 
   /** 存进仓库一件的 n 个（None = 整叠），并进同名一叠。 */
   def deposit(w: World, p: Player, npc: ActorId, uid: ItemUid, n: Option[Int] = None): Result =
@@ -320,7 +315,7 @@ object PlayerOps:
       it <- takeOwned(w, p, uid, n)
     yield
       Inventory.store(w.catalog, p.storage, it)
-      w.notice(p, s"保管了 ${label(it)}", Tone.Item)
+      w.out.notice(p, s"保管了 ${label(it)}", Tone.Item)
 
   /** 从仓库取回一件的 n 个（None = 整叠）。 */
   def withdraw(w: World, p: Player, npc: ActorId, uid: ItemUid, n: Option[Int] = None): Result =
@@ -332,7 +327,7 @@ object PlayerOps:
       got = Inventory.unstore(p.storage, uid, n, () => w.newUid()).get
     yield
       addToBag(w, p, got)
-      w.notice(p, s"取回 ${label(got)}", Tone.Item)
+      w.out.notice(p, s"取回 ${label(got)}", Tone.Item)
 
   // ---------------- 其他 ----------------
 
@@ -350,5 +345,5 @@ object PlayerOps:
     val text = raw.trim.take(100)
     if text.startsWith("!") then
       val msg = text.drop(1).trim
-      if msg.nonEmpty then w.players.foreach(w.tell(_, ServerMsg.Chat(p.charName, msg, ChatKind.Shout)))
-    else if text.nonEmpty then w.nearby(p.cell, ServerMsg.Chat(p.charName, text, ChatKind.Say))
+      if msg.nonEmpty then w.players.foreach(w.out.tell(_, ServerMsg.Chat(p.charName, msg, ChatKind.Shout)))
+    else if text.nonEmpty then w.out.nearby(p.cell, ServerMsg.Chat(p.charName, text, ChatKind.Say))

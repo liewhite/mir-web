@@ -3,7 +3,7 @@ package mir.world
 import mir.core.*
 import mir.model.*
 import mir.protocol.{Anchor, Tone}
-import mir.rules.{Durability, Rng, Rules, Skill, SwordRules}
+import mir.rules.{Durability, Pace, Rng, Rules, Skill, SwordRules}
 import mir.world.skills.{Effect, SkillHandlers, SpellCtx}
 
 /** 一个操作的结果：做了；在忙（冷却、上个动作没做完，不用提示）；不行（告诉玩家原因）。 */
@@ -21,7 +21,6 @@ final case class SpellTarget(cell: Cell, actor: Option[Actor])
  * 照 TS 版 combat.ts 和 world.ts playerAttack 移植。
  */
 object Combat:
-  import World.*
   import Sounds.SpellPhase
 
   // ---------------- 技能熟练度 ----------------
@@ -37,8 +36,8 @@ object Combat:
       val trained = s.train + amount
       if trained >= d.train(s.level) then
         p.skills(i) = s.copy(level = s.level + 1, train = 0)
-        w.recalc(p)
-        w.notice(p, s"${d.name} 升到 ${s.level + 1} 级", Tone.Good)
+        w.vitals.recalc(p)
+        w.out.notice(p, s"${d.name} 升到 ${s.level + 1} 级", Tone.Good)
       else p.skills(i) = s.copy(train = trained)
 
   // ---------------- 普通攻击与剑术 ----------------
@@ -48,7 +47,7 @@ object Combat:
     if p.dead then Outcome.Refused("你已经死了")
     else if w.now + slack < p.busyUntil then Outcome.Busy
     else
-      w.face(p, dir)
+      w.grid.face(p, dir)
       val target = w.occupant(p.cell.step(dir))
       val style =
         if p.fireReady && target.exists(w.isEnemy(p, _)) then HitStyle.Fire
@@ -56,23 +55,23 @@ object Combat:
         else if p.wideHitOn && p.knows(Skill.WideHit) && p.mp >= SwordRules.WideHitMp then HitStyle.Wide
         else if p.longHitOn && p.knows(Skill.LongHit) then HitStyle.Long
         else HitStyle.Normal
-      w.setAction(p, if style == HitStyle.Normal then ActKind.Attack else ActKind.Heavy, HitAnimMs, hit = Some(style))
-      p.busyUntil = w.now + math.max(HitAnimMs, p.stats.hitInterval)
-      w.sound(p.cell, Sounds.weaponSwing(w.weaponShape(p)))
+      w.grid.setAction(p, if style == HitStyle.Normal then ActKind.Attack else ActKind.Heavy, Pace.HitAnimMs, hit = Some(style))
+      p.busyUntil = w.now + math.max(Pace.HitAnimMs, p.stats.hitInterval)
+      w.out.sound(p.cell, Sounds.weaponSwing(w.vitals.weaponShape(p)))
       val styleSound = style match
         case HitStyle.Power  => Some(if p.sex == Sex.Female then Sounds.yedoWoman else Sounds.yedoMan)
         case HitStyle.Wide   => Some(Sounds.wideHit)
         case HitStyle.Fire   => Some(Sounds.fireHit)
         case HitStyle.Long   => Option.when(target.isDefined)(Sounds.longHit)
         case HitStyle.Normal => None
-      styleSound.foreach(w.sound(p.cell, _))
+      styleSound.foreach(w.out.sound(p.cell, _))
       resolveHit(w, p, dir, style, target)
       p.statuses.remove(StatusKind.Invisible)
       Outcome.Done
 
   /** 一刀：判命中，扣防御（刺杀隔一格的那下不扣）。 */
   private def physicalHit(w: World, p: Player, t: Actor, power: Int, ignoreArmor: Boolean): Unit =
-    w.strike(Some(p), t, Blow(if ignoreArmor then Defence.Pierce else Defence.Armor, power, accuracy = Some(p.stats.hit))): Unit
+    w.vitals.strike(Some(p), t, Blow(if ignoreArmor then Defence.Pierce else Defence.Armor, power, accuracy = Some(p.stats.hit))): Unit
 
   private def resolveHit(w: World, p: Player, dir: Dir, style: HitStyle, target: Option[Actor]): Unit =
     given rng: Rng = w.rngOf
@@ -85,7 +84,7 @@ object Combat:
         power = SwordRules.firePower(power, p.skillLevel(Skill.FireSword))
         p.fireReady = false
         if target.isDefined then train(w, p, Skill.FireSword.id, 1)
-      case HitStyle.Wide => p.mp -= SwordRules.WideHitMp
+      case HitStyle.Wide => w.vitals.spendMp(p, SwordRules.WideHitMp)
       case _             => ()
     target.foreach(physicalHit(w, p, _, power, ignoreArmor = false))
     if style == HitStyle.Long then
@@ -135,18 +134,18 @@ object Combat:
               if p.mp < cost then Outcome.Refused("魔法值不够")
               else
                 val t = tgt.actor.filter(a => !a.dead && w.actor(a.id).contains(a))
-                t.map(_.cell).orElse(Option.when(tgt.cell != p.cell)(tgt.cell)).foreach(c => w.face(p, p.cell.dirTo(c)))
+                t.map(_.cell).orElse(Option.when(tgt.cell != p.cell)(tgt.cell)).foreach(c => w.grid.face(p, p.cell.dirTo(c)))
                 val handler = SkillHandlers.of(skill)
                 def paid(): Unit =
-                  if skill.costsMana then p.mp -= cost
+                  if skill.costsMana then w.vitals.spendMp(p, cost)
                   skill.cooldownMs(d).foreach(ms => p.cooldown(skillId) = w.now + ms)
                 handler.cast(SpellCtx(w, p, skill, s, d, t, tgt.cell)) match
                   case Effect.Cast =>
                     paid()
-                    w.sound(p.cell, Sounds.magic(skillId, SpellPhase.Start))
-                    handler.castFx.foreach(f => w.effect(f.lib, f.start, f.frames, f.frameTime, Anchor.OnActor(p.id)))
-                    w.setAction(p, ActKind.Spell, SpellAnimMs, spellEffect = Some(d.effect))
-                    p.busyUntil = w.now + SpellInterval
+                    w.out.sound(p.cell, Sounds.magic(skillId, SpellPhase.Start))
+                    handler.castFx.foreach(f => w.out.effect(f.lib, f.start, f.frames, f.frameTime, Anchor.OnActor(p.id)))
+                    w.grid.setAction(p, ActKind.Spell, Pace.SpellAnimMs, spellEffect = Some(d.effect))
+                    p.busyUntil = w.now + Pace.SpellIntervalMs
                     train(w, p, skillId, 1 + rng.random(3))
                     if !handler.keepsInvisible then p.statuses.remove(StatusKind.Invisible)
                     Outcome.Done
@@ -164,7 +163,7 @@ object Combat:
   def setSword(w: World, p: Player, art: mir.protocol.SwordArt, on: Boolean): Unit = art match
     case mir.protocol.SwordArt.WideHit =>
       p.wideHitOn = on
-      w.notice(p, if on then "开启半月弯刀" else "关闭半月弯刀", Tone.System)
+      w.out.notice(p, if on then "开启半月弯刀" else "关闭半月弯刀", Tone.System)
     case mir.protocol.SwordArt.LongHit =>
       p.longHitOn = on
-      w.notice(p, if on then "开启刺杀剑术" else "关闭刺杀剑术", Tone.System)
+      w.out.notice(p, if on then "开启刺杀剑术" else "关闭刺杀剑术", Tone.System)

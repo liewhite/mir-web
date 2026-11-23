@@ -10,6 +10,7 @@ import mir.data.*
 import mir.model.*
 import mir.protocol.*
 import mir.rules.Rng
+import mir.terrain.Terrain
 import mir.world.*
 import zio.json.*
 import zio.test.*

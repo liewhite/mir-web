@@ -4,6 +4,7 @@ import mir.core.*
 import mir.model.*
 import mir.protocol.Anchor
 import mir.rules.Rng
+import mir.terrain.Path
 
 /**
  * 怪物每次思考做什么：按 Behavior 出招、藏身、附加本领、追人、闲逛。
@@ -15,12 +16,12 @@ object MonsterAi:
   /** 刚刷出来：按行为设好藏身状态、各项本领的初始状态。 */
   def init(w: World, m: Monster): Unit =
     given Rng = w.rngOf
-    if m.style.fixedDir then m.dir = Dir.Up
+    if m.style.fixedDir then w.grid.face(m, Dir.Up)
     m.behavior.hiding match
       case Hiding.Burrow(_, _) | Hiding.DigOut | Hiding.Centipede => m.cover = Cover.Buried
       case Hiding.Statue(_) =>
         m.cover = Cover.Stone
-        m.style.statueDir.foreach(m.dir = _)
+        m.style.statueDir.foreach(w.grid.face(m, _))
       case Hiding.Never => m.cover = Cover.Open
     m.extras = m.behavior.extras.map(_.initial).toVector
     m.bornAt = w.now
@@ -32,10 +33,10 @@ object MonsterAi:
       else if m.statuses.has(StatusKind.Seized) then
         // 被定住（诱惑之光、困魔咒）：站着不动不打
         m.nextThink = w.now + 200
-        if m.action.kind != ActKind.Stand && w.now >= m.action.startedAt + m.action.duration then w.setAction(m, ActKind.Stand, 0)
+        if m.action.kind != ActKind.Stand && w.now >= m.action.startedAt + m.action.duration then w.grid.setAction(m, ActKind.Stand, 0)
       else
         m.nextThink = w.now + 100 + rng.random(100)
-        if m.action.kind != ActKind.Stand && w.now >= m.action.startedAt + m.action.duration then w.setAction(m, ActKind.Stand, 0)
+        if m.action.kind != ActKind.Stand && w.now >= m.action.startedAt + m.action.duration then w.grid.setAction(m, ActKind.Stand, 0)
         val b = m.behavior
         if updateCover(w, m, b) then
           updateExtras(m)(extraTick(w, m, _))
@@ -56,7 +57,7 @@ object MonsterAi:
         val range = if m.isGuard then 6 else if master.isDefined then 8 else b.strike match
           case Strike.Area(r, _) => r
           case _                 => 7
-        w.nearestEnemy(m, range)
+        w.hostility.nearestEnemy(m, range)
     }
     m.target = target.map(_.id)
     target match
@@ -68,7 +69,7 @@ object MonsterAi:
           case None if m.isGuard || b.rooted => ()
           case None =>
             // 闲逛
-            if w.rngOf.random(100) < 4 && w.move(m, Dir.fromCode(w.rngOf.random(8)), run = false) then
+            if w.rngOf.random(100) < 4 && w.grid.move(m, Dir.fromCode(w.rngOf.random(8)), run = false) then
               m.busyUntil = w.now + m.defn.walkSpeed + w.rngOf.random(1000)
 
   // ---------------- 藏身 ----------------
@@ -76,7 +77,7 @@ object MonsterAi:
   /** 先处理藏身状态。返回 false 表示这回合还藏着、不做别的。 */
   private def updateCover(w: World, m: Monster, b: Behavior): Boolean =
     def near(r: Int, strict: Boolean = false): Option[Actor] =
-      w.nearestEnemy(m, r).filter(e => !strict || m.cell.chebyshev(e.cell) < r)
+      w.hostility.nearestEnemy(m, r).filter(e => !strict || m.cell.chebyshev(e.cell) < r)
     (m.cover, b.hiding) match
       case (Cover.Stone, Hiding.Statue(wakeAll)) =>
         near(2).foreach { _ =>
@@ -96,12 +97,12 @@ object MonsterAi:
             case _                         => near(3)
           e.foreach { _ =>
             surface(w, m)
-            if h == Hiding.Centipede then m.hp = m.maxHp
+            if h == Hiding.Centipede then w.vitals.heal(m, m.maxHp): Unit
           }
         false
       case (_, Hiding.Burrow(_, reach)) =>
         val t = m.target.flatMap(w.actor).filter(t => !t.dead && m.cell.chebyshev(t.cell) <= reach)
-        t.orElse(w.nearestEnemy(m, reach)) match
+        t.orElse(w.hostility.nearestEnemy(m, reach)) match
           case None =>
             burrow(w, m)
             false
@@ -110,7 +111,7 @@ object MonsterAi:
             true
       case (_, Hiding.Centipede) =>
         if w.now - m.coverAt < 3000 then false
-        else if w.nearestEnemy(m, 5).isEmpty && w.now - m.coverAt > 10_000 then
+        else if w.hostility.nearestEnemy(m, 5).isEmpty && w.now - m.coverAt > 10_000 then
           burrow(w, m)
           false
         else true
@@ -119,7 +120,7 @@ object MonsterAi:
   private def digAnim(w: World, m: Monster, kind: ActKind): Int =
     val info = w.actTable(m).map(t => if kind == ActKind.DigDown || !m.style.herb then t.death else t.walk)
     val dur  = info.fold(600)(i => math.max(300, i.frames * i.frameTime))
-    w.setAction(m, kind, dur)
+    w.grid.setAction(m, kind, dur)
     m.busyUntil = w.now + dur
     dur
 
@@ -128,7 +129,7 @@ object MonsterAi:
     m.cover = Cover.Open
     m.coverAt = w.now
     digAnim(w, m, ActKind.DigUp)
-    w.sound(m.cell, Sounds.monster(m.defn.appr, MonsterCry.Appear))
+    w.out.sound(m.cell, Sounds.monster(m.defn.appr, MonsterCry.Appear))
 
   private def burrow(w: World, m: Monster): Unit =
     m.target = None
@@ -142,21 +143,21 @@ object MonsterAi:
 
   /** 物理一下：扣防御；checkHit 时按怪的准确判命中。 */
   private def physical(w: World, m: Monster, t: Actor, pw: Int, checkHit: Boolean = true): StrikeResult =
-    w.strike(Some(m), t, Blow(Defence.Armor, pw, accuracy = Option.when(checkHit)(m.hit)))
+    w.vitals.strike(Some(m), t, Blow(Defence.Armor, pw, accuracy = Option.when(checkHit)(m.hit)))
 
   /** 魔法一下：扣魔防；checkHit 时按怪的准确判命中（毒液、毒气）。 */
   private def magical(w: World, m: Monster, t: Actor, pw: Int, checkHit: Boolean = false): StrikeResult =
-    w.strike(Some(m), t, Blow(Defence.MagicArmor, pw, accuracy = Option.when(checkHit)(m.hit)))
+    w.vitals.strike(Some(m), t, Blow(Defence.MagicArmor, pw, accuracy = Option.when(checkHit)(m.hit)))
 
   /** 攻击动作：按动作表放动画，播声音和特效。返回动画时长。 */
   private def swing(w: World, m: Monster, t: Option[Actor]): Int =
-    if !m.style.fixedDir then t.foreach(t => w.face(m, m.cell.dirTo(t.cell)))
+    if !m.style.fixedDir then t.foreach(t => w.grid.face(m, m.cell.dirTo(t.cell)))
     val info = w.actTable(m).map(m.style.attackAction)
     val anim = info.fold(600)(i => i.frames * i.frameTime)
-    w.setAction(m, ActKind.Attack, anim)
+    w.grid.setAction(m, ActKind.Attack, anim)
     m.busyUntil = w.now + anim
     m.lastAttack = w.now
-    w.sound(m.cell, Sounds.monster(m.defn.appr, MonsterCry.Attack))
+    w.out.sound(m.cell, Sounds.monster(m.defn.appr, MonsterCry.Attack))
     attackFx(w, m, t, info.fold(6)(_.frames), info.fold(100)(_.frameTime))
     anim
 
@@ -168,7 +169,7 @@ object MonsterAi:
         case (true, None)    => m.dir.code * 2
         case (false, _)      => m.dir.code
       val n = f.frames.getOrElse(frames + f.extra)
-      w.effect(f.lib, f.base + dir * 10, n, frameTime, Anchor.OnActor(m.id))
+      w.out.effect(f.lib, f.base + dir * 10, n, frameTime, Anchor.OnActor(m.id))
     }
 
   private def ready(w: World, m: Monster): Boolean = w.now - m.lastAttack >= m.attackInterval
@@ -181,7 +182,7 @@ object MonsterAi:
       case Strike.Melee | Strike.Magic | Strike.Split(_) | Strike.Gas | Strike.Explode =>
         if d > 1 then false
         else
-          if !m.style.fixedDir then w.face(m, m.cell.dirTo(t.cell))
+          if !m.style.fixedDir then w.grid.face(m, m.cell.dirTo(t.cell))
           if ready(w, m) then
             b.strike match
               case Strike.Explode => explode(w, m)
@@ -201,7 +202,7 @@ object MonsterAi:
         val dir = m.cell.dirTo(t.cell)
         if d > 2 || m.cell.step(dir, d) != t.cell then false
         else
-          w.face(m, dir)
+          w.grid.face(m, dir)
           if ready(w, m) then
             swing(w, m, Some(t))
             val pw = power(w, m)
@@ -217,7 +218,7 @@ object MonsterAi:
             swing(w, m, Some(t))
             val delay = d * 50 + 300
             fly.foreach { f =>
-              w.effect(f.lib, f.base + m.cell.dir16(t.cell) * f.stride, f.frames, 60, Anchor.OnActor(t.id),
+              w.out.effect(f.lib, f.base + m.cell.dir16(t.cell) * f.stride, f.frames, 60, Anchor.OnActor(t.id),
                 from = Some(m.cell), blend = false, duration = Some(delay))
             }
             val pw = power(w, m)
@@ -252,33 +253,33 @@ object MonsterAi:
     if magical(w, m, t, pw, checkHit = true).connected && !t.dead && w.rngOf.random(20) == 0 then paralyze(w, t, 5000)
 
   private def poisonGreen(w: World, t: Actor, m: Monster, ms: Int, pw: Int): Unit =
-    w.poison(t, PoisonKind.Green, ms, pw, m.id)
+    w.conditions.poison(t, PoisonKind.Green, ms, pw, m.id)
     t match
-      case p: Player => w.notice(p, "你中毒了", mir.protocol.Tone.Bad)
+      case p: Player => w.out.notice(p, "你中毒了", mir.protocol.Tone.Bad)
       case _         => ()
 
   /** 麻痹（原版 STONE 状态）：这段时间不能动。 */
   private def paralyze(w: World, t: Actor, ms: Int): Unit =
-    w.paralyze(t, ms)
+    w.conditions.paralyze(t, ms)
     t match
-      case p: Player => w.notice(p, s"你被麻痹了（${ms / 1000} 秒）", mir.protocol.Tone.Bad)
+      case p: Player => w.out.notice(p, s"你被麻痹了（${ms / 1000} 秒）", mir.protocol.Tone.Bad)
       case _         => ()
 
   private def explode(w: World, m: Monster): Unit =
     val pw = power(w, m)
-    w.actorsNow.filter(a => m.cell.chebyshev(a.cell) <= 1).foreach(a => w.strike(Some(m), a, Blow(Defence.Blast, pw)): Unit)
-    w.killWithoutReward(m)
+    w.actorsNow.filter(a => m.cell.chebyshev(a.cell) <= 1).foreach(a => w.vitals.strike(Some(m), a, Blow(Defence.Blast, pw)): Unit)
+    w.vitals.killWithoutReward(m)
 
   private def spawnTick(w: World, m: Monster, s: Strike.Spawn): Unit =
     m.minions.filterInPlace(id => w.actor(id).exists(!_.dead))
     if ready(w, m) then
       m.lastAttack = w.now
-      w.nearestEnemy(m, 9).filter(_ => m.minions.size < 15).foreach { t =>
+      w.hostility.nearestEnemy(m, 9).filter(_ => m.minions.size < 15).foreach { t =>
         swing(w, m, None)
         w.catalog.monster(s.child).foreach { d =>
           w.afterOn(m, 500) { m =>
             val at = if s.below then m.cell.step(Dir.Down) else m.cell
-            w.spawnMonster(d, None, at, 1).foreach { c =>
+            w.spawner.spawnMonster(d, None, at, 1).foreach { c =>
               c.target = Some(t.id)
               m.minions += c.id
             }
@@ -326,7 +327,7 @@ object MonsterAi:
         (0 until n).foreach { _ =>
           if m.minions.size < 30 then
             val kind = Behavior.zumaMinions(w.rngOf.random(Behavior.zumaMinions.size))
-            w.catalog.monster(kind).flatMap(w.spawnMonster(_, None, at, 2)).foreach { c =>
+            w.catalog.monster(kind).flatMap(w.spawner.spawnMonster(_, None, at, 2)).foreach { c =>
               c.cover = Cover.Open
               c.target = m.target
               m.minions += c.id
@@ -344,7 +345,7 @@ object MonsterAi:
         blocked >= 5 && {
           val back = t.cell.step(t.dir.opposite)
           val to   = if w.canEnter(back) then Some(back) else w.freeCellNear(t.cell, 3)
-          to.foreach(w.teleportActor(m, _))
+          to.foreach(w.grid.teleportActor(m, _))
           to.isDefined
         }
       }
@@ -378,25 +379,24 @@ object MonsterAi:
       case None                         => r
       case Some(_) if !w.canEnter(m.cell) => r.copy(at = Some(w.now + 1000))
       case Some(_) =>
-        m.maxHpNow = math.max(1, m.maxHpNow >> 1)
-        m.hp = m.maxHpNow
-        w.reviveMonster(m)
+        w.vitals.setMaxHp(m, math.max(1, m.maxHpNow >> 1))
+        w.vitals.reviveMonster(m)
         digAnim(w, m, ActKind.DigUp)
         ExtraState.Revive(r.left - 1, None, r.times + 1)
 
   // ---------------- 移动 ----------------
 
   def stepToward(w: World, m: Monster, t: Cell): Unit =
-    if w.move(m, m.cell.dirTo(t), run = false) then m.busyUntil = w.now + m.walkInterval
+    if w.grid.move(m, m.cell.dirTo(t), run = false) then m.busyUntil = w.now + m.walkInterval
     else
       Path.find(w.canEnter, m.cell, t, 200, adjacent = true).flatMap(_.headOption) match
-        case Some(d) if w.move(m, d, run = false) => m.busyUntil = w.now + m.walkInterval
+        case Some(d) if w.grid.move(m, d, run = false) => m.busyUntil = w.now + m.walkInterval
         case _                                    => m.busyUntil = w.now + 500
 
   private def stepAway(w: World, m: Monster, t: Cell): Boolean =
     val away = m.cell.dirTo(t).opposite
     List(away, away.turn(1), away.turn(-1)).exists { d =>
-      val ok = w.move(m, d, run = false)
+      val ok = w.grid.move(m, d, run = false)
       if ok then m.busyUntil = w.now + m.walkInterval
       ok
     }

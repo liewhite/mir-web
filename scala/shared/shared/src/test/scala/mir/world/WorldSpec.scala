@@ -5,6 +5,7 @@ import mir.data.*
 import mir.model.*
 import mir.protocol.*
 import mir.rules.Rng
+import mir.terrain.Terrain
 import mir.testkit.TestFiles
 import mir.view.ViewState
 import zio.test.*
@@ -47,7 +48,7 @@ object WorldSpec extends ZIOSpecDefault:
     def consistent(p: Player): Boolean =
       val (as, gs) = w.visibleTo(p)
       val v        = views.getOrElse(p.id, ViewState())
-      val sv       = w.selfView(p)
+      val sv       = w.visibility.selfView(p)
       v.me.contains(p.id) &&
       v.actors == as.map(a => a.id -> w.viewOf(a)).toMap &&
       v.ground == gs.map(g => g.id -> g.view).toMap &&
@@ -67,7 +68,7 @@ object WorldSpec extends ZIOSpecDefault:
     p
 
   private def put(w: World, name: String, at: Cell): Monster =
-    w.spawnMonster(catalog.monster(MonsterName(name)).getOrElse(throw new AssertionError(name)), None, at, 0).get
+    w.spawner.spawnMonster(catalog.monster(MonsterName(name)).getOrElse(throw new AssertionError(name)), None, at, 0).get
 
   private def sim(map: MapDef = testMap, seed: Long = 1): Sim = Sim(world(map, seed))
 
@@ -80,7 +81,7 @@ object WorldSpec extends ZIOSpecDefault:
         val buried0 = m.cover == Cover.Buried && !s.w.isEnemy(p, m)
         s.run(3000)
         val buried1 = m.cover == Cover.Buried
-        s.w.teleportActor(p, Cell(38, 30))
+        s.w.grid.teleportActor(p, Cell(38, 30))
         s.run(3000)
         assertTrue(buried0, buried1, m.cover == Cover.Open, s.w.isEnemy(p, m))
       },
@@ -90,7 +91,7 @@ object WorldSpec extends ZIOSpecDefault:
         val a = put(s.w, "祖玛雕像", Cell(40, 30))
         val b = put(s.w, "祖玛雕像", Cell(45, 30))
         val stone = a.cover == Cover.Stone
-        s.w.teleportActor(p, Cell(38, 30))
+        s.w.grid.teleportActor(p, Cell(38, 30))
         s.run(3000)
         assertTrue(stone, a.cover == Cover.Open, b.cover == Cover.Open)
       },
@@ -139,11 +140,11 @@ object WorldSpec extends ZIOSpecDefault:
         val z   = put(s.w, "僵尸3", Cell(33, 30))
         val max = z.maxHp
         z.extras = Vector(ExtraState.Revive(left = 1, at = None, times = 0))
-        s.w.strike(Some(p), z, Blow(Defence.Pierce, 100_000)): Unit
+        s.w.vitals.strike(Some(p), z, Blow(Defence.Pierce, 100_000)): Unit
         val died = z.isDead
         s.run(30_000)
         val revived = !z.isDead && z.maxHp == max / 2 && z.expScale == 0.5
-        s.w.strike(Some(p), z, Blow(Defence.Pierce, 100_000)): Unit
+        s.w.vitals.strike(Some(p), z, Blow(Defence.Pierce, 100_000)): Unit
         s.run(30_000)
         assertTrue(died, revived, z.isDead)
       },
@@ -223,10 +224,10 @@ object WorldSpec extends ZIOSpecDefault:
         val seenA = s.views(a.id).ground.values.toSet
         val seenB = s.views(b.id).ground.values.toSet
         val g     = s.w.groundItems.head
-        s.w.teleportActor(a, g.cell)
+        s.w.grid.teleportActor(a, g.cell)
         s.cmd(a, GameCmd.PickUp)
-        s.w.teleportActor(a, Cell(g.cell.x - 2, g.cell.y))
-        s.w.teleportActor(b, g.cell)
+        s.w.grid.teleportActor(a, Cell(g.cell.x - 2, g.cell.y))
+        s.w.grid.teleportActor(b, g.cell)
         val gold0 = b.gold
         s.cmd(b, GameCmd.PickUp)
         assertTrue(
@@ -257,7 +258,7 @@ object WorldSpec extends ZIOSpecDefault:
         val pot = p.belt.flatten.head
         val hp  = catalog.item(pot.name).map(mir.rules.ItemKind.of).collect { case mir.rules.ItemKind.Potion(h, _, false) => h }.get
         p.hp = 1
-        s.w.addStatus(p, Status.Shielded(2), 60_000)
+        s.w.conditions.addStatus(p, Status.Shielded(2), 60_000)
         s.cmd(p, GameCmd.UseItem(pot.uid))
         s.w.handle(p.id, GameCmd.Teleport(TeleportRef(0)))
         s.flush()
@@ -269,7 +270,7 @@ object WorldSpec extends ZIOSpecDefault:
           s.w.player(p.id).isEmpty,
           p2.hp == math.min(p2.stats.maxHp, 1 + mir.rules.PotionRules.Ticks * mir.rules.PotionRules.perTick(hp)),
           p2.potions.isEmpty,
-          s2.w.selfView(p2).status.shieldUntil.contains(Millis(60_000))
+          s2.w.visibility.selfView(p2).status.shieldUntil.contains(Millis(60_000))
         )
       },
       test("离开视野范围就消失，走回来重新出现") {
@@ -277,10 +278,10 @@ object WorldSpec extends ZIOSpecDefault:
         val a = join(s.w, "甲", Cell(5, 30))
         val b = join(s.w, "乙", Cell(8, 30))
         s.flush()
-        s.w.teleportActor(b, Cell(5 + World.ViewRange + 3, 30))
+        s.w.grid.teleportActor(b, Cell(5 + World.ViewRange + 3, 30))
         s.flush()
         val gone = !s.views(a.id).actors.contains(b.id)
-        s.w.teleportActor(b, Cell(9, 30))
+        s.w.grid.teleportActor(b, Cell(9, 30))
         s.flush()
         assertTrue(gone, s.views(a.id).actors.contains(b.id), s.consistent(a), s.consistent(b))
       },
@@ -312,7 +313,7 @@ object WorldSpec extends ZIOSpecDefault:
         val p    = join(s.w, "甲", Cell(30, 30))
         s.flush()
         val gold = p.gold
-        val bag  = s.w.selfView(p)
+        val bag  = s.w.visibility.selfView(p)
         val fake = ItemUid(999_999_999L)
         val r1 = s.cmd(p, GameCmd.UseItem(fake))
         val r2 = s.cmd(p, GameCmd.DropItem(fake))
@@ -327,7 +328,7 @@ object WorldSpec extends ZIOSpecDefault:
           List(r1, r2, r3, r4, r5, r7, r8).forall(refused),
           r6.contains(ServerMsg.MoveDenied(Cell(30, 30), p.dir)),
           p.gold == gold,
-          s.w.selfView(p).bag == bag.bag, s.w.selfView(p).belt == bag.belt,
+          s.w.visibility.selfView(p).bag == bag.bag, s.w.visibility.selfView(p).belt == bag.belt,
           s.w.groundItems.isEmpty
         )
       },
@@ -335,7 +336,7 @@ object WorldSpec extends ZIOSpecDefault:
         val bichi = catalog.map(MapId("0")).get
         val s     = sim(bichi)
         val shopI = catalog.data.merchants.indexWhere(m => m.map == bichi.id && m.goods.exists(_.name == ItemName("金创药(小量)")))
-        val shop  = s.w.actors.values.collectFirst { case n: Npc if n.ref == MerchantRef(shopI) => n }.get
+        val shop  = s.w.actorsNow.collectFirst { case n: Npc if n.ref == MerchantRef(shopI) => n }.get
         val p     = join(s.w, "甲", shop.cell.step(Dir.Down, 2))
         s.flush()
         val price = catalog.item(ItemName("金创药(小量)")).get.price
@@ -346,9 +347,9 @@ object WorldSpec extends ZIOSpecDefault:
         p.gold = Gold(0)
         val poor  = s.cmd(p, GameCmd.Buy(shop.id, ItemName("金创药(小量)")))
         p.gold = Gold(1000)
-        s.w.teleportActor(p, shop.cell.step(Dir.Down, 10))
+        s.w.grid.teleportActor(p, shop.cell.step(Dir.Down, 10))
         val far   = s.cmd(p, GameCmd.Buy(shop.id, ItemName("金创药(小量)")))
-        s.w.teleportActor(p, shop.cell.step(Dir.Down, 2))
+        s.w.grid.teleportActor(p, shop.cell.step(Dir.Down, 2))
         val stack = p.belt.flatten.head
         val uid   = stack.uid
         s.cmd(p, GameCmd.Sell(shop.id, uid, Some(1)))
@@ -368,7 +369,7 @@ object WorldSpec extends ZIOSpecDefault:
         val (m, i) = catalog.data.merchants.zipWithIndex.find(_._1.service == MerchantService.Storage).get
         val map    = catalog.map(m.map).get
         val s      = sim(map)
-        val npc    = s.w.actors.values.collectFirst { case n: Npc if n.ref == MerchantRef(i) => n }.get
+        val npc    = s.w.actorsNow.collectFirst { case n: Npc if n.ref == MerchantRef(i) => n }.get
         val p      = join(s.w, "甲", npc.cell.step(Dir.Down, 2))
         val it     = p.belt.flatten.head
         s.cmd(p, GameCmd.Deposit(npc.id, it.uid))
@@ -386,7 +387,7 @@ object WorldSpec extends ZIOSpecDefault:
       test("叠放（#1159）：捡、拆包并进同名一叠，喝一个减一，仓库存取几个，装备不叠") {
         val (m, i) = catalog.data.merchants.zipWithIndex.find(_._1.service == MerchantService.Storage).get
         val s      = sim(catalog.map(m.map).get)
-        val npc    = s.w.actors.values.collectFirst { case n: Npc if n.ref == MerchantRef(i) => n }.get
+        val npc    = s.w.actorsNow.collectFirst { case n: Npc if n.ref == MerchantRef(i) => n }.get
         val p      = join(s.w, "甲", npc.cell.step(Dir.Down, 2))
         s.flush()
         val red    = ItemName("金创药(小量)")

@@ -3,7 +3,8 @@ package mir.server.game
 import mir.core.*
 import mir.data.Catalog
 import mir.rules.Rng
-import mir.world.{Terrain, UidSource, World}
+import mir.terrain.Terrain
+import mir.world.{UidSource, World}
 
 import java.nio.file.{Files, Path}
 import scala.collection.mutable

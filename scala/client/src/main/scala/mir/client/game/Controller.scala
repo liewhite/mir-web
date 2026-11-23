@@ -3,8 +3,8 @@ package mir.client.game
 import mir.core.*
 import mir.protocol.{GameCmd, GroundView, Look, Tone}
 import mir.model.LearnedSkill
-import mir.world.{Path, PlayerOps, World}
-import mir.rules.Skill
+import mir.rules.{Pace, Skill}
+import mir.terrain.Path
 
 /** 玩家想做的事：输入只改意图，每帧在自己空闲时推进一步。 */
 enum Intent:
@@ -122,7 +122,7 @@ final class Controller(client: GameClient):
           case Some(a) if a.cell.chebyshev(me.cell) == 1 =>
             if now >= nextAttack && client.motion.ready(now) && client.actionDone(me, now) then
               client.send(GameCmd.Attack(me.cell.dirTo(a.cell), Some(t)))
-              nextAttack = now + World.HitAnimMs + AttackGapMs
+              nextAttack = now + Pace.HitAnimMs + AttackGapMs
               // 服务端「按住攻击」关着时只打一下
               if !client.view.settings.stickyAttack then intent = Intent.Idle
           case Some(a) => approach(me.cell, a.cell, adjacent = true)
@@ -138,8 +138,8 @@ final class Controller(client: GameClient):
       case _                                                          => intent = Intent.Idle
 
 object Controller:
-  /** 离 NPC 几格就能对话（服务端允许 PlayerOps.NpcRange 格，走近一点更像原版） */
-  val TalkRange: Int = math.min(3, PlayerOps.NpcRange)
+  /** 离 NPC 几格就能对话（服务端允许 Pace.NpcRange 格，走近一点更像原版） */
+  val TalkRange: Int = math.min(3, Pace.NpcRange)
   /** 两次攻击之间在动画之外多等的毫秒（服务端还会按攻速再拒） */
   val AttackGapMs = 90L
   val PathNodes   = 3000

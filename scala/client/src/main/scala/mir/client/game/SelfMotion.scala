@@ -3,7 +3,7 @@ package mir.client.game
 import mir.core.*
 import mir.model.ActKind
 import mir.protocol.{ActionView, ActorView, GameCmd}
-import mir.world.World
+import mir.rules.Pace
 
 /**
  * 自己走路「本地先走」（原版做法）：发 Walk/Run 的同时在本地就开始走，服务端回 MoveOk 才能发下一步，
@@ -28,7 +28,7 @@ final case class SelfMotion(
   def step(self: ActorView, dir: Dir, run: Boolean, now: Millis): (SelfMotion, GameCmd) =
     val to     = self.cell.step(dir, if run then 2 else 1)
     val cmd    = if run then GameCmd.Run(self.cell, dir) else GameCmd.Walk(self.cell, dir)
-    val dur    = if run then World.RunMs else World.WalkMs
+    val dur    = if run then Pace.RunMs else Pace.WalkMs
     val action = ActionView(if run then ActKind.Run else ActKind.Walk, now, dur, from = Some(self.cell))
     (copy(pending = Some(cmd), local = Some(self.copy(cell = to, dir = dir, action = action))), cmd)
 

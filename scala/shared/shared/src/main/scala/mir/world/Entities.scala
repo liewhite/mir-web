@@ -9,8 +9,9 @@ import mir.rules.{Skill, Stats}
 import scala.collection.mutable
 
 /**
- * 世界里的对象：玩家、怪物、NPC。只有状态；改状态的规则在 World、Combat、MonsterAi、PlayerOps 里。
- * 位置、朝向、动作只由 World 改（它负责占位和通知旁人），这里的 var 对 world 包以外不开放写。
+ * 世界里的对象：玩家、怪物、NPC。只有状态；改状态的规则在 World 的各部分和 Combat、MonsterAi、PlayerOps 里。
+ * 格子、朝向、动作只由 Placement 改（它负责占位），血量、蓝量、血上限只由 Vitals 改（OwnershipSpec 按源码查）；
+ * 这里的 var 对 world 包以外不开放写。
  */
 
 /** 喝下的一瓶普通药还没回完的部分：每跳回多少、还剩几跳、下一跳的时刻。 */
@@ -141,7 +142,7 @@ final class Monster(id: ActorId, val defn: MonsterDef, val behavior: Behavior, i
   def mac: Span    = buffedMac(defn.mac)
   def agility: Int = defn.speed
   def hit: Int     = defn.hit
-  def isGuard: Boolean = Behavior.isGuard(defn)
+  def isGuard: Boolean = defn.isGuard
   /** 按外观的画法和特效 */
   val style: MonsterLook = MonsterLook.of(defn)
   /** 此刻的状态（定住优先；宝宝不会发狂），也是名字颜色 */

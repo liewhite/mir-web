@@ -8,7 +8,6 @@ import mir.data.Catalog
 import mir.model.ActKind
 import mir.protocol.*
 import mir.view.ViewState
-import mir.world.Behavior
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits.*
 
 import scala.concurrent.Future
@@ -134,11 +133,9 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
 
   def actor(id: ActorId): Option[ActorView] = if view.me.contains(id) then self else view.actors.get(id)
 
-  /** 能打的：活着、露在外面的野怪（不是守卫、不是宝宝）。 */
-  def isEnemy(a: ActorView): Boolean = !a.dead && (a.look match
-    case Look.Monster(kind, cover, master, _) =>
-      cover == mir.model.Cover.Open && master.isEmpty && catalog.monster(kind).forall(d => !Behavior.isGuard(d))
-    case _ => false)
+  /** 能打的：活着、和自己敌对、露在外面（野怪、发狂的怪；不是守卫、宝宝），和服务端同一条规则（Look.hostile）。 */
+  def isEnemy(a: ActorView): Boolean =
+    !a.dead && self.exists(me => me.id != a.id && Look.hostile(me.look, a.look, catalog.isGuard))
 
   /**
    * 此刻哪些格子能走进去：地形能走、没有活着的对象站着（按看得到的算，服务端最终判定）。

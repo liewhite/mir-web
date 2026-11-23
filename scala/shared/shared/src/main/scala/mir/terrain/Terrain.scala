@@ -1,4 +1,4 @@
-package mir.world
+package mir.terrain
 
 import mir.core.{Cell, Dir}
 

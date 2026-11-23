@@ -178,10 +178,16 @@ final case class MonsterDef(
     attackSpeed: Int,
     coolEye: Int,
     viewRange: Int
-)
+):
+  /**
+   * 守卫（不打玩家、玩家打不到，见到怪就打）：按 Race 认（OpenMir2 Race.cs：11 Supreguard、12 Petsupreguard、
+   * 20 ArcherPolice、112 ArcherGuard）。TS 版按名字带「卫士」认，把沃玛卫士、祖玛卫士也当成了守卫。
+   */
+  def isGuard: Boolean = MonsterDef.GuardRaces.contains(race)
 
 object MonsterDef:
   given JsonCodec[MonsterDef] = DeriveJsonCodec.gen
+  private val GuardRaces = Set(11, 12, 20, 112)
 
 /** 爆率一行：numerator/denominator 的概率掉 amount 个（金币是数额）。 */
 final case class DropDef(item: ItemName, numerator: Int, denominator: Int, amount: Int):

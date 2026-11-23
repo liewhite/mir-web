@@ -1,7 +1,7 @@
 package mir.client.assets
 
 import mir.core.MapId
-import mir.world.Terrain
+import mir.terrain.Terrain
 
 import scala.scalajs.js.typedarray.{ArrayBuffer, DataView, Int8Array, Uint16Array, Uint8Array}
 

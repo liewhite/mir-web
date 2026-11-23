@@ -118,11 +118,5 @@ object Behavior:
     case 117           => Behavior(Strike.Explode)
     case _             => Behavior(Strike.Melee)
 
-  /**
-   * 守卫（不打玩家、玩家打不到，见到怪就打）：按 Race 认（OpenMir2 Race.cs：11 Supreguard、12 Petsupreguard、
-   * 20 ArcherPolice、112 ArcherGuard）。TS 版按名字带「卫士」认，把沃玛卫士、祖玛卫士也当成了守卫。
-   */
-  def isGuard(d: MonsterDef): Boolean = Set(11, 12, 20, 112).contains(d.race)
-
   /** 动物：鸡（51）、鹿羊（52）、狼（53），原版 Animal = true，诱惑之光对它们无效（WorldServer.MonGen.cs）。 */
   def isAnimal(d: MonsterDef): Boolean = Set(51, 52, 53).contains(d.race)

@@ -3,7 +3,7 @@ package mir.world.skills
 import mir.core.*
 import mir.protocol.Anchor
 import mir.protocol.Tone
-import mir.rules.SpellRules
+import mir.rules.{Pace, SpellRules}
 import mir.rules.Rng
 import mir.world.*
 import mir.world.Sounds.SpellPhase
@@ -95,7 +95,7 @@ object Wizard:
         val damage = mcPower()
         val secs   = SpellRules.fireWallSecs(d, lv, mc)
         val cells  = List(aim.step(Dir.Up), aim.step(Dir.Left), aim, aim.step(Dir.Right), aim.step(Dir.Down))
-        cells.filter(w.terrain.walkable).foreach(cell => w.addField(cell, FieldEffect.Fire(p.id, damage), secs * 1000L))
+        cells.filter(w.terrain.walkable).foreach(cell => w.conditions.addField(cell, FieldEffect.Fire(p.id, damage), secs * 1000L))
       })
 
   /** 抗拒火环：推开身边比自己等级低的（MagPushArround）。 */
@@ -104,7 +104,7 @@ object Wizard:
     def cast(c: SpellCtx)(using Rng): Effect =
       import c.*
       enemiesAround(p.cell, 1).foreach { a =>
-        SpellRules.repelPush(p.level, levelOf(a), lv).foreach(n => w.pushBack(a, p.cell.dirTo(a.cell), n): Unit)
+        SpellRules.repelPush(p.level, levelOf(a), lv).foreach(n => w.grid.pushBack(a, p.cell.dirTo(a.cell), n): Unit)
       }
       c.fx("magic", 900, 6, 80, Anchor.OnActor(p.id))
       Effect.Cast
@@ -115,22 +115,22 @@ object Wizard:
     def cast(c: SpellCtx)(using rng: Rng): Effect =
       import c.*
       if SpellRules.spaceMoveWorks(lv) then
-        w.afterOn(p, World.SpellAnimMs) { p =>
+        w.afterOn(p, Pace.SpellAnimMs) { p =>
           val home = p.home
           val dest =
             if home.map != w.mapId then Some(home) // 别的图的地形这里不知道：送到回城点，由那张图找空格
             else Iterator.fill(300)(Cell(rng.random(w.terrain.width), rng.random(w.terrain.height))).find(w.canEnter).map(Place(w.mapId, _))
-          dest.foreach(w.transfer(p, _))
+          dest.foreach(w.roster.transfer(p, _))
         }
-      else w.notice(p, "瞬息移动失败", Tone.Bad)
+      else w.out.notice(p, "瞬息移动失败", Tone.Bad)
       Effect.Cast
 
   object MagicShield extends SkillHandler:
     override val castFx = Some(CastFx("magic", 3880, 10, 60))
     def cast(c: SpellCtx)(using Rng): Effect =
       import c.*
-      w.addStatus(p, Status.Shielded(lv), SpellRules.shieldSecs(d, lv, mc) * 1000L)
-      w.notice(p, "魔法盾开启", Tone.System)
+      w.conditions.addStatus(p, Status.Shielded(lv), SpellRules.shieldSecs(d, lv, mc) * 1000L)
+      w.out.notice(p, "魔法盾开启", Tone.System)
       Effect.Cast
 
   /** 诱惑之光（MagTamming）。 */
@@ -150,18 +150,18 @@ object Wizard:
               SpellRules.tame(p.level, lv, t) match
                 case SpellRules.TameOutcome.Tamed =>
                   makePet(c, m)
-                  w.notice(p, s"$name 成了你的宝宝", Tone.Good)
+                  w.out.notice(p, s"$name 成了你的宝宝", Tone.Good)
                 case SpellRules.TameOutcome.Seized(secs) =>
-                  w.seize(m, secs)
-                  w.notice(p, s"$name 被定住了 $secs 秒（挨打会醒），再试一次", Tone.System)
+                  w.conditions.seize(m, secs)
+                  w.out.notice(p, s"$name 被定住了 $secs 秒（挨打会醒），再试一次", Tone.System)
                 case SpellRules.TameOutcome.Crazy(secs) =>
-                  w.enrage(m, secs)
-                  w.notice(p, s"$name 发狂了，$secs 秒内见谁打谁", Tone.Bad)
+                  w.conditions.enrage(m, secs)
+                  w.out.notice(p, s"$name 发狂了，$secs 秒内见谁打谁", Tone.Bad)
                 case SpellRules.TameOutcome.Killed =>
-                  w.applyDamage(m, m.hp, Some(p.id))
-                  w.notice(p, s"$name 被诱惑之光打死了", Tone.System)
+                  w.vitals.damage(m, m.hp, Some(p.id))
+                  w.out.notice(p, s"$name 被诱惑之光打死了", Tone.System)
                 case SpellRules.TameOutcome.NoEffect =>
-                  w.notice(p, s"诱惑 $name 没有成功", Tone.System)
+                  w.out.notice(p, s"诱惑 $name 没有成功", Tone.System)
             })
         case _ => Effect.Fail("需要选中一只怪")
 
@@ -188,10 +188,10 @@ object Wizard:
           c.fx("magic", 3930, 16, 80, Anchor.OnActor(m.id))
           val name = displayName(m)
           if SpellRules.turnUndeadKills(p.level, m.defn.level, lv) then
-            w.applyDamage(m, m.hp, Some(p.id))
-            w.notice(p, s"圣言术超度了 $name", Tone.Good)
+            w.vitals.damage(m, m.hp, Some(p.id))
+            w.out.notice(p, s"圣言术超度了 $name", Tone.Good)
           else
             provoke(m)
-            w.notice(p, s"圣言术没有超度 $name", Tone.System)
+            w.out.notice(p, s"圣言术没有超度 $name", Tone.System)
           Right(())
       })

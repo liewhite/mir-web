@@ -19,6 +19,8 @@ final class Catalog(val data: GameData):
 
   def item(name: ItemName): Option[ItemDef]          = itemsByName.get(name)
   def monster(name: MonsterName): Option[MonsterDef] = monstersByName.get(name)
+  /** 这种怪是守卫（敌我判断用，见 Look.hostile） */
+  def isGuard(name: MonsterName): Boolean            = monster(name).exists(_.isGuard)
   def skill(id: SkillId): Option[SkillDef]           = skillsById.get(id)
   def map(id: MapId): Option[MapDef]                 = mapsById.get(id)
   def merchant(r: MerchantRef): Option[MerchantDef] = merchantsVec.lift(r.index)

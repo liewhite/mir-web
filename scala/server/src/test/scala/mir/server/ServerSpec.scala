@@ -3,7 +3,7 @@ package mir.server
 import mir.core.*
 import mir.model.*
 import mir.protocol.*
-import mir.world.Terrain
+import mir.terrain.Terrain
 import zio.*
 import zio.test.*
 
