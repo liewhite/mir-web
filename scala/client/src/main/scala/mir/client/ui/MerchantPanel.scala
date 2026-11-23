@@ -38,6 +38,9 @@ final class MerchantPanel(ui: ClassicUi) extends Window:
   /** 出售/保管框里放的是这一格的东西（包裹里就不画它）。 */
   def holds(place: ItemPlace): Boolean = sellSpot.exists(_.from == place)
 
+  /** 开着商店的出售页（这时包裹里的物品用商店的「卖出」，不再另列随时出售） */
+  def selling: Boolean = session.isDefined && mode == MerchantMode.Sell
+
   def open(npc: ActorId, d: MerchantDef): Unit =
     session = Some(Session(npc, d))
     mode = MerchantMode.Talk

@@ -365,6 +365,65 @@ object WorldSpec extends ZIOSpecDefault:
           s.consistent(p)
         )
       },
+      test("随时出售（#1178）：不用 NPC，一叠可只卖几个，价钱同商店；穿着的、不在身上的、死了都卖不了") {
+        val s     = sim()
+        val p     = join(s.w, "甲", Cell(30, 30))
+        p.settings = p.settings.copy(autoPickup = false)
+        s.flush()
+        def refused(r: Vector[ServerMsg]) = r.exists { case ServerMsg.Refused(_) => true; case _ => false }
+        val stack = p.belt.flatten.head
+        val each  = mir.rules.Pricing.sell(catalog.item(stack.name).get)
+        val g0    = p.gold
+        s.cmd(p, GameCmd.QuickSell(stack.uid, Some(1)))
+        val one   = p.gold == g0 + Gold(each) && p.belt.flatten.head.count == stack.count - 1
+        val sword = s.w.newItem(ItemName("铁剑")).get
+        Inventory.add(catalog, p, sword)
+        val swordPrice = mir.rules.Pricing.sell(catalog.item(sword.name).get)
+        val g1    = p.gold
+        s.cmd(p, GameCmd.QuickSell(sword.uid))
+        val soldSword = p.gold == g1 + Gold(swordPrice) && !p.bag.flatten.exists(_.uid == sword.uid)
+        val worn  = p.worn(EquipSlot.Weapon)
+        val g2    = p.gold
+        val rWorn = s.cmd(p, GameCmd.QuickSell(worn.uid))
+        val rFake = s.cmd(p, GameCmd.QuickSell(ItemUid(999_999_999L)))
+        val synced = s.consistent(p)
+        p.hp = 0
+        p.dead = true
+        val rDead = s.cmd(p, GameCmd.QuickSell(stack.uid))
+        assertTrue(
+          each > 0, one, soldSword,
+          refused(rWorn), refused(rFake), refused(rDead),
+          p.gold == g2, p.worn.get(EquipSlot.Weapon).contains(worn),
+          synced
+        )
+      },
+      test("自动捡物只捡设置里勾了的种类（#1178），总开关关了什么都不捡") {
+        val s = sim()
+        val p = join(s.w, "甲", Cell(30, 30))
+        p.settings = p.settings.copy(autoPickup = true, pickupKinds = Set(PickupKind.Equip))
+        s.w.dropAt(Cell(32, 30), Loot.Item(s.w.newItem(ItemName("铁剑")).get))
+        s.w.dropAt(Cell(28, 30), Loot.Item(s.w.newItem(ItemName("金创药(小量)")).get))
+        s.w.dropAt(Cell(30, 33), Loot.Coins(Gold(77)))
+        s.run(5000)
+        val onlySword = p.bag.flatten.exists(_.name == ItemName("铁剑")) && s.w.groundItems.size == 2
+        s.cmd(p, GameCmd.UpdateSettings(p.settings.copy(autoPickup = false, pickupKinds = PickupKind.values.toSet)))
+        s.run(5000)
+        val masterOff = s.w.groundItems.size == 2
+        val g0 = p.gold
+        s.cmd(p, GameCmd.UpdateSettings(p.settings.copy(autoPickup = true, pickupKinds = Set(PickupKind.Gold))))
+        s.run(5000)
+        val gotGold = p.gold == g0 + Gold(77) && s.w.groundItems.map(_.loot).toList.collect { case Loot.Item(it) => it.name } == List(ItemName("金创药(小量)"))
+        assertTrue(onlySword, masterOff, gotGold, s.consistent(p))
+      },
+      test("物品按 StdMode 分到自动捡物的各类：肉和矿石一类、捆装药算药品") {
+        def kind(n: String) = mir.rules.ItemKind.pickupKind(catalog.item(ItemName(n)).get)
+        assertTrue(
+          kind("肉") == PickupKind.Material, kind("铁矿") == PickupKind.Material, kind("蝎子尾巴") == PickupKind.Material,
+          kind("金创药(小)包") == PickupKind.Potion, kind("太阳水") == PickupKind.Potion,
+          kind("铁剑") == PickupKind.Equip, kind("护身符") == PickupKind.Amulet, kind("回城卷") == PickupKind.Scroll,
+          kind("治愈术") == PickupKind.Book, kind("祖玛头像") == PickupKind.Other
+        )
+      },
       test("仓库：存进去取出来是同一件") {
         val (m, i) = catalog.data.merchants.zipWithIndex.find(_._1.service == MerchantService.Storage).get
         val map    = catalog.map(m.map).get

@@ -71,6 +71,8 @@ enum GameCmd:
   case MoveItem(uid: ItemUid, to: ItemPlace)
   /** 扔到地上 */
   case DropItem(uid: ItemUid)
+  /** 随时出售（#1178，不用找 NPC）：包裹或快捷栏里的一件换成金币，价钱同商店收购；count 同 Sell */
+  case QuickSell(uid: ItemUid, count: Option[Int] = None)
 
   // ---- NPC ----
   case Buy(npc: ActorId, item: ItemName)

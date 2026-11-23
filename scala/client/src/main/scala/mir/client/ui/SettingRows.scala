@@ -1,7 +1,7 @@
 package mir.client.ui
 
 import mir.client.render.ViewOptions
-import mir.model.CharSettings
+import mir.model.{CharSettings, PickupKind}
 
 /**
  * 设置窗的一行（便利功能，原版靠外挂的做成开关，用户 #1137）。分两类，存的地方不同：
@@ -11,7 +11,12 @@ import mir.model.CharSettings
 enum SettingRow(val label: String):
   case GameToggle(text: String, get: CharSettings => Boolean, set: (CharSettings, Boolean) => CharSettings) extends SettingRow(text)
   case GamePercent(text: String, get: CharSettings => Int, set: (CharSettings, Int) => CharSettings) extends SettingRow(text)
+  /** 一行里几个小勾选（自动捡哪几类） */
+  case GameChecks(text: String, boxes: List[SettingCheck]) extends SettingRow(text)
   case LocalToggle(text: String, get: ViewOptions => Boolean, set: (ViewOptions, Boolean) => ViewOptions) extends SettingRow(text)
+
+/** 一个小勾选：叫什么、怎么读、怎么改。 */
+final case class SettingCheck(label: String, get: CharSettings => Boolean, set: (CharSettings, Boolean) => CharSettings)
 
 object SettingRow:
   /** 百分比一次调多少、最大多少 */
@@ -19,8 +24,9 @@ object SettingRow:
   val PercentMax  = 95
 
   val all: List[SettingRow] = List(
-    GameToggle("自动捡附近的物品", _.autoPickup, (s, v) => s.copy(autoPickup = v)),
-    GameToggle("只捡装备、金币和书", _.pickupValuableOnly, (s, v) => s.copy(pickupValuableOnly = v)),
+    GameToggle("自动捡附近的物品（总开关）", _.autoPickup, (s, v) => s.copy(autoPickup = v)),
+    GameChecks("捡：", PickupKind.values.toList.map(k =>
+      SettingCheck(k.label, _.pickupKinds(k), (s, v) => s.copy(pickupKinds = if v then s.pickupKinds + k else s.pickupKinds - k)))),
     GamePercent("血量低于多少自动喝红药（%，0 关闭）", _.autoHpPercent, (s, v) => s.copy(autoHpPercent = v)),
     GamePercent("蓝量低于多少自动喝蓝药（%，0 关闭）", _.autoMpPercent, (s, v) => s.copy(autoMpPercent = v)),
     GameToggle("点一下怪就一直打到死", _.stickyAttack, (s, v) => s.copy(stickyAttack = v)),

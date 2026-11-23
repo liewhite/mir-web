@@ -46,6 +46,7 @@ object ProtocolSpec extends ZIOSpecDefault:
     GameCmd.MoveItem(ItemUid(42L), ItemPlace.Belt(2)),
     GameCmd.MoveItem(ItemUid(42L), ItemPlace.Worn(EquipSlot.BraceletL)),
     GameCmd.DropItem(ItemUid(42L)),
+    GameCmd.QuickSell(ItemUid(42L), Some(2)),
     GameCmd.Buy(ActorId(5), ItemName("木剑")),
     GameCmd.Sell(ActorId(5), ItemUid(44L)),
     GameCmd.Sell(ActorId(5), ItemUid(44L), Some(3)),
@@ -54,6 +55,7 @@ object ProtocolSpec extends ZIOSpecDefault:
     GameCmd.SetSkillKey(SkillId(2), Some(3)),
     GameCmd.SetSkillKey(SkillId(2), None),
     GameCmd.UpdateSettings(CharSettings(autoHpPercent = 55, autoPickup = false)),
+    GameCmd.UpdateSettings(CharSettings(pickupKinds = Set(PickupKind.Gold, PickupKind.Equip))),
     GameCmd.Say("!大家好"),
     SessionCmd.Ping(1700000000000L)
   )
@@ -132,6 +134,10 @@ object ProtocolSpec extends ZIOSpecDefault:
         (ServerMsg.Damage(ActorId(3), 5, None): ServerMsg).toJson == """{"Damage":{"target":3,"amount":5}}""",
         (GameCmd.Unequip(EquipSlot.BraceletL): ClientCmd).toJson == """{"Unequip":{"slot":"braceletL"}}"""
       )
+    },
+    test("旧存档的设置（#1178 前，带已删掉的 pickupValuableOnly、没有 pickupKinds）照常读出，自动捡物全捡") {
+      val old = """{"autoPickup":true,"pickupValuableOnly":true,"autoHpPercent":55}""".fromJson[CharSettings]
+      assertTrue(old == Right(CharSettings(autoHpPercent = 55)), old.exists(_.pickupKinds == PickupKind.values.toSet))
     },
     test("坏消息解码失败而不是抛异常") {
       assertTrue(

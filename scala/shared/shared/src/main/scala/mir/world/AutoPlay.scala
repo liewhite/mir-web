@@ -1,6 +1,7 @@
 package mir.world
 
 import mir.core.*
+import mir.model.PickupKind
 import mir.rules.{ItemKind, Skill}
 import mir.terrain.Path
 
@@ -69,18 +70,14 @@ object AutoPlay:
       Combat.cast(w, p, id, SpellTarget(p.cell, None)) match
         case _ => ()
 
+  /** 附近最近的、设置里勾了这一类、包裹放得下的地上物品（#1178）。 */
   private def nearestLoot(w: World, p: Player, radius: Int): Option[GroundItem] =
+    val wanted = p.settings.pickupKinds
     w.groundItems.filter { g =>
       val worth = g.loot match
-        case Loot.Coins(_) => true
+        case Loot.Coins(_) => wanted(PickupKind.Gold)
         case Loot.Item(it) =>
-          w.catalog.item(it.name).exists { d =>
-            val valuable = ItemKind.of(d) match
-              case ItemKind.Equip(_) | ItemKind.Book(_, _) | ItemKind.Amulet(_) => true
-              case _                                                          => false
-            (!p.settings.pickupValuableOnly || valuable) &&
-            PlayerOps.fits(p, d).isRight
-          }
+          w.catalog.item(it.name).exists(d => wanted(ItemKind.pickupKind(d)) && PlayerOps.fits(p, d).isRight)
       // 有别人站着的格子捡不了
       worth && p.cell.chebyshev(g.cell) <= radius && w.occupant(g.cell).forall(_.id == p.id)
     }.minByOption(g => p.cell.chebyshev(g.cell))

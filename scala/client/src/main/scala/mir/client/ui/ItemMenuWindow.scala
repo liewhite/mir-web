@@ -40,13 +40,17 @@ final class ItemMenuWindow(ui: ClassicUi) extends Window:
       d  <- catalog.item(it.name)
     do
       val kind = ItemKind.of(d)
+      // 随时出售（#1178）：包裹和快捷栏里的都能卖，穿着的不行；开着商店出售页时用商店的「卖出」
+      val sell = Option.unless(ui.merchant.selling)(ui.quickSellPrice(it)).flatten.map { each =>
+        MenuAction(if it.count > 1 then s"出售（每个 $each）" else s"出售 $each 金币", () => ui.quickSell(it))
+      }
       val actions: List[MenuAction] = place match
         case ItemPlace.Worn(slot) => List(MenuAction("脱下", () => ui.send(GameCmd.Unequip(slot))))
         case ItemPlace.Belt(_) =>
           List(
             MenuAction("使用", () => ui.send(GameCmd.UseItem(it.uid))),
             MenuAction("放回包裹", () => firstEmpty(m.view.bag).fold(ui.message("包裹满了", Tone.Bad))(i => ui.send(GameCmd.MoveItem(it.uid, ItemPlace.Bag(i)))))
-          )
+          ) ++ sell
         case ItemPlace.Bag(_) =>
           ui.merchant.bagActions(it, d) ++
             useLabel(kind).map(l => MenuAction(l, () => ui.send(GameCmd.UseItem(it.uid)))) ++
@@ -54,7 +58,7 @@ final class ItemMenuWindow(ui: ClassicUi) extends Window:
             List(
               MenuAction("移动", () => ui.hand = Some(Hand(place, it))),
               MenuAction("丢弃", () => ui.send(GameCmd.DropItem(it.uid)))
-            )
+            ) ++ sell
       show(ItemMenu(ui.describe(m, it), actions, anchor))
 
   private def firstEmpty(slots: Vector[Option[ItemInstance]]): Option[Int] = Some(slots.indexOf(None)).filter(_ >= 0)

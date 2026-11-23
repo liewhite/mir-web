@@ -83,6 +83,20 @@ object ItemKind:
 
   def stacks(d: ItemDef): Boolean = stacks(of(d))
 
+  /** 肉（StdMode 40）：ItemKind 里归「其他」（与 TS 版对照一致），自动捡物时和矿石、材料算一类。 */
+  private val MeatMode = 40
+
+  /** 自动捡物的分类（#1178）。 */
+  def pickupKind(d: ItemDef): PickupKind = of(d) match
+    case Potion(_, _, _) | Bundle(_)  => PickupKind.Potion
+    case Equip(_)                     => PickupKind.Equip
+    case Book(_, _)                   => PickupKind.Book
+    case Amulet(_)                    => PickupKind.Amulet
+    case Scroll(_)                    => PickupKind.Scroll
+    case Material                     => PickupKind.Material
+    case Other if d.mode == MeatMode  => PickupKind.Material
+    case Other                        => PickupKind.Other
+
 /** 一件装备带来的全部加成，全部是明确含义的字段。 */
 final case class ItemEffects(
     ac: Span = Span.zero,

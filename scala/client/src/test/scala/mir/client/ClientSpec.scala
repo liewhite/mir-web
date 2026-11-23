@@ -268,9 +268,14 @@ object ClientSpec extends ZIOSpecDefault:
       import mir.client.ui.SettingRow
       val s0 = CharSettings()
       val o0 = ViewOptions()
+      /** 切换一个小勾选只动它自己那一项，再切回来复原 */
+      def get1(b: mir.client.ui.SettingCheck, s: CharSettings): Boolean =
+        val t = b.set(s, !b.get(s))
+        t != s && b.get(t) != b.get(s) && b.set(t, b.get(s)) == s
       val flipped = SettingRow.all.map {
         case SettingRow.GameToggle(_, get, set)  => set(s0, !get(s0)) != s0 && get(set(s0, !get(s0))) != get(s0)
         case SettingRow.GamePercent(_, get, set) => get(set(s0, 55)) == 55
+        case SettingRow.GameChecks(_, boxes)     => boxes.forall(b => get1(b, s0))
         case SettingRow.LocalToggle(_, get, set) => get(set(o0, !get(o0))) != get(o0)
       }
       assertTrue(

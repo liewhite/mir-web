@@ -41,10 +41,10 @@ object LearnedSkill:
  * 只影响画面和声音的开关（血条、名字、音效）留在客户端本地，不在这里。
  */
 final case class CharSettings(
-    /** 自动捡附近的物品 */
+    /** 自动捡附近的物品（总开关） */
     autoPickup: Boolean = true,
-    /** 只捡装备、金币和书（不捡药和杂物） */
-    pickupValuableOnly: Boolean = false,
+    /** 自动捡哪几类（#1178；存档里没有这个字段时全捡） */
+    pickupKinds: Set[PickupKind] = PickupKind.values.toSet,
     /** 血量低于这个百分比自动喝红（0 关闭） */
     autoHpPercent: Int = 40,
     /** 蓝量低于这个百分比自动喝蓝（0 关闭） */
@@ -61,3 +61,20 @@ final case class CharSettings(
 
 object CharSettings:
   given JsonCodec[CharSettings] = DeriveJsonCodec.gen
+
+/**
+ * 自动捡物的分类（#1178，设置里逐类勾选）。物品归哪类由 mir.rules.ItemKind.pickupKind 按 StdMode 定。
+ * 名字进存档（CharSettings.pickupKinds），改名要兼顾旧存档。
+ */
+enum PickupKind(val label: String):
+  case Gold     extends PickupKind("金币")
+  case Potion   extends PickupKind("药品")
+  case Equip    extends PickupKind("装备")
+  case Book     extends PickupKind("书")
+  case Material extends PickupKind("肉矿石")
+  case Amulet   extends PickupKind("符毒")
+  case Scroll   extends PickupKind("卷轴")
+  case Other    extends PickupKind("其他")
+
+object PickupKind:
+  given JsonCodec[PickupKind] = EnumCodec.byName(values, _.toString)

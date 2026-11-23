@@ -20,17 +20,30 @@ final class SettingsWindow(ui: ClassicUi) extends ToggleWindow:
     val mid  = (rowH - 14) / 2
     SettingRow.all.zipWithIndex.foreach { (row, i) =>
       val ly = o.y + 40 + i * rowH
-      def check(on: Boolean)(flip: => Unit): Unit =
-        val box = Rect(o.x + 30, ly + mid, 14, 14)
+      /** 画一个勾选框加文字，点整段切换；返回占了多宽。 */
+      def checkAt(x: Double, label: String, on: Boolean, width: Double)(flip: => Unit): Double =
+        val box = Rect(x, ly + mid, 14, 14)
         g.rect(box.x, box.y, box.w, box.h, "#000")
         g.rect(box.x + 1, box.y + 1, box.w - 2, box.h - 2, "#4a3a20")
         if on then g.text("✓", box.x + 2, box.y + 1, "#ff0", bold = true)
-        g.text(row.label, o.x + 52, ly + mid + 1)
-        ui.hit(Rect(box.x, ly, math.min(400, sw - 40), rowH - 1))(flip)
+        g.text(label, x + 22, ly + mid + 1)
+        val w = width.max(22 + g.width(label) + 10)
+        ui.hit(Rect(box.x, ly, w, rowH - 1))(flip)
+        w
+      def check(on: Boolean)(flip: => Unit): Unit =
+        checkAt(o.x + 30, row.label, on, math.min(400, sw - 40))(flip): Unit
       row match
         case SettingRow.GameToggle(_, get, set) =>
           val s = m.view.settings
           check(get(s))(ui.send(GameCmd.UpdateSettings(set(s, !get(s)))))
+        case SettingRow.GameChecks(_, boxes) =>
+          // 总开关下面的分类，缩进一格、一行排开
+          val s  = m.view.settings
+          val x0 = o.x + 52
+          g.text(row.label, x0, ly + mid + 1)
+          boxes.foldLeft(x0 + g.width(row.label) + 4) { (x, b) =>
+            x + checkAt(x, b.label, b.get(s), 0)(ui.send(GameCmd.UpdateSettings(b.set(s, !b.get(s)))))
+          }: Unit
         case SettingRow.LocalToggle(_, get, set) =>
           val o2 = ui.options
           check(get(o2))(ui.env.saveOptions(set(o2, !get(o2))))

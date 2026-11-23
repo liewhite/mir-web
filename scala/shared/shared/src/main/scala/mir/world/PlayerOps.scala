@@ -42,6 +42,7 @@ object PlayerOps:
     case GameCmd.Unequip(slot)          => result(w, p, unequip(w, p, slot, None))
     case GameCmd.MoveItem(uid, to)      => result(w, p, moveItem(w, p, uid, to))
     case GameCmd.DropItem(uid)          => result(w, p, dropItem(w, p, uid))
+    case GameCmd.QuickSell(uid, n)      => result(w, p, quickSell(w, p, uid, n))
     case GameCmd.Buy(npc, item)         => result(w, p, buy(w, p, npc, item))
     case GameCmd.Sell(npc, uid, n)      => result(w, p, sell(w, p, npc, uid, n))
     case GameCmd.Deposit(npc, uid, n)   => result(w, p, deposit(w, p, npc, uid, n))
@@ -295,17 +296,36 @@ object PlayerOps:
       p.gold = p.gold - Gold(Pricing.buy(d))
       w.out.notice(p, s"买了 ${d.name.value}，花费 ${Pricing.buy(d)} 金币", Tone.Item)
 
-  /** 卖出一件的 n 个（None = 整叠），每个半价。 */
+  /** 卖给商店：只收这家店经营的种类。 */
   def sell(w: World, p: Player, npc: ActorId, uid: ItemUid, n: Option[Int] = None): Result =
     for
-      shop       <- npcFor(w, p, npc, _ == MerchantService.Shop)
-      (_, it)    <- carriedOrWhy(p, uid)
-      d          <- defOf(w, it)
-      _          <- Either.cond(shop.defn.itemModes.isEmpty || shop.defn.itemModes.contains(d.mode), (), s"${shop.defn.name}不收这种东西")
-      sold       <- takeOwned(w, p, uid, n)
+      shop <- npcFor(w, p, npc, _ == MerchantService.Shop)
+      r    <- sellOff(w, p, uid, n, d =>
+        Either.cond(shop.defn.itemModes.isEmpty || shop.defn.itemModes.contains(d.mode), (), s"${shop.defn.name}不收这种东西"))
+    yield r
+
+  /** 随时出售（#1178）：不用找 NPC，什么都收，价钱同商店。 */
+  def quickSell(w: World, p: Player, uid: ItemUid, n: Option[Int] = None): Result =
+    for
+      _ <- Either.cond(!p.dead, (), "你已经死了")
+      r <- sellOff(w, p, uid, n, _ => ok)
+    yield r
+
+  /**
+   * 卖出身上（包裹或快捷栏，穿着的不算）一件的 n 个（None = 整叠），每个 Pricing.sell。
+   * accepts：收不收这种东西；一文不值的不收（免得白白没了）。
+   */
+  private def sellOff(w: World, p: Player, uid: ItemUid, n: Option[Int], accepts: ItemDef => Result): Result =
+    for
+      (_, it) <- carriedOrWhy(p, uid)
+      d       <- defOf(w, it)
+      _       <- accepts(d)
+      _       <- Either.cond(Pricing.sell(d) > 0, (), s"${d.name.value}不值钱，卖不了")
+      sold    <- takeOwned(w, p, uid, n)
     yield
       val price = Pricing.sell(d) * sold.count
       p.gold = p.gold + Gold(price)
+      w.out.selfSound(p, Sounds.money)
       w.out.notice(p, s"卖出 ${label(sold)}，得到 $price 金币", Tone.Item)
 
   /** 存进仓库一件的 n 个（None = 整叠），并进同名一叠。 */

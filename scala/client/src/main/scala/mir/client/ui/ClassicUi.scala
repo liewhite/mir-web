@@ -7,7 +7,7 @@ import mir.core.*
 import mir.data.Catalog
 import mir.model.*
 import mir.protocol.*
-import mir.rules.ItemKind
+import mir.rules.{ItemKind, Pricing}
 import mir.view.ViewState
 import org.scalajs.dom
 
@@ -219,12 +219,20 @@ final class ClassicUi(
       val key = place.toString
       apply(Hand.click(hand, place, there, isDouble(key)))
 
-  /** 一叠东西问要几个（默认全部），单个直接按 1。 */
-  def askCount(it: ItemInstance, title: String, note: Int => Option[String], ok: Int => Unit): Unit =
-    if it.count <= 1 then ok(1)
+  /** 一叠东西问要几个（默认全部），单个直接按 1；confirm 时单个也弹框确认。 */
+  def askCount(it: ItemInstance, title: String, note: Int => Option[String], ok: Int => Unit, confirm: Boolean = false): Unit =
+    if it.count <= 1 && !confirm then ok(1)
     else
       itemMenu.close()
       quantity.show(QuantityAsk(title, it.count, note, ok))
+
+  /** 随时出售（#1178）每个卖多少；不值钱的没有。 */
+  def quickSellPrice(it: ItemInstance): Option[Int] = catalog.item(it.name).map(Pricing.sell).filter(_ > 0)
+
+  /** 随时出售：一律先弹数量框确认（单个也问，免得误卖），确定后发 QuickSell。 */
+  def quickSell(it: ItemInstance): Unit = quickSellPrice(it).foreach { each =>
+    askCount(it, s"出售 ${it.name.value}", n => Some(s"得到 ${each * n} 金币"), n => send(GameCmd.QuickSell(it.uid, Some(n))), confirm = true)
+  }
 
   def apply(step: HandStep): Unit =
     hand = step.hand
