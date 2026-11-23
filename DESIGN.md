@@ -8,9 +8,11 @@
   - `MapUnit.pas`、`DrawScrn.pas`、`Scene/`：地图绘制；`MagicEff.pas`：技能特效。
 - 服务端公式参考：`ref/Mir176/server/src`（OpenMir2 C#）。
 
-## 平台限制（muliao 核实，见 #1137 评论）
-- 页面在 sandbox（无 allow-same-origin）：localStorage/IndexedDB/Cache/OPFS 都不可用；没有写回接口；不支持 Range；无缓存（每次全量下载）；支持 gzip。
-- 存档方案待用户选（A 平台加存档接口 / B 导出导入文件）→ 代码里 SaveStore 做成接口。
+## 部署（用户 11-23 定）
+- 不放 muliao 页面（sandbox 无存储），做成独立 B/S：小服务端（静态+素材长缓存、登录、存档读写）。
+- 部署到 kaojiang 服务器（(服务器地址)，k3s + Traefik + cert-manager letsencrypt，admin@kaojiang，ssh 证书要用户批），域名 mir.leeliewhite.com（DNS 由 muliao 加）。
+- 公网域名 → 必须登录（只给用户一个账号），素材和存档都要登录后才能取。
+- kaojiang 服务器同时是 muliao 公网入口：不动 Traefik 本身，只加 Ingress；改网络前先问用户。
 
 ## 架构（领域划分）
 - `tools/`（Python，离线）：`wemade.py` 解析 WIL/WZL/MAP；`build_assets.py` 产出 `site/mir176/assets/`：

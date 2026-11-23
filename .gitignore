@@ -3,3 +3,5 @@ ref/
 node_modules/
 __pycache__/
 *.pyc
+node_modules/
+public/assets/

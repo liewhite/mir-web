@@ -21,7 +21,7 @@ from wemade import MapFile, open_library
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "raw/m176/Resource/Data"
 MAP_DIR = ROOT / "raw/m176/Map"
-OUT = ROOT.parent / "site/mir176/assets"
+OUT = ROOT / "public/assets"
 CATALOG = ROOT / "ref/Mir176/content/catalog.json"
 
 UNITX, UNITY = 48, 32

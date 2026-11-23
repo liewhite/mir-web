@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>热血传奇 1.76</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="ui"></div>
+<div id="loading">
+  <div class="box">
+    <h1>热血传奇 1.76</h1>
+    <div id="status">加载中…</div>
+    <form id="login" class="hidden">
+      <input id="password" type="password" placeholder="密码" autocomplete="current-password" autofocus>
+      <button type="submit">进入游戏</button>
+      <div id="login-error" class="err"></div>
+    </form>
+    <form id="create" class="hidden">
+      <div class="row"><label>名字 <input name="name" maxlength="14" placeholder="角色名"></label></div>
+      <div class="row choice">
+        <label><input type="radio" name="job" value="0" checked> 战士</label>
+        <label><input type="radio" name="job" value="1"> 法师</label>
+        <label><input type="radio" name="job" value="2"> 道士</label>
+      </div>
+      <div class="row choice">
+        <label><input type="radio" name="sex" value="0" checked> 男</label>
+        <label><input type="radio" name="sex" value="1"> 女</label>
+      </div>
+      <button type="submit">创建角色</button>
+    </form>
+  </div>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
