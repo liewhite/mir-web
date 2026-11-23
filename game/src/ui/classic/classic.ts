@@ -78,6 +78,8 @@ export class ClassicUi {
   private buttons: Button[] = [];
   W = 800;
   H = 600;
+  /** 触屏设备：在右侧画技能按钮（原版没有，手机上没有 F1-F8） */
+  readonly touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 
   constructor(
     private readonly g: Gfx,
@@ -142,6 +144,11 @@ export class ClassicUi {
     if (this.stateOpen) this.drawState();
     if (this.settingsOpen) this.drawSettings();
     if (this.keyDlg) this.drawKeyDlg();
+    if (this.touch) this.drawTouchSkills();
+    if (this.H > this.W * 1.2) {
+      const t = '横过来玩效果更好';
+      this.g.text(t, (this.W - this.g.width(t)) / 2, 8, '#ff0', true);
+    }
     this.drawHover();
     if (this.hand) {
       const def = this.catalog.item(this.hand.item.name);
@@ -233,6 +240,28 @@ export class ClassicUi {
     }
     // 技能快捷键提示（原版没有：F1-F8 对应的技能名，画在底栏左上方）
     void now;
+  }
+
+  // ---------------- 触屏技能按钮 ----------------
+
+  private drawTouchSkills(): void {
+    const g = this.g;
+    const keyed = this.p.skills.filter((s) => s.key > 0).sort((a, b) => a.key - b.key);
+    const x = this.W - 44;
+    let y = this.H - BOARD_H - 44;
+    for (const ls of keyed) {
+      const def = this.catalog.skillsById.get(ls.id)!;
+      const r = { x, y, w: 36, h: 36 };
+      g.rect(r.x - 2, r.y - 2, r.w + 4, r.h + 4, 'rgba(0,0,0,.55)');
+      g.img('magicon', def.effect * 2, r.x + 2, r.y + 1);
+      g.text(`F${ls.key}`, r.x, r.y + 24, '#ff0', true);
+      const cd = (this.p.cooldown.get(ls.id) ?? 0) - this.world.now;
+      if (cd > 0) g.rect(r.x, r.y, r.w, Math.round((r.h * Math.min(1, cd / Math.max(1, def.delay)))), 'rgba(0,0,0,.6)');
+      this.areas.push(r);
+      const key = ls.key;
+      this.buttons.push({ ...r, img: -1, onClick: () => this.ctl.castByKey(key, undefined, this.p.pos) });
+      y -= 42;
+    }
   }
 
   // ---------------- 状态窗 ----------------

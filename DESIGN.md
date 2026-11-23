@@ -31,11 +31,12 @@
 ## 进度
 - [x] 找素材、找数据、核实平台存储限制
 - [x] WIL/WZL/MAP 解析，比奇地图渲染验证
-- [ ] 资源管线
-- [ ] 引擎骨架：地图滚动 + 人物行走
-- [ ] 战斗/怪物/掉落/升级
-- [ ] 技能
-- [ ] UI：背包、装备、商店、属性说明
-- [ ] 便利功能（用户要求，替代外挂）
-- [ ] 存档
-- [ ] 骷髅洞、手机操作
+- [x] 资源管线（tools/build_assets.py、build_data.py；改素材后 bump_version）
+- [x] 引擎骨架、战斗/怪物/掉落/升级（战士验证过打鸡）
+- [x] 界面：用户要求「尽量接近原版 UI」→ ui/classic 照 FState.pas 移植（底栏、状态窗4页、包裹、商人、菜单、出售/保管、快捷键、设置）
+- [x] 服务端 server/server.mjs（登录、存档、ETag 缓存）；本机 dev：`set -a; . server/dev.env` 后 node server.mjs，密码 test
+- [ ] 法师/道士技能实测（特效帧号要看图校准）
+- [ ] 骷髅洞（D001 入口 0:147,33）、传送、怪物攻击人实测
+- [ ] 手机操作、小地图
+- [ ] 部署 kaojiang（k3s Ingress + cert-manager，mir.leeliewhite.com 已解析）
+- [ ] 音效（Wav/ 目录已解出）

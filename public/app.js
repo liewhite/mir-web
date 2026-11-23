@@ -758,7 +758,7 @@ function dir16(from, to) {
 function castFx(w, p, def) {
   const base = CAST_BASE[def.effect];
   if (base === void 0) return;
-  fx(w, { lib: base.lib, start: base.idx, frames: 10, frameTime: 60, at: { actor: p.id } });
+  fx(w, { lib: base.lib, start: base.idx, frames: base.frames ?? 10, frameTime: 60, at: { actor: p.id } });
 }
 var CAST_BASE = {
   1: { lib: "magic", idx: 0 },
@@ -767,7 +767,7 @@ var CAST_BASE = {
   4: { lib: "magic", idx: 600 },
   6: { lib: "magic", idx: 900 },
   7: { lib: "magic", idx: 920 },
-  9: { lib: "magic2", idx: 20 },
+  9: { lib: "magic2", idx: 20, frames: 3 },
   15: { lib: "magic", idx: 1500 },
   16: { lib: "magic", idx: 1520 },
   18: { lib: "magic", idx: 1560 },
@@ -838,7 +838,7 @@ function castSpell(w, p, skillId, tgt) {
       const delay = skillId === 11 ? 100 : 80 * chebyshev(p, t);
       w.after(delay, () => hitMagic(w, p, t, power));
       if (skillId === 11) {
-        fx(w, { lib: "magic2", start: 10, frames: 10, frameTime: 60, at: { actor: t.id } });
+        fx(w, { lib: "magic2", start: 10, frames: 5, frameTime: 80, at: { actor: t.id } });
       } else {
         const base = skillId === 1 ? 0 : 400;
         fx(w, { lib: "magic", start: base + 10 + dir16(p, t) * 10, frames: 6, frameTime: 50, at: { actor: t.id }, from: p.pos, duration: delay });
@@ -859,7 +859,7 @@ function castSpell(w, p, skillId, tgt) {
         const d = dirTo(p, e);
         w.move(e, d, false);
       }
-      fx(w, { lib: "magic", start: 900, frames: 10, frameTime: 60, at: { actor: p.id } });
+      fx(w, { lib: "magic", start: 900, frames: 6, frameTime: 80, at: { actor: p.id } });
       break;
     }
     case 9: {
@@ -869,7 +869,7 @@ function castSpell(w, p, skillId, tgt) {
         const c = step(p, d, k);
         const a = w.occupant(c.x, c.y);
         if (a) hitMagic(w, p, a, power);
-        fx(w, { lib: "magic", start: 920 + 10, frames: 10, frameTime: 50, at: c });
+        fx(w, { lib: "magic", start: 930, frames: 6, frameTime: 70, at: c });
       }
       break;
     }
@@ -900,7 +900,7 @@ function castSpell(w, p, skillId, tgt) {
       const v = Math.min(heal, maxHp - who.hp);
       who.hp += Math.max(0, v);
       w.events.push({ type: "heal", target: who.id, amount: v });
-      fx(w, { lib: "magic", start: 200 + 10, frames: 10, frameTime: 60, at: { actor: who.id } });
+      fx(w, { lib: "magic", start: 200, frames: 10, frameTime: 60, at: { actor: who.id } });
       break;
     }
     case 6: {
@@ -922,10 +922,10 @@ function castSpell(w, p, skillId, tgt) {
       consumeAmulet(p, w, 0);
       const power = attackPower(skillPower(magicBase(def.power), s.level, def.defPower) + SC[0], SC[1] - SC[0] + 1);
       const delay = 80 * chebyshev(p, t);
-      fx(w, { lib: "magic", start: 1160 + 10 + dir16(p, t) * 10, frames: 6, frameTime: 50, at: { actor: t.id }, from: p.pos, duration: delay });
+      fx(w, { lib: "magic", start: 1160 + dir16(p, t) * 10, frames: 3, frameTime: 60, at: { actor: t.id }, from: p.pos, duration: delay });
       w.after(delay, () => {
         hitMagic(w, p, t, power);
-        fx(w, { lib: "magic", start: 1160 + 170, frames: 10, frameTime: 50, at: { actor: t.id } });
+        fx(w, { lib: "magic", start: 1320, frames: 10, frameTime: 50, at: { actor: t.id } });
       });
       break;
     }
@@ -949,7 +949,7 @@ function castSpell(w, p, skillId, tgt) {
         m.hp = m.maxHp;
         m.dc = [Math.round(mdef.dc[0] * boost), Math.round(mdef.dc[1] * boost)];
         p.pets.push(m.id);
-        fx(w, { lib: "magic", start: 1500 + 10, frames: 10, frameTime: 60, at: { actor: m.id } });
+        fx(w, { lib: "magic", start: 1500, frames: 10, frameTime: 60, at: { actor: m.id } });
       }
       break;
     }
@@ -1888,7 +1888,7 @@ var Renderer = class {
         if (bx < 0 || by < 0 || bx * GROUND_BLOCK >= map.width || by * GROUND_BLOCK >= map.height) continue;
         const img = this.groundImage(map.id, bx, by);
         const visible = bx >= bx0 && bx <= bx1 && by >= by0 && by <= by1;
-        if (img && visible) this.ctx.drawImage(img, bx * bw - this.camX, by * bh - this.camY);
+        if (img && visible) this.ctx.drawImage(img, bx * bw - this.camX, by * bh - this.camY, bw + 1, bh + 1);
       }
     }
   }
@@ -2108,6 +2108,8 @@ var Controller = class {
     this.world = world;
     this.settings = settings;
     this.intent = { kind: "none" };
+    /** 最近选中的目标（点过的怪），技能默认打它 */
+    this.focus = 0;
     this.lastPotion = 0;
     this.loadingMap = false;
     /** 打开 NPC 对话的回调（UI 实现） */
@@ -2136,6 +2138,7 @@ var Controller = class {
       return;
     }
     if (!this.world.isEnemy(this.me, target)) return;
+    this.focus = target.id;
     this.intent = { kind: "attack", target: target.id, once: !this.settings.stickyAttack };
   }
   pickup(item) {
@@ -2147,8 +2150,9 @@ var Controller = class {
   /** 放技能：目标优先用鼠标下的怪，其次当前攻击目标，否则鼠标所在格。 */
   cast(skillId, hover, cell) {
     const w = this.world;
-    const cur = this.intent.kind === "attack" ? w.actors.get(this.intent.target) : void 0;
+    const cur = w.actors.get(this.intent.kind === "attack" ? this.intent.target : this.focus);
     const target = hover && !hover.dead ? hover : cur && !cur.dead ? cur : void 0;
+    if (target && w.isEnemy(this.me, target)) this.focus = target.id;
     const r2 = castSpell(w, this.me, skillId, { pos: target ? target.pos : cell, actor: target });
     if (!r2.ok && r2.why) this.onMessage(r2.why, "bad");
     if (r2.ok && target && w.isEnemy(this.me, target) && this.me.job !== 0) {
@@ -2811,6 +2815,8 @@ var ClassicUi = class {
     this.buttons = [];
     this.W = 800;
     this.H = 600;
+    /** 触屏设备：在右侧画技能按钮（原版没有，手机上没有 F1-F8） */
+    this.touch = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
   }
   get p() {
     return this.world.player;
@@ -2860,6 +2866,11 @@ var ClassicUi = class {
     if (this.stateOpen) this.drawState();
     if (this.settingsOpen) this.drawSettings();
     if (this.keyDlg) this.drawKeyDlg();
+    if (this.touch) this.drawTouchSkills();
+    if (this.H > this.W * 1.2) {
+      const t = "\u6A2A\u8FC7\u6765\u73A9\u6548\u679C\u66F4\u597D";
+      this.g.text(t, (this.W - this.g.width(t)) / 2, 8, "#ff0", true);
+    }
     this.drawHover();
     if (this.hand) {
       const def = this.catalog.item(this.hand.item.name);
@@ -2938,6 +2949,26 @@ var ClassicUi = class {
         g.imgCenter("items", this.catalog.item(it.name).look, r2.x, r2.y, r2.w, r2.h);
       }
       g.text(String(i + 1), r2.x + 13, r2.y + 19, "#fff", true);
+    }
+  }
+  // ---------------- 触屏技能按钮 ----------------
+  drawTouchSkills() {
+    const g = this.g;
+    const keyed = this.p.skills.filter((s) => s.key > 0).sort((a, b) => a.key - b.key);
+    const x = this.W - 44;
+    let y = this.H - BOARD_H - 44;
+    for (const ls of keyed) {
+      const def = this.catalog.skillsById.get(ls.id);
+      const r2 = { x, y, w: 36, h: 36 };
+      g.rect(r2.x - 2, r2.y - 2, r2.w + 4, r2.h + 4, "rgba(0,0,0,.55)");
+      g.img("magicon", def.effect * 2, r2.x + 2, r2.y + 1);
+      g.text(`F${ls.key}`, r2.x, r2.y + 24, "#ff0", true);
+      const cd = (this.p.cooldown.get(ls.id) ?? 0) - this.world.now;
+      if (cd > 0) g.rect(r2.x, r2.y, r2.w, Math.round(r2.h * Math.min(1, cd / Math.max(1, def.delay))), "rgba(0,0,0,.6)");
+      this.areas.push(r2);
+      const key = ls.key;
+      this.buttons.push({ ...r2, img: -1, onClick: () => this.ctl.castByKey(key, void 0, this.p.pos) });
+      y -= 42;
     }
   }
   // ---------------- 状态窗 ----------------
@@ -3768,7 +3799,7 @@ async function main() {
   });
   let last = performance.now();
   const frame = (t) => {
-    const dt = Math.min(100, t - last);
+    const dt = Math.min(100, t - last) * (window.__timeScale ?? 1);
     last = t;
     world.tick(dt);
     ctl.update();

@@ -159,7 +159,7 @@ async function main(): Promise<void> {
 
   let last = performance.now();
   const frame = (t: number): void => {
-    const dt = Math.min(100, t - last);
+    const dt = Math.min(100, t - last) * (((window as unknown as Record<string, unknown>).__timeScale as number | undefined) ?? 1);
     last = t;
     world.tick(dt);
     ctl.update();

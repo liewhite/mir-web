@@ -150,13 +150,13 @@ function dir16(from: Pos, to: Pos): number {
 function castFx(w: World, p: Player, def: SkillDef): void {
   const base = CAST_BASE[def.effect];
   if (base === undefined) return;
-  fx(w, { lib: base.lib, start: base.idx, frames: 10, frameTime: 60, at: { actor: p.id } });
+  fx(w, { lib: base.lib, start: base.idx, frames: base.frames ?? 10, frameTime: 60, at: { actor: p.id } });
 }
 
-const CAST_BASE: Record<number, { lib: string; idx: number }> = {
+const CAST_BASE: Record<number, { lib: string; idx: number; frames?: number }> = {
   1: { lib: 'magic', idx: 0 }, 2: { lib: 'magic', idx: 200 }, 3: { lib: 'magic', idx: 400 },
   4: { lib: 'magic', idx: 600 }, 6: { lib: 'magic', idx: 900 }, 7: { lib: 'magic', idx: 920 },
-  9: { lib: 'magic2', idx: 20 }, 15: { lib: 'magic', idx: 1500 }, 16: { lib: 'magic', idx: 1520 },
+  9: { lib: 'magic2', idx: 20, frames: 3 }, 15: { lib: 'magic', idx: 1500 }, 16: { lib: 'magic', idx: 1520 },
   18: { lib: 'magic', idx: 1560 }, 19: { lib: 'magic', idx: 1590 }, 29: { lib: 'magic', idx: 3880 },
   31: { lib: 'magic', idx: 3840 }, 27: { lib: 'magic', idx: 1790 },
 };
@@ -228,7 +228,7 @@ export function castSpell(w: World, p: Player, skillId: number, tgt: SpellTarget
       const delay = skillId === 11 ? 100 : 80 * chebyshev(p, t!);
       w.after(delay, () => hitMagic(w, p, t!, power));
       if (skillId === 11) {
-        fx(w, { lib: 'magic2', start: 10, frames: 10, frameTime: 60, at: { actor: t!.id } });
+        fx(w, { lib: 'magic2', start: 10, frames: 5, frameTime: 80, at: { actor: t!.id } });
       } else {
         const base = skillId === 1 ? 0 : 400;
         fx(w, { lib: 'magic', start: base + 10 + dir16(p, t!) * 10, frames: 6, frameTime: 50, at: { actor: t!.id }, from: p.pos, duration: delay });
@@ -249,7 +249,7 @@ export function castSpell(w: World, p: Player, skillId: number, tgt: SpellTarget
         const d = dirTo(p, e);
         w.move(e, d, false);
       }
-      fx(w, { lib: 'magic', start: 900, frames: 10, frameTime: 60, at: { actor: p.id } });
+      fx(w, { lib: 'magic', start: 900, frames: 6, frameTime: 80, at: { actor: p.id } });
       break;
     }
     case 9: { // 地狱火：直线 5 格
@@ -259,7 +259,7 @@ export function castSpell(w: World, p: Player, skillId: number, tgt: SpellTarget
         const c = step(p, d, k);
         const a = w.occupant(c.x, c.y);
         if (a) hitMagic(w, p, a, power);
-        fx(w, { lib: 'magic', start: 920 + 10, frames: 10, frameTime: 50, at: c });
+        fx(w, { lib: 'magic', start: 930, frames: 6, frameTime: 70, at: c });
       }
       break;
     }
@@ -290,7 +290,7 @@ export function castSpell(w: World, p: Player, skillId: number, tgt: SpellTarget
       const v = Math.min(heal, maxHp - who.hp);
       who.hp += Math.max(0, v);
       w.events.push({ type: 'heal', target: who.id, amount: v });
-      fx(w, { lib: 'magic', start: 200 + 10, frames: 10, frameTime: 60, at: { actor: who.id } });
+      fx(w, { lib: 'magic', start: 200, frames: 10, frameTime: 60, at: { actor: who.id } });
       break;
     }
     case 6: { // 施毒术：需要灰/黄药粉
@@ -312,10 +312,10 @@ export function castSpell(w: World, p: Player, skillId: number, tgt: SpellTarget
       consumeAmulet(p, w, 0);
       const power = attackPower(skillPower(magicBase(def.power), s.level, def.defPower) + SC[0], SC[1] - SC[0] + 1);
       const delay = 80 * chebyshev(p, t!);
-      fx(w, { lib: 'magic', start: 1160 + 10 + dir16(p, t!) * 10, frames: 6, frameTime: 50, at: { actor: t!.id }, from: p.pos, duration: delay });
+      fx(w, { lib: 'magic', start: 1160 + dir16(p, t!) * 10, frames: 3, frameTime: 60, at: { actor: t!.id }, from: p.pos, duration: delay });
       w.after(delay, () => {
         hitMagic(w, p, t!, power);
-        fx(w, { lib: 'magic', start: 1160 + 170, frames: 10, frameTime: 50, at: { actor: t!.id } });
+        fx(w, { lib: 'magic', start: 1320, frames: 10, frameTime: 50, at: { actor: t!.id } });
       });
       break;
     }
@@ -338,7 +338,7 @@ export function castSpell(w: World, p: Player, skillId: number, tgt: SpellTarget
         m.hp = m.maxHp;
         m.dc = [Math.round(mdef.dc[0] * boost), Math.round(mdef.dc[1] * boost)];
         p.pets.push(m.id);
-        fx(w, { lib: 'magic', start: 1500 + 10, frames: 10, frameTime: 60, at: { actor: m.id } });
+        fx(w, { lib: 'magic', start: 1500, frames: 10, frameTime: 60, at: { actor: m.id } });
       }
       break;
     }

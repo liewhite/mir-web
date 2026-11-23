@@ -23,6 +23,8 @@ export type Intent =
 
 export class Controller {
   intent: Intent = { kind: 'none' };
+  /** 最近选中的目标（点过的怪），技能默认打它 */
+  focus = 0;
   private lastPotion = 0;
   private loadingMap = false;
   /** 打开 NPC 对话的回调（UI 实现） */
@@ -54,6 +56,7 @@ export class Controller {
       return;
     }
     if (!this.world.isEnemy(this.me, target)) return;
+    this.focus = target.id;
     this.intent = { kind: 'attack', target: target.id, once: !this.settings.stickyAttack };
   }
 
@@ -68,8 +71,9 @@ export class Controller {
   /** 放技能：目标优先用鼠标下的怪，其次当前攻击目标，否则鼠标所在格。 */
   cast(skillId: number, hover: Actor | undefined, cell: Pos): void {
     const w = this.world;
-    const cur = this.intent.kind === 'attack' ? w.actors.get(this.intent.target) : undefined;
+    const cur = w.actors.get(this.intent.kind === 'attack' ? this.intent.target : this.focus);
     const target = hover && !hover.dead ? hover : cur && !cur.dead ? cur : undefined;
+    if (target && w.isEnemy(this.me, target)) this.focus = target.id;
     const r = castSpell(w, this.me, skillId, { pos: target ? target.pos : cell, actor: target });
     if (!r.ok && r.why) this.onMessage(r.why, 'bad');
     if (r.ok && target && w.isEnemy(this.me, target) && this.me.job !== 0) {

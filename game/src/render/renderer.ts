@@ -215,7 +215,8 @@ export class Renderer {
         if (bx < 0 || by < 0 || bx * GROUND_BLOCK >= map.width || by * GROUND_BLOCK >= map.height) continue;
         const img = this.groundImage(map.id, bx, by);
         const visible = bx >= bx0 && bx <= bx1 && by >= by0 && by <= by1;
-        if (img && visible) this.ctx.drawImage(img, bx * bw - this.camX, by * bh - this.camY);
+        // 多画 1 像素，避免缩放后块与块之间露缝
+        if (img && visible) this.ctx.drawImage(img, bx * bw - this.camX, by * bh - this.camY, bw + 1, bh + 1);
       }
     }
   }
