@@ -19,6 +19,8 @@ ThisBuild / scalacOptions ++= Seq(
 val V = new {
   val zio     = "2.1.27"
   val zioJson = "1.1.2"
+  val scalajsDom = "2.8.1"
+  val macrotask  = "1.1.1"
 }
 
 // 测试读真实的游戏数据（tools/build_data.py 产出，不进 git；worktree 里 public/assets 软链到主仓库）
@@ -70,8 +72,19 @@ lazy val client = project
   .dependsOn(shared.js)
   .settings(zioTest)
   .settings(
+    libraryDependencies ++= Seq(
+      "org.scala-js" %%% "scalajs-dom"                % V.scalajsDom,
+      "org.scala-js" %%% "scala-js-macrotask-executor" % V.macrotask
+    ),
     scalaJSUseMainModuleInitializer := true,
-    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.ESModule))
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.ESModule)),
+    // 产物放进 web/js/（web/ 是服务端在 / 提供的静态目录：index.html、style.css、js/main.js）
+    Compile / fastLinkJS / scalaJSLinkerOutputDirectory := baseDirectory.value / "web" / "js",
+    Compile / fullLinkJS / scalaJSLinkerOutputDirectory := baseDirectory.value / "web" / "js",
+    // 测试在 Node 里跑纯逻辑（帧号、摇杆、走路预测、地图解析），用 CommonJS
+    Test / scalaJSUseMainModuleInitializer := false,
+    Test / scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
+    Test / jsEnv := new NodeJSEnv(NodeJSEnv.Config().withEnv(Map("MIR_GAME_JSON" -> gameJson.value.toString)))
   )
 
 lazy val root = project

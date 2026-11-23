@@ -10,3 +10,6 @@ deploy/node.tar.xz
 scala/**/target/
 scala/.bsp/
 scala/project/project/
+
+# Scala.js 客户端产物（sbt client/fastLinkJS 或 fullLinkJS 生成）
+scala/client/web/js/
