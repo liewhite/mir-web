@@ -57,30 +57,18 @@ def object_areas(m: MapFile) -> np.ndarray:
 
 # ---------------- 选哪些地图 ----------------
 
-START_MAP = "0"
-
-
 def game_maps(catalog: dict) -> dict[str, str]:
     """游戏里的地图 → 它用的素材名（map/<素材名>.bin、ground/<素材名>/）。
 
-    选图：从比奇省沿传送点走得到、且有地图文件的地图。数据表里没有路通过去的
-    （白日门、封魔谷、赤月、苍月岛等原版靠 NPC 传送的）先不放。
+    选图：数据表里有地图文件的全部放（用户 11-23 #1144）。从比奇走不到的（白日门、封魔谷、
+    苍月岛等原版靠 NPC 传送的）由传送菜单进（build_data.py TOWNS / ENTRIES）。
     素材名：内容相同的地图（sha256 一样，如祖玛阁 D5061–D5069）共用一份，取组里最小的文件名。"""
     have = {p.stem for p in MAP_DIR.iterdir()}
     meta = {m["id"]: m for m in catalog["maps"] if m["asset"] in have}
-    links: dict[str, set[str]] = {}
-    for r in catalog["routes"]:
-        links.setdefault(r["from"], set()).add(r["to"])
-    reach, todo = {START_MAP}, [START_MAP]
-    while todo:
-        for nxt in links.get(todo.pop(), ()):
-            if nxt in meta and nxt not in reach:
-                reach.add(nxt)
-                todo.append(nxt)
     by_sha: dict[str, str] = {}
     for m in meta.values():
         by_sha[m["sha256"]] = min(by_sha.get(m["sha256"], m["asset"]), m["asset"])
-    return {i: by_sha[meta[i]["sha256"]] for i in sorted(reach)}
+    return {i: by_sha[meta[i]["sha256"]] for i in sorted(meta)}
 
 
 def prune_stale(assets: set[str]) -> None:

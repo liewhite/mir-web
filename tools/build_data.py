@@ -16,41 +16,62 @@ EXP = ROOT / "ref/Mir176/content/level-experience.json"
 
 # ---------------- 传送菜单（用户 11-23 #1139：任意地方直接传到城中心、打怪地图入口） ----------------
 
-# 城中心：比奇是出生点（game/src/main.ts START），盟重取城里商店、守卫中间
-TOWNS = [("0", "比奇省", 333, 272), ("3", "盟重省", 350, 340)]
-# 地区名：按「出城后第一张图」起名；没列出的用那张图的标题去掉「一层/入口/大殿」
+# 城中心：比奇是出生点（game/src/main.ts START），其余取城里商店、守卫中间（都核对过是可走格）
+# 白日门、封魔谷、苍月岛数据表里没有路通过去（原版靠 NPC 传送），只能从这里进（#1144）
+TOWNS = [
+    ("0", "比奇省", 333, 272), ("3", "盟重省", 350, 340),
+    ("11", "白日门", 178, 325), ("4", "封魔谷", 241, 230), ("5", "苍月岛", 140, 325),
+]
+# 不在任何城后面、也没有路进去的打怪地图：自成一个地区，落点取地图中间附近的可走格
+ENTRIES = [("M001", 139, 140), ("T1341", 20, 21)]
+# 地区名：按「出城后第一张图」起名；没列出的用那张图的标题去掉「一层/入口/大殿/出入口」
 REGION_NAMES = {
     "D001": "骷髅洞", "1": "沃玛", "D401": "废矿", "D601": "地牢", "D701": "香石古墓",
     "0157": "祖玛寺庙", "D710": "石墓（猪洞）",
+    "12": "丛林迷宫·赤月", "D2000": "封魔矿区·封魔殿", "B341": "封魔皇宫·姻缘",
 }
 
 
 def teleports(cat: dict, maps: dict[str, str]) -> list[dict]:
     """传送目的地：城市一组；其余按地区分组，每组是出城后第一张图（入口）和组里有怪的地图。
-    落点 = 从比奇走过去时进这张图的传送点落点（BFS 先到的那条路），同名的只留最近的一张。"""
+    落点 = 从比奇走过去时进这张图的传送点落点（BFS 先到的那条路），同名的只留最近的一张。
+    比奇走不到的从 TOWNS、ENTRIES 依次接着搜（先搜完比奇，原有地图的来路不变）；
+    ENTRIES 自己是地区入口，落点用表里给的。"""
     town_ids = {t[0] for t in TOWNS}
+    seeds = {t[0]: (t[2], t[3]) for t in TOWNS} | {e[0]: (e[1], e[2]) for e in ENTRIES}
     titles = {m["id"]: m["title"] for m in cat["maps"]}
     routes: dict[str, list[dict]] = {}
     for r in cat["routes"]:
         if r["from"] in maps and r["to"] in maps:
             routes.setdefault(r["from"], []).append(r)
-    came: dict[str, dict | None] = {"0": None}
-    order = ["0"]
-    for u in order:  # BFS：order 边走边长
-        for r in routes.get(u, []):
-            if r["to"] not in came:
-                came[r["to"]] = r
-                order.append(r["to"])
+    came: dict[str, dict | None] = {}
+    order: list[str] = []
+    i = 0
+    for seed in seeds:  # 每个起点一轮 BFS：order 边走边长，i 是下一个要展开的
+        if seed in came:
+            continue
+        came[seed] = None
+        order.append(seed)
+        while i < len(order):
+            for r in routes.get(order[i], []):
+                if r["to"] not in came:
+                    came[r["to"]] = r
+                    order.append(r["to"])
+            i += 1
     with_monsters = {s["map"] for s in cat["spawns"]}
 
     def region(m: str) -> str | None:
-        """沿来路往回找，最后一座城之后的第一张图。"""
+        """沿来路往回找，最后一座城之后的第一张图；路上没有城（ENTRIES 搜到的）就是起点那张。"""
         path = [m]
         while (r := came[path[-1]]) is not None:
             path.append(r["from"])
         path.reverse()
-        last_town = max(i for i, x in enumerate(path) if x in town_ids)
+        last_town = max((i for i, x in enumerate(path) if x in town_ids), default=-1)
         return path[last_town + 1] if last_town + 1 < len(path) else None
+
+    def landing(m: str) -> tuple[int, int]:
+        r = came[m]
+        return seeds[m] if r is None else (r["tx"], r["ty"])
 
     out = [{"group": "城市", "name": name, "map": m, "x": x, "y": y} for m, name, x, y in TOWNS]
     groups: dict[str, list[str]] = {}
@@ -61,14 +82,14 @@ def teleports(cat: dict, maps: dict[str, str]) -> list[dict]:
     for root, ms in groups.items():
         if not any(m in with_monsters for m in ms):
             continue  # 城里的店铺、房屋
-        group = REGION_NAMES.get(root) or titles[root].removesuffix("一层").removesuffix("入口").removesuffix("大殿")
+        group = REGION_NAMES.get(root) or titles[root].removesuffix("一层").removesuffix("出入口").removesuffix("入口").removesuffix("大殿")
         seen: set[str] = set()
         for m in ms:
             if titles[m] in seen:
                 continue
             seen.add(titles[m])
-            r = came[m]
-            out.append({"group": group, "name": titles[m], "map": m, "x": r["tx"], "y": r["ty"]})
+            x, y = landing(m)
+            out.append({"group": group, "name": titles[m], "map": m, "x": x, "y": y})
     return out
 
 
