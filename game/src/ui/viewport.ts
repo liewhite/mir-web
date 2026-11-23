@@ -16,10 +16,16 @@ export interface Viewport {
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 
+/**
+ * 用户 11-23（#1140）：暂时只保留手机布局（摇杆），电脑、平板也用它。
+ * 原版布局代码留着，以后要恢复电脑端时把它打开。
+ */
+const MOBILE_ONLY = true;
+
 export function chooseViewport(cssW: number, cssH: number, coarsePointer: boolean): Viewport {
   const fit800 = Math.min(cssW / 800, cssH / 600);
   const short = Math.min(cssW, cssH);
-  if (coarsePointer && short < 600) {
+  if (MOBILE_ONLY || (coarsePointer && short < 600)) {
     return {
       kind: 'touch',
       worldZoom: Math.max(fit800, short / 560),

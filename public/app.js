@@ -3435,8 +3435,12 @@ var TouchLayout = class {
     const js = this.h.joystick;
     const base = js.active ? js.base : this.stickHome();
     const knob = js.active ? js.knob : base;
-    g.circle(base.x, base.y, STICK_R, js.active ? "rgba(0,0,0,.35)" : "rgba(0,0,0,.2)", "rgba(216,162,74,.6)");
-    g.circle(knob.x, knob.y, 22, js.active ? "rgba(216,162,74,.75)" : "rgba(216,162,74,.35)", "#d8a24a");
+    g.circle(base.x, base.y, STICK_R, js.active ? "rgba(0,0,0,.4)" : "rgba(0,0,0,.35)", "rgba(216,162,74,.85)");
+    g.circle(knob.x, knob.y, 22, js.active ? "rgba(216,162,74,.8)" : "rgba(216,162,74,.55)", "#d8a24a");
+    if (!js.active) {
+      const t = "\u6447\u6746";
+      g.text(t, base.x - g.width(t) / 2, base.y - 6, "#fff", true);
+    }
   }
   drawBelt() {
     const { g, p, catalog } = this.h;
@@ -4657,10 +4661,11 @@ var ClassicUi = class {
 
 // src/ui/viewport.ts
 var clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+var MOBILE_ONLY = true;
 function chooseViewport(cssW, cssH, coarsePointer2) {
   const fit800 = Math.min(cssW / 800, cssH / 600);
   const short = Math.min(cssW, cssH);
-  if (coarsePointer2 && short < 600) {
+  if (MOBILE_ONLY || coarsePointer2 && short < 600) {
     return {
       kind: "touch",
       worldZoom: Math.max(fit800, short / 560),
