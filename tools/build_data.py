@@ -58,8 +58,8 @@ def main() -> None:
 
     in_maps = lambda r: r["map"] in maps
     game = {
-        "maps": [{"id": i, "title": map_meta[i]["title"], "flags": map_meta[i]["flags"],
-                  "width": map_meta[i]["width"], "height": map_meta[i]["height"]} for i in maps if i in map_meta],
+        "maps": [{"id": i, "asset": a, "title": map_meta[i]["title"], "flags": map_meta[i]["flags"],
+                  "width": map_meta[i]["width"], "height": map_meta[i]["height"]} for i, a in maps.items()],
         "routes": [r for r in cat["routes"] if r["from"] in maps and r["to"] in maps],
         "spawns": [s for s in cat["spawns"] if in_maps(s)],
         "guards": [g for g in cat["guards"] if in_maps(g)],

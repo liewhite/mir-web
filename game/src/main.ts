@@ -110,7 +110,9 @@ async function main(): Promise<void> {
     }
   }
   status('加载地图…');
-  const map = await loadMap(player.map).catch(() => loadMap(START.map));
+  const map = await Promise.resolve()
+    .then(() => loadMap(catalog.map(player.map)))
+    .catch(() => loadMap(catalog.map(START.map)));
   world.enterMap(map, player.map === map.id ? player.pos : START);
 
   const settings = loadSettings(save?.settings);

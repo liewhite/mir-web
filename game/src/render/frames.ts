@@ -65,24 +65,55 @@ export function humanFrame(a: Action, dir: Dir, now: number, dead: boolean): num
   }
 }
 
-/** 怪物当前帧（相对该怪的起始帧）。 */
-export function monsterFrame(t: MonsterActionTable, a: Action, dir: Dir, now: number, dead: boolean): number {
+/** 怪物画法上的差别（原版客户端按 RaceImg 选的类：TKillingHerb、TSculptureMon 等）。 */
+export interface MonsterLook {
+  /** 食人花家族（TKillingHerb）：站立不分方向，钻出用走路帧、钻回用 ActDeath */
+  readonly herb: boolean;
+  /** ActDeath 只有一个方向（变异骷髅 23、祖玛雕像 48、祖玛教主 49） */
+  readonly deathNoDir: boolean;
+  /** 攻击用 ActCritical（触龙神 33） */
+  readonly criticalAttack: boolean;
+}
+
+export function monsterLook(raceImg: number): MonsterLook {
+  return {
+    herb: [13, 33, 34, 35].includes(raceImg),
+    deathNoDir: [23, 48, 49].includes(raceImg),
+    criticalAttack: raceImg === 33,
+  };
+}
+
+/** 怪物当前帧（相对该怪的起始帧）。stone：石像状态（祖玛雕像没醒时）。 */
+export function monsterFrame(
+  t: MonsterActionTable, look: MonsterLook, a: Action, dir: Dir, now: number, dead: boolean, stone: boolean,
+): number {
+  const deathDir: Dir = look.deathNoDir ? 0 : dir;
   if (dead) {
     if (a.kind === 'die' && !finished(a, now)) return pick(t.ActDie, dir, frameOf(t.ActDie, a, now, false));
     return pick(t.ActDie, dir, t.ActDie[1] - 1);
   }
-  if (finished(a, now) || a.kind === 'stand') return pick(t.ActStand, dir, frameOf(t.ActStand, a, now, true));
+  if (stone) return pick(t.ActDeath, deathDir, 0);
+  const stand = (): number => pick(t.ActStand, look.herb ? 0 : dir, frameOf(t.ActStand, a, now, true));
+  if (finished(a, now) || a.kind === 'stand') return stand();
   switch (a.kind) {
     case 'walk':
     case 'run':
       return t.ActWalk[1] ? pick(t.ActWalk, dir, frameOf(t.ActWalk, a, now, false)) : pick(t.ActStand, dir, 0);
     case 'attack':
-    case 'heavy':
-      return pick(t.ActAttack, dir, frameOf(t.ActAttack, a, now, false));
+    case 'heavy': {
+      const info = look.criticalAttack ? t.ActCritical : t.ActAttack;
+      return pick(info, dir, frameOf(info, a, now, false));
+    }
     case 'struck':
-      return t.ActStruck[1] ? pick(t.ActStruck, dir, frameOf(t.ActStruck, a, now, false)) : pick(t.ActStand, dir, 0);
+      return t.ActStruck[1] ? pick(t.ActStruck, dir, frameOf(t.ActStruck, a, now, false)) : stand();
+    case 'digup':
+      return look.herb
+        ? pick(t.ActWalk, 0, frameOf(t.ActWalk, a, now, false))
+        : pick(t.ActDeath, deathDir, frameOf(t.ActDeath, a, now, false));
+    case 'digdown':
+      return pick(t.ActDeath, look.herb ? 0 : deathDir, frameOf(t.ActDeath, a, now, false));
     default:
-      return pick(t.ActStand, dir, frameOf(t.ActStand, a, now, true));
+      return stand();
   }
 }
 

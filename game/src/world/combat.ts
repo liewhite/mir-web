@@ -1,7 +1,7 @@
 /**
  * 玩家的攻击与技能结算。公式出处：ref/Mir176 PlayObject.Attack.cs（剑术）、MagicManager.cs（魔法）。
  */
-import { type Dir, type Pos, chebyshev, dirTo, step } from '../core/geom';
+import { type Dir, type Pos, chebyshev, dir16, dirTo, step } from '../core/geom';
 import type { SkillDef } from '../data/defs';
 import type { Actor, HitStyle, LearnedSkill, Monster, Player } from './entities';
 import { itemKind } from './items';
@@ -144,11 +144,6 @@ function fx(w: World, e: Omit<VisualEffect, 'startedAt' | 'duration' | 'blend'> 
     startedAt: w.now,
     duration: e.duration ?? e.frames * e.frameTime,
   });
-}
-
-function dir16(from: Pos, to: Pos): number {
-  const a = Math.atan2((to.x - from.x) * 48, -(to.y - from.y) * 32);
-  return (((Math.round(a / (Math.PI / 8)) % 16) + 16) % 16);
 }
 
 /** 施法动画：在人物身上播放的起手特效（EffectBase，10 帧）。 */

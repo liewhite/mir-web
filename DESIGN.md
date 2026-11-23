@@ -39,5 +39,6 @@
 - [x] 部署 kaojiang：`mir/deploy/deploy.sh`（--init 首次）；systemd mir176（/opt/mir176，监听 cni0 10.42.0.1:18176），k3s ns mir176 Ingress；存档 /var/lib/mir176；密码 vault MIR176_PASSWORD
 - [x] 小地图、音效（tools/build_sounds.py → assets/sound/*.m4a）、远程怪、首屏预加载、物件 10 帧分块
 - [x] 手机布局（#1140，用户定）：`ui/viewport.ts` 按屏幕选布局——电脑/平板用原版底栏（`ui/classic/layout.ts` BoardLayout），触屏且短边 < 600 用手机布局（`ui/classic/touch.ts`）：界面与地图分开缩放、左半屏虚拟摇杆（`game/joystick.ts`）、点怪锁定并显示怪物信息、攻击键+F1–F8 技能环、物品点一下弹说明和操作菜单；安全区、添加到主屏幕全屏
-- [ ] 第二阶段地图：猪洞、沃玛、祖玛（build_assets.game_maps 加地图后重跑 build_assets/build_data）
-- [ ] 昼夜明暗、门（doorIndex）
+- [x] 第二阶段地图（#1139）：从比奇沿传送点走得到的 188 张地图全上（毒蛇山谷、盟重、沃玛森林/寺庙、石墓、祖玛、矿区、地牢等）；内容相同的地图共用素材（MapDef.asset），素材约 2.4G。数据表里没路进去的（白日门、封魔谷、赤月、苍月岛等，原版靠 NPC 传送）没放。
+- [x] 怪物行为（#1139）：game/src/world/monster_ai.ts 按 Race 描述出招/藏身/附加本领（食人花钻地、石像、僵尸电光与复活、洞蛆麻痹、蜘蛛喷毒、角蝇巢/幻影蜘蛛放小怪、爆裂蜘蛛自爆、沃玛教主狂暴瞬移、祖玛教主召唤、赤月恶魔/触龙神范围攻击）；测试 `cd game && npm test`
+- [ ] 门（doorIndex）；按地图回城点（现在一律回比奇）

@@ -1,6 +1,7 @@
+import type { MapDef } from '../data/defs';
 import { assetUrl } from './sprites';
 
-/** 地图格子数据：assets/map/<id>.bin（tools/build_assets.py write_map_bin）。行优先 i = y*w + x。 */
+/** 地图格子数据：assets/map/<asset>.bin（tools/build_assets.py write_map_bin）。行优先 i = y*w + x。 */
 
 export const UNITX = 48;
 export const UNITY = 32;
@@ -9,6 +10,8 @@ export const GROUND_BLOCK = 16;
 export class MapData {
   constructor(
     readonly id: string,
+    /** 素材名（地面图目录），见 MapDef.asset */
+    readonly asset: string,
     readonly width: number,
     readonly height: number,
     /** 1 = 不可走，2 = 不可飞（挡魔法） */
@@ -38,7 +41,8 @@ export class MapData {
     return this.inside(x, y) && (this.flags[y * this.width + x]! & 2) === 0;
   }
 
-  static parse(id: string, buf: ArrayBuffer): MapData {
+  static parse(def: MapDef, buf: ArrayBuffer): MapData {
+    const id = def.id;
     const dv = new DataView(buf);
     const magic = String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3));
     if (magic !== 'M176') throw new Error(`地图 ${id} 格式不对`);
@@ -55,16 +59,16 @@ export class MapData {
     const front = new Uint16Array(n);
     for (let i = 0; i < n; i++) front[i] = dv.getUint16(off + i * 2, true);
     off += n * 2;
-    return new MapData(id, w, h, flags, front, u8(), u8(), u8(), u8(), u8(), u8());
+    return new MapData(id, def.asset, w, h, flags, front, u8(), u8(), u8(), u8(), u8(), u8());
   }
 }
 
-export async function loadMap(id: string): Promise<MapData> {
+export async function loadMap(def: MapDef): Promise<MapData> {
   for (let i = 0; ; i++) {
     try {
-      const r = await fetch(assetUrl(`assets/map/${id}.bin`));
-      if (!r.ok) throw new Error(`地图 ${id}: ${r.status}`);
-      return MapData.parse(id, await r.arrayBuffer());
+      const r = await fetch(assetUrl(`assets/map/${def.asset}.bin`));
+      if (!r.ok) throw new Error(`地图 ${def.title}: ${r.status}`);
+      return MapData.parse(def, await r.arrayBuffer());
     } catch (e) {
       if (i >= 4) throw e;
       await new Promise((res) => setTimeout(res, 1000 * (i + 1)));

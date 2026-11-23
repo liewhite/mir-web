@@ -43,17 +43,55 @@ def objects_lib(area: int) -> str:
     return "objects" if area == 0 else f"objects{area + 1}"
 
 
+_LIB_NAMES = {p.stem.lower() for p in DATA_DIR.iterdir() if p.suffix.lower() in (".wil", ".wzl")}
+
+
+def object_areas(m: MapFile) -> np.ndarray:
+    """前景物件的图库编号；没有对应图库文件的（如 255）按原版 GetObjs 当 0（objects）。"""
+    area = m.area.copy()
+    for a in np.unique(area):
+        if objects_lib(int(a)) not in _LIB_NAMES:
+            area[area == a] = 0
+    return area
+
+
 # ---------------- 选哪些地图 ----------------
 
-def game_maps(catalog: dict) -> list[str]:
-    """第一版的地图：比奇省、兽人古墓（骷髅洞）三层，以及比奇省里的室内小地图（店铺）。"""
-    base = {"0", "D001", "D002", "D003"}
-    small = {m["id"] for m in catalog["maps"] if m["width"] <= 80 and m["height"] <= 80}
-    inner = {r["to"] for r in catalog["routes"] if r["from"] == "0" and r["to"] in small}
-    inner |= {r["to"] for r in catalog["routes"] if r["from"] in inner and r["to"] in small}
+START_MAP = "0"
+
+
+def game_maps(catalog: dict) -> dict[str, str]:
+    """游戏里的地图 → 它用的素材名（map/<素材名>.bin、ground/<素材名>/）。
+
+    选图：从比奇省沿传送点走得到、且有地图文件的地图。数据表里没有路通过去的
+    （白日门、封魔谷、赤月、苍月岛等原版靠 NPC 传送的）先不放。
+    素材名：内容相同的地图（sha256 一样，如祖玛阁 D5061–D5069）共用一份，取组里最小的文件名。"""
     have = {p.stem for p in MAP_DIR.iterdir()}
-    maps = sorted((base | inner) & have)
-    return maps
+    meta = {m["id"]: m for m in catalog["maps"] if m["asset"] in have}
+    links: dict[str, set[str]] = {}
+    for r in catalog["routes"]:
+        links.setdefault(r["from"], set()).add(r["to"])
+    reach, todo = {START_MAP}, [START_MAP]
+    while todo:
+        for nxt in links.get(todo.pop(), ()):
+            if nxt in meta and nxt not in reach:
+                reach.add(nxt)
+                todo.append(nxt)
+    by_sha: dict[str, str] = {}
+    for m in meta.values():
+        by_sha[m["sha256"]] = min(by_sha.get(m["sha256"], m["asset"]), m["asset"])
+    return {i: by_sha[meta[i]["sha256"]] for i in sorted(reach)}
+
+
+def prune_stale(assets: set[str]) -> None:
+    """删掉不再用的地图素材（换了素材名或地图下线），免得部署时带上。"""
+    import shutil
+    for d in (OUT / "ground").iterdir() if (OUT / "ground").exists() else ():
+        if d.name not in assets:
+            shutil.rmtree(d)
+    for f in (OUT / "map").glob("*.bin") if (OUT / "map").exists() else ():
+        if f.stem not in assets:
+            f.unlink()
 
 
 # ---------------- 地图格子数据 ----------------
@@ -69,7 +107,7 @@ def write_map_bin(name: str, m: MapFile) -> None:
         b"M176", struct.pack("<HH", m.width, m.height),
         t(flags).tobytes(),
         t((m.front & 0x7FFF).astype("<u2")).tobytes(),
-        t(m.area).tobytes(), t(m.anim_frame).tobytes(), t(m.anim_tick).tobytes(),
+        t(object_areas(m)).tobytes(), t(m.anim_frame).tobytes(), t(m.anim_tick).tobytes(),
         t(m.door_index).tobytes(), t(m.door_offset).tobytes(), t(m.light).tobytes(),
     ]
     (out / f"{name}.bin").write_bytes(b"".join(parts))
@@ -79,12 +117,13 @@ def map_object_needs(m: MapFile) -> dict[str, set[int]]:
     """地图前景层用到的 (图库, 帧号)：含动画帧与开门帧。"""
     need: dict[str, set[int]] = {}
     fr = (m.front & 0x7FFF).astype(np.int64)
+    area = object_areas(m)
     xs, ys = np.nonzero(fr)
     for x, y in zip(xs, ys):
         base = int(fr[x, y]) - 1
         ani = int(m.anim_frame[x, y]) & 0x7F
         door = int(m.door_offset[x, y]) & 0x7F if int(m.door_index[x, y]) & 0x7F else 0
-        s = need.setdefault(objects_lib(int(m.area[x, y])), set())
+        s = need.setdefault(objects_lib(int(area[x, y])), set())
         for k in range(max(ani, 1)):
             s.add(base + k)
         if door:
@@ -226,7 +265,8 @@ def main() -> None:
     args = ap.parse_args()
     catalog = json.loads(CATALOG.read_text())
     maps = game_maps(catalog)
-    print("maps:", " ".join(maps), flush=True)
+    assets = sorted(set(maps.values()))
+    print(f"maps: {len(maps)} 张，素材 {len(assets)} 份:", " ".join(assets), flush=True)
 
     needs: dict[str, set[int]] = {}
 
@@ -234,14 +274,13 @@ def main() -> None:
         needs.setdefault(lib, set()).update(frames)
 
     if args.only in (None, "maps", "libs"):
-        for name in maps:
+        for name in assets:
             m = MapFile.load(MAP_DIR / f"{name}.map")
             if args.only != "libs":
                 write_map_bin(name, m)
             for lib, fr in map_object_needs(m).items():
                 add(lib, fr)
-        (OUT / "map").mkdir(parents=True, exist_ok=True)
-        (OUT / "map" / "index.json").write_text(json.dumps(maps))
+        (OUT / "map" / "index.json").unlink(missing_ok=True)  # 旧版产物，游戏不读
 
     if args.only in (None, "libs"):
         # 角色、怪物、NPC、技能、物品、界面：图库体积不大的整库导出；怪物按需
@@ -249,13 +288,15 @@ def main() -> None:
                     "prguse", "prguse2", "magicon", "npc", "mmap", "effect"]:
             add(lib, whole(lib))
         sys.path.insert(0, str(Path(__file__).parent))
-        from monsters import monster_frames  # noqa: E402
-        for lib, fr in monster_frames(catalog, maps).items():
-            add(lib, fr)
+        from monsters import monster_libs  # noqa: E402
+        for lib in sorted(monster_libs(catalog, list(maps))):
+            add(lib, whole(lib))
         build_libs(needs)
 
     if args.only in (None, "ground"):
-        build_ground(maps)
+        build_ground(assets)
+    if args.only is None:
+        prune_stale(set(assets))
     bump_version()
 
 

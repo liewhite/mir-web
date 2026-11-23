@@ -6,6 +6,8 @@ export type Range = readonly [number, number];
 
 export interface MapDef {
   id: string;
+  /** 素材名：assets/map/<asset>.bin、assets/ground/<asset>/；内容相同的地图共用一份 */
+  asset: string;
   title: string;
   flags: string;
   width: number;
@@ -178,6 +180,12 @@ export class Catalog {
     const it = this.itemsByName.get(name);
     if (!it) throw new Error(`没有物品 ${name}`);
     return it;
+  }
+
+  map(id: string): MapDef {
+    const m = this.mapsById.get(id);
+    if (!m) throw new Error(`没有地图 ${id}`);
+    return m;
   }
 
   /** 升到下一级要的经验；满级返回 Infinity。 */

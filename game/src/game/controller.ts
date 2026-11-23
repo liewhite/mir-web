@@ -209,7 +209,7 @@ export class Controller {
     const t = w.pendingTeleport!;
     this.loadingMap = true;
     try {
-      const map = t.map === w.map.id ? w.map : await loadMap(t.map);
+      const map = t.map === w.map.id ? w.map : await loadMap(w.catalog.map(t.map));
       w.pendingTeleport = null;
       w.enterMap(map, t);
       if (this.isTown(t.map)) this.me.home = { map: t.map, x: this.me.x, y: this.me.y };

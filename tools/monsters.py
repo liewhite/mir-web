@@ -50,30 +50,21 @@ def action_table(race_img: int, appr: int) -> str | None:
     return ACT["race"].get(str(race_img))
 
 
-def frame_span(table: str) -> int:
-    """动作表用到的最大相对帧号 + 1（8 个方向）。"""
-    acts = ACT["tables"][table]
-    end = 0
-    for start, frame, skip, _ft, _ut in acts.values():
-        if frame:
-            end = max(end, start + 8 * (frame + skip))
-    return end
-
-
-def monster_frames(catalog: dict, maps: list[str]) -> dict[str, set[int]]:
+def monster_libs(catalog: dict, maps: list[str]) -> set[str]:
+    """这些地图上会出现的怪物用到的图库。整库导出：特殊怪的攻击特效（闪电、毒气、钻地等）
+    也在同一个图库里、不在动作表范围内，按帧挑容易漏。"""
     names = {s["monster"] for s in catalog["spawns"] if s["map"] in maps}
     names |= {g["monster"] for g in catalog["guards"] if g["map"] in maps}
     names |= {"变异骷髅", "神兽", "骷髅", "卫士", "弓箭守卫", "带刀护卫"}  # 召唤物、守卫
-    need: dict[str, set[int]] = {}
+    names |= {"蝙蝠", "爆裂蜘蛛"}  # 怪物召唤的小怪（角蝇、幻影蜘蛛；game/src/world/monster_ai.ts）
     by_name = {m["Name"]: m for m in catalog["monsters"]}
+    libs: set[str] = set()
     for n in sorted(names):
         m = by_name.get(n)
         if m is None:
             continue
-        table = action_table(m["RaceImg"], m["Appr"])
-        if table is None:
+        if action_table(m["RaceImg"], m["Appr"]) is None:
             print("无动作表:", n, m["RaceImg"], m["Appr"])
             continue
-        off = monster_offset(m["Appr"])
-        need.setdefault(monster_lib(m["Appr"]), set()).update(range(off, off + frame_span(table)))
-    return need
+        libs.add(monster_lib(m["Appr"]))
+    return libs

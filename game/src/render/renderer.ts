@@ -9,7 +9,7 @@ import { type Sprite, type SpriteStore, assetUrl } from '../assets/sprites';
 import { type Actor, type GroundItem, type Monster, type Player, isGold } from '../world/entities';
 import { itemKind } from '../world/items';
 import type { VisualEffect, World } from '../world/world';
-import { HUMAN_FRAMES, humanFrame, monsterFrame, weaponInFront } from './frames';
+import { HUMAN_FRAMES, humanFrame, monsterFrame, monsterLook, weaponInFront } from './frames';
 
 const LONG_ROWS = 22; // 高物件可能从屏幕下方很远的格子往上画
 const WIDE_COLS = 10;
@@ -170,8 +170,8 @@ export class Renderer {
         if (bx < 0 || by < 0) continue;
         jobs.push(new Promise<void>((res) => {
           const tick = (): void => {
-            const v = this.ground.get(`${map.id}/${bx}_${by}`);
-            if (v === undefined) this.groundImage(map.id, bx, by);
+            const v = this.ground.get(`${map.asset}/${bx}_${by}`);
+            if (v === undefined) this.groundImage(map.asset, bx, by);
             if (v === 'loading' || v === undefined) setTimeout(tick, 50);
             else res();
           };
@@ -285,7 +285,7 @@ export class Renderer {
     for (let by = by0 - 1; by <= by1 + 1; by++) {
       for (let bx = bx0 - 1; bx <= bx1 + 1; bx++) {
         if (bx < 0 || by < 0 || bx * GROUND_BLOCK >= map.width || by * GROUND_BLOCK >= map.height) continue;
-        const img = this.groundImage(map.id, bx, by);
+        const img = this.groundImage(map.asset, bx, by);
         const visible = bx >= bx0 && bx <= bx1 && by >= by0 && by <= by1;
         // 多画 1 像素，避免缩放后块与块之间露缝
         if (img && visible) this.ctx.drawImage(img, bx * bw - this.camX, by * bh - this.camY, bw + 1, bh + 1);
@@ -293,8 +293,8 @@ export class Renderer {
     }
   }
 
-  private groundImage(map: string, bx: number, by: number): HTMLImageElement | null {
-    const key = `${map}/${bx}_${by}`;
+  private groundImage(asset: string, bx: number, by: number): HTMLImageElement | null {
+    const key = `${asset}/${bx}_${by}`;
     const cur = this.ground.get(key);
     if (cur instanceof HTMLImageElement) return cur;
     if (cur) return null;
@@ -302,7 +302,7 @@ export class Renderer {
     const img = new Image();
     img.onload = () => this.ground.set(key, img);
     img.onerror = () => this.ground.set(key, 'none');
-    img.src = assetUrl(`assets/ground/${map}/${bx}_${by}.webp`);
+    img.src = assetUrl(`assets/ground/${asset}/${bx}_${by}.webp`);
     return null;
   }
 
@@ -398,7 +398,9 @@ export class Renderer {
   private drawMonster(m: Monster, now: number, dx: number, dy: number): Sprite | null | undefined {
     const t = this.world.actTable(m);
     if (!t) return null;
-    const f = monsterFrame(t, m.action, m.dir, now, m.dead);
+    // 埋在地下的怪看不见（钻回去的动画放完才算埋好）
+    if (m.cover === 'buried' && m.action.kind !== 'digdown') return null;
+    const f = monsterFrame(t, monsterLook(m.def.raceImg), m.action, m.dir, now, m.dead, m.cover === 'stone');
     const s = this.sprites.get(m.def.lib, m.def.offset + f);
     if (s) this.blit(s, dx + s.ox, dy + s.oy);
     return s;

@@ -2,7 +2,7 @@
  * 世界：当前地图上的全部角色、地上物品、时间推进和玩家指令。
  * 单机：只模拟玩家所在的地图；换地图时旧地图清空，新地图按刷怪表重新生成。
  */
-import { type Dir, type Pos, chebyshev, dirTo, samePos, step } from '../core/geom';
+import { type Dir, type Pos, chebyshev, samePos, step } from '../core/geom';
 import type { Catalog, DropDef, MonsterActionTable, MonsterDef } from '../data/defs';
 import type { MapData } from '../assets/mapdata';
 import {
@@ -167,6 +167,7 @@ export class World {
     m.nextThink = this.now + random(2000);
     this.actors.set(m.id, m);
     this.occupy(m);
+    initMonster(this, m);
     return m;
   }
 
@@ -215,7 +216,7 @@ export class World {
     }
     this.runSpawns();
     for (const a of [...this.actors.values()]) {
-      if (a.kind === 'monster') this.thinkMonster(a);
+      if (a.kind === 'monster') thinkMonster(this, a);
       this.tickStatus(a);
     }
     this.regen();
@@ -255,7 +256,7 @@ export class World {
 
   // ---------------- 动作 ----------------
 
-  private setAction(a: Actor, kind: ActKind, duration: number, extra: Partial<Action> = {}): void {
+  setAction(a: Actor, kind: ActKind, duration: number, extra: Partial<Action> = {}): void {
     a.action = { kind, startedAt: this.now, duration, ...extra };
   }
 
@@ -294,7 +295,7 @@ export class World {
   private monsterMoveMs(m: Monster): number {
     const t = this.actTable(m);
     const anim = t ? t.ActWalk[1] * t.ActWalk[3] : 600;
-    return Math.max(300, Math.min(anim, m.def.walkSpeed));
+    return Math.max(300, Math.min(anim, m.walkInterval));
   }
 
   actTable(m: Monster): MonsterActionTable | undefined {
@@ -314,6 +315,8 @@ export class World {
 
   isEnemy(a: Actor, b: Actor): boolean {
     if (a.dead || b.dead || a === b || b.kind === 'npc' || a.kind === 'npc') return false;
+    // 埋在地下、还是石像的怪打不到（它自己能发现走近的人，见 monster_ai.ts updateCover）
+    if (b.kind === 'monster' && b.cover !== 'open') return false;
     const side = (x: Player | Monster): 'p' | 'm' | 'g' =>
       x.kind === 'player' ? 'p' : x.master ? 'p' : isGuard(x.def) ? 'g' : 'm';
     const sa = side(a);
@@ -374,17 +377,41 @@ export class World {
       const owner = killer?.kind === 'player' ? killer : killer?.kind === 'monster' && killer.master
         ? this.actors.get(killer.master) : undefined;
       if (owner?.kind === 'player' && !target.master) {
-        this.gainExp(owner, target.def.exp * RATES.exp);
+        this.gainExp(owner, Math.floor(target.def.exp * target.expScale) * RATES.exp);
         this.dropLoot(target);
       }
       if (target.master) {
         const m = this.actors.get(target.master);
         if (m?.kind === 'player') m.pets = m.pets.filter((id) => id !== target.id);
       }
+      onMonsterDeath(this, target);
     } else if (target.kind === 'player') {
       this.events.push({ type: 'died' });
       this.events.push({ type: 'msg', text: '你死了。点「回城复活」回到城里。', color: 'bad' });
     }
+  }
+
+  /** 不给经验、不掉东西的死（自爆）。 */
+  killWithoutReward(a: Monster): void {
+    a.hp = 0;
+    this.kill(a, 0);
+  }
+
+  /** 怪物原地复活（僵尸）。 */
+  reviveMonster(m: Monster): void {
+    m.dead = false;
+    m.target = 0;
+    m.removeAt = 0;
+    this.occupy(m);
+  }
+
+  /** 瞬移到某格（沃玛教主）。 */
+  teleportActor(a: Actor, to: Pos): void {
+    this.vacate(a);
+    a.x = to.x;
+    a.y = to.y;
+    this.occupy(a);
+    this.setAction(a, 'stand', 0);
   }
 
   revive(): void {
@@ -694,52 +721,7 @@ export class World {
     resolvePlayerHit(this, p, dir, style);
   }
 
-  // ---------------- 怪物 AI ----------------
-
-  private thinkMonster(m: Monster): void {
-    if (m.dead || this.now < m.nextThink || this.now < m.busyUntil) return;
-    m.nextThink = this.now + 100 + random(100);
-    if (m.action.kind !== 'stand' && this.now >= m.action.startedAt + m.action.duration) {
-      m.action = { kind: 'stand', startedAt: this.now, duration: 0 };
-    }
-    const guard = isGuard(m.def);
-    const master = m.master ? this.actors.get(m.master) : undefined;
-    let target = m.target ? this.actors.get(m.target) : undefined;
-    if (target && (target.dead || !this.isEnemy(m, target) || chebyshev(m, target) > 14 || target.invisibleUntil > this.now)) {
-      target = undefined;
-      m.target = 0;
-    }
-    if (!target) {
-      const passive = isPassive_(m.def);
-      if (!passive || master) {
-        const range = guard ? 6 : master ? 8 : 7;
-        target = this.nearestEnemy(m, range);
-        if (target) m.target = target.id;
-      }
-    }
-    if (target) {
-      const d = chebyshev(m, target);
-      if (isRanged(m.def) && d <= 7 && d >= 1) {
-        this.monsterAttack(m, target, true);
-      } else if (d <= 1) {
-        this.monsterAttack(m, target);
-      } else if (!guard) {
-        this.monsterStepToward(m, target);
-      }
-      return;
-    }
-    if (master && master.map === m.map) {
-      if (chebyshev(m, master) > 2) this.monsterStepToward(m, master);
-      return;
-    }
-    if (master && master.dead) return;
-    // 闲逛
-    if (!guard && random(100) < 4) {
-      const dir = random(8) as Dir;
-      this.move(m, dir, false);
-      m.busyUntil = this.now + m.def.walkSpeed + random(1000);
-    }
-  }
+  // ---------------- 怪物 AI（行为在 monster_ai.ts） ----------------
 
   /** range 格以内最近的敌人（怪看不见隐身的，除非它能看穿隐身）。 */
   nearestEnemy(m: Actor, range: number): Actor | undefined {
@@ -757,83 +739,17 @@ export class World {
     return best;
   }
 
-  private monsterStepToward(m: Monster, t: Pos): void {
-    const dir = dirTo(m, t);
-    if (this.move(m, dir, false)) {
-      m.busyUntil = this.now + m.def.walkSpeed;
-      return;
-    }
-    // 绕一下
-    const path = findPath(this, m, t, 200, true);
-    if (path?.[0] !== undefined && this.move(m, path[0], false)) {
-      m.busyUntil = this.now + m.def.walkSpeed;
-    } else {
-      m.busyUntil = this.now + 500;
-    }
-  }
-
-  private monsterAttack(m: Monster, t: Actor, ranged = false): void {
-    m.dir = dirTo(m, t);
-    if (this.now - m.lastAttack < m.def.attackSpeed) return;
-    m.lastAttack = this.now;
-    const tab = this.actTable(m);
-    const anim = tab ? tab.ActAttack[1] * tab.ActAttack[3] : 600;
-    this.setAction(m, 'attack', anim);
-    m.busyUntil = this.now + anim;
-    this.sound(monsterSound(m.def.appr, 2), m.pos);
-    if (ranged) {
-      // 掷斧骷髅、弓箭手：远程（DualAxeMonster.FlyAxeAttack），伤害按距离延迟到达
-      const d = chebyshev(m, t);
-      const delay = d * 50 + 300;
-      if (m.def.raceImg === 15) {
-        const a16 = Math.atan2((t.x - m.x) * 48, -(t.y - m.y) * 32);
-        const dir16 = ((Math.round(a16 / (Math.PI / 8)) % 16) + 16) % 16;
-        this.effects.push({ lib: 'mon3', start: 447 + dir16 * 10, frames: 3, frameTime: 60, at: { actor: t.id }, from: m.pos, blend: false, startedAt: this.now, duration: delay });
-      }
-      const power = m.dc[0] + random(m.dc[1] - m.dc[0] + 1);
-      this.after(delay, () => {
-        if (t.dead || m.dead) return;
-        const ac = t.kind === 'player' ? t.stats.ac : t.kind === 'monster' ? t.ac : null;
-        if (!ac) return;
-        const dmg = Math.max(0, power - (ac[0] + random(Math.abs(ac[1] - ac[0]) + 1)));
-        if (dmg > 0) this.applyDamage(t, dmg, m.id);
-        else this.events.push({ type: 'miss', target: t.id });
-      });
-      return;
-    }
-    const power = m.dc[0] + random(m.dc[1] - m.dc[0] + 1);
-    const defense = t.kind === 'player' ? t.stats : t.kind === 'monster' ? { ac: t.ac, agility: t.agility } : null;
-    if (!defense) return;
-    if (m.hit < random(defense.agility)) {
-      this.events.push({ type: 'miss', target: t.id });
-      return;
-    }
-    const armor = defense.ac[0] + random(Math.abs(defense.ac[1] - defense.ac[0]) + 1);
-    const dmg = Math.max(0, power - armor);
-    if (dmg > 0) this.applyDamage(t, dmg, m.id);
-    else this.events.push({ type: 'miss', target: t.id });
-  }
-
   // ---------------- 寻路 ----------------
 
   pathTo(from: Pos, to: Pos, adjacent = false): Dir[] | null {
     if (samePos(from, to)) return [];
     return findPath(this, from, to, 3000, adjacent);
   }
-}
 
-/** 鸡、鹿等不主动攻击（Race 51/52 动物）。 */
-function isPassive_(d: MonsterDef): boolean {
-  return d.race === 51 || d.race === 52 || d.race === 50;
-}
-
-/** 远程怪：掷斧骷髅(87)、弓箭手(104)、弓箭守卫(112)。 */
-function isRanged(d: MonsterDef): boolean {
-  return d.race === 87 || d.race === 104 || d.race === 112;
-}
-
-export function isGuard(d: MonsterDef): boolean {
-  return d.name.includes('卫士') || d.name.includes('护卫') || d.name.includes('守卫');
+  /** 怪物绕路：走到目标旁边的短路径。 */
+  findPathFor(m: Monster, to: Pos): Dir[] | null {
+    return findPath(this, m, to, 200, true);
+  }
 }
 
 /** 被动技能：学会就生效，不占快捷键。 */
@@ -841,6 +757,8 @@ export function isPassive(skillId: number): boolean {
   return skillId === 3 || skillId === 4 || skillId === 7 || skillId === 12;
 }
 
-// 由 combat.ts 实现，避免 world.ts 过长
+// 由 combat.ts、monster_ai.ts 实现，避免 world.ts 过长
 import { resolvePlayerHit } from './combat';
+import { initMonster, isGuard, onMonsterDeath, thinkMonster } from './monster_ai';
+export { isGuard };
 export type { Action };

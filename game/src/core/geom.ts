@@ -27,6 +27,12 @@ export function dirFromVector(px: number, py: number): Dir {
   return (((d % 8) + 8) % 8) as Dir;
 }
 
+/** 16 方向（飞行物、电光的朝向）：按屏幕像素角度，0 上，顺时针。 */
+export function dir16(from: Pos, to: Pos): number {
+  const a = Math.atan2((to.x - from.x) * 48, -(to.y - from.y) * 32);
+  return ((Math.round(a / (Math.PI / 8)) % 16) + 16) % 16;
+}
+
 /** 切比雪夫距离：八方向走几步。 */
 export function chebyshev(a: Pos, b: Pos): number {
   return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));

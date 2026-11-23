@@ -5,7 +5,9 @@ import type { EquipSlot, ItemInstance } from './items';
 import type { Job, Stats } from './rules';
 
 /** 正在做的动作；渲染按它取帧和插值位置。 */
-export type ActKind = 'stand' | 'walk' | 'run' | 'attack' | 'heavy' | 'spell' | 'struck' | 'die' | 'dead';
+export type ActKind = 'stand' | 'walk' | 'run' | 'attack' | 'heavy' | 'spell' | 'struck' | 'die' | 'dead'
+  /** 怪物从地下钻出、石像醒来、僵尸复活；钻回地下 */
+  | 'digup' | 'digdown';
 
 /** 普通攻击的种类，决定人物动作和刀光。 */
 export type HitStyle = 'normal' | 'power' | 'long' | 'wide' | 'fire';
@@ -47,6 +49,8 @@ abstract class ActorBase {
   shieldUntil = 0;
   shieldLevel = 0;
   invisibleUntil = 0;
+  /** 麻痹（原版 STONE 状态）到什么时候：期间不能动 */
+  paralyzedUntil = 0;
   /** 最近打过我的角色，用于反击和经验归属 */
   lastHitBy = 0;
 
@@ -138,6 +142,26 @@ export class Monster extends ActorBase {
   removeAt = 0;
   /** 被打到时短暂停手 */
   stunnedUntil = 0;
+  /** 藏身状态：open 在外面；buried 埋在地下（看不见、打不到）；stone 石像（打不到）。见 monster_ai.ts */
+  cover: 'open' | 'buried' | 'stone' = 'open';
+  /** 最近一次钻出/钻回/醒来的时间 */
+  coverAt = 0;
+  bornAt = 0;
+  /** 攻击、走路间隔（毫秒）：平时取数据表，沃玛教主狂暴时变快 */
+  attackInterval: number;
+  walkInterval: number;
+  /** 召唤出来的小怪 */
+  minions: number[] = [];
+  /** 还能复活几次、几时复活（0 = 不复活） */
+  revivesLeft = 0;
+  reviveAt = 0;
+  /** 打死给的经验倍数（复活一次减半） */
+  expScale = 1;
+  /** 祖玛教主召唤档位、沃玛教主狂暴计数 */
+  danger = 5;
+  rage: 'calm' | 'ready' | 'crazy' = 'calm';
+  rageAt = 0;
+  extraTick = 0;
 
   constructor(id: number, def: MonsterDef, spawn: number, map: string, x: number, y: number, now: number) {
     super(id, map, x, y, now);
@@ -150,6 +174,8 @@ export class Monster extends ActorBase {
     this.dc = def.dc;
     this.hit = def.hit;
     this.agility = def.speed;
+    this.attackInterval = def.attackSpeed;
+    this.walkInterval = def.walkSpeed;
     this.dir = Math.floor(Math.random() * 8) as Dir;
   }
 }
