@@ -13,12 +13,15 @@ import scala.collection.mutable
  * 位置、朝向、动作只由 World 改（它负责占位和通知旁人），这里的 var 对 world 包以外不开放写。
  */
 
-/** 中毒：绿毒每 2 秒掉 power 血，红毒降防（只记状态）。by：下毒的对象（经验归属）。 */
-final case class Poison(kind: PoisonKind, until: Millis, power: Int, nextTick: Millis, by: ActorId)
+/** 喝下的一瓶普通药还没回完的部分：每跳回多少、还剩几跳、下一跳的时刻。 */
+final case class PotionCourse(hpPerTick: Int, mpPerTick: Int, ticksLeft: Int, next: Millis):
+  /** 跳完这一下之后（没有了是 None） */
+  def advanced: Option[PotionCourse] =
+    Option.when(ticksLeft > 1)(copy(ticksLeft = ticksLeft - 1, next = next + mir.rules.PotionRules.TickMs.toLong))
 
-/** 加属性的法术效果：加多少、到什么时候。 */
-final case class Buff(amount: Int, until: Millis):
-  def on(span: Span): Span = Span(span.lo, math.min(255, span.hi + amount))
+/** 加防御上限的法术效果（神圣战甲术、幽灵盾）加到一个范围上。 */
+private def raised(span: Span, amount: Option[Int]): Span =
+  amount.fold(span)(n => Span(span.lo, math.min(255, span.hi + n)))
 
 sealed abstract class Actor(val id: ActorId, initCell: Cell, initDir: Dir, now: Millis):
   private[world] var cell: Cell           = initCell
@@ -28,17 +31,10 @@ sealed abstract class Actor(val id: ActorId, initCell: Cell, initDir: Dir, now: 
   /** 下一次能接受新动作的时刻 */
   private[world] var busyUntil: Millis    = Millis.zero
   private[world] var dead: Boolean        = false
-  private[world] var poison: Option[Poison] = None
-  /** 魔法盾、隐身、麻痹（原版 STONE 状态）的结束时刻 */
-  private[world] var shieldUntil: Millis    = Millis.zero
-  private[world] var shieldLevel: Int       = 0
-  private[world] var invisibleUntil: Millis = Millis.zero
-  private[world] var paralyzedUntil: Millis = Millis.zero
+  /** 身上的限时状态：中毒、魔法盾、隐身、麻痹、战甲、幽灵盾、定住、发狂 */
+  private[world] val statuses: Statuses   = Statuses()
   /** 最近打过我的对象（还手、经验归属） */
   private[world] var lastHitBy: Option[ActorId] = None
-  /** 神圣战甲术（防御上限 +）、幽灵盾（魔防上限 +） */
-  private[world] var acUp: Option[Buff]  = None
-  private[world] var macUp: Option[Buff] = None
 
   def maxHp: Int
   def look: Look
@@ -51,6 +47,10 @@ sealed abstract class Actor(val id: ActorId, initCell: Cell, initDir: Dir, now: 
   def currentHp: Int       = hp
   def isDead: Boolean      = dead
   def currentAction: ActionView = action
+
+  /** 加上神圣战甲术 / 幽灵盾之后的防御、魔防 */
+  private[world] def buffedAc(base: Span): Span  = raised(base, statuses.find { case Status.ArmorUp(n) => n })
+  private[world] def buffedMac(base: Span): Span = raised(base, statuses.find { case Status.MagicArmorUp(n) => n })
 
 /** 玩家：角色存档里的全部内容 + 在线时才有的战斗状态。 */
 final class Player(id: ActorId, val charName: String, val job: Job, val sex: Sex, val hair: Int, cell: Cell, dir: Dir, now: Millis)
@@ -84,6 +84,8 @@ final class Player(id: ActorId, val charName: String, val job: Job, val sex: Sex
   /** 玩家亲手走动后的一小段时间里不自动走动（免得和摇杆抢） */
   private[world] var manualUntil: Millis = Millis.zero
   private[world] var lastPotion: Millis  = Millis.zero
+  /** 还在回血回蓝的普通药（可以叠着喝） */
+  private[world] var potions: List[PotionCourse] = Nil
 
   def maxHp: Int   = stats.maxHp
   def ac: Span     = stats.ac
@@ -106,9 +108,6 @@ final class Monster(id: ActorId, val defn: MonsterDef, val behavior: Behavior, i
     extends Actor(id, cell, dir, now):
   /** 刷怪点（被诱惑收服后不再算它的，刷怪点会补一只） */
   private[world] var spawn: Option[Int] = initSpawn
-  /** 被定住（不动不打，挨打解除）、发狂（见谁打谁）到什么时候 */
-  private[world] var seizedUntil: Millis = Millis.zero
-  private[world] var crazyUntil: Millis  = Millis.zero
   private[world] var maxHpNow: Int  = defn.hp
   private[world] var dc: Span       = defn.dc
   private[world] var target: Option[ActorId] = None
@@ -139,18 +138,16 @@ final class Monster(id: ActorId, val defn: MonsterDef, val behavior: Behavior, i
   hp = defn.hp
 
   def maxHp: Int   = maxHpNow
-  def ac: Span     = acUp.fold(defn.ac)(_.on(defn.ac))
-  def mac: Span    = macUp.fold(defn.mac)(_.on(defn.mac))
+  def ac: Span     = buffedAc(defn.ac)
+  def mac: Span    = buffedMac(defn.mac)
   def agility: Int = defn.speed
   def hit: Int     = defn.hit
   def isGuard: Boolean = Behavior.isGuard(defn)
-  /** 此刻的状态（定住优先；宝宝不会发狂） */
-  def moodAt(now: Millis): Mood =
-    if seizedUntil > now then Mood.Seized
-    else if crazyUntil > now && master.isEmpty then Mood.Crazy
+  /** 此刻的状态（定住优先；宝宝不会发狂），也是名字颜色 */
+  def mood: Mood =
+    if statuses.has(StatusKind.Seized) then Mood.Seized
+    else if statuses.has(StatusKind.Crazy) && master.isEmpty then Mood.Crazy
     else Mood.Calm
-  /** 外观里的 mood 取最近一次 World 更新的（到期由 World 在 tick 里改回） */
-  private[world] var mood: Mood = Mood.Calm
   def look: Look   = Look.Monster(defn.name, cover, master, mood)
 
 enum Rage:
@@ -174,7 +171,7 @@ enum Loot:
     case Item(it)  => GroundThing.Item(it.name)
     case Coins(g)  => GroundThing.Coins(g)
 
-/** 地上持续法术的作用：火墙（谁放的、每跳威力，按魔防减）；困魔咒光圈（只是样子，困住怪靠 Monster.seizedUntil）。 */
+/** 地上持续法术的作用：火墙（谁放的、每跳威力，按魔防减）；困魔咒光圈（只是样子，困住怪靠怪身上的 Seized 状态）。 */
 enum FieldEffect:
   case Fire(owner: ActorId, damage: Int)
   case HolyCurtain

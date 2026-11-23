@@ -5,7 +5,7 @@ import scala.annotation.tailrec
 import mir.core.*
 import mir.model.*
 import mir.protocol.Tone
-import mir.rules.{Rng, Rules, SpellRules}
+import mir.rules.{Rng, SpellRules}
 
 /**
  * 战士野蛮冲撞（技能 27）：朝一个方向冲 max(2, 等级+1) 格。
@@ -54,10 +54,7 @@ private[world] object Rush:
     val result = w.occupant(start.step(dir)) match
       case Some(_) =>
         val (pushes, moved, victim) = shoveAlong(0, 0, 0, None)
-        victim.foreach { v =>
-          val dmg = Rules.afterArmor(SpellRules.rushImpact(level, pushes), v.ac)
-          if dmg > 0 then w.applyDamage(v, dmg, Some(p.id)) else w.miss(v)
-        }
+        victim.foreach(w.strike(Some(p), _, Blow(Defence.Armor, SpellRules.rushImpact(level, pushes))): Unit)
         if moved == 0 then tooWeak(w, p)
         Result(moved, succeeded = moved > 0)
       case None =>
@@ -65,9 +62,7 @@ private[world] object Rush:
         if wall then
           tooWeak(w, p)
           // 原版：冲劲（等级+1 格）没用完就撞墙，自己挨一下（原版 0 级冲满 2 格时计数溢出也会挨，不照搬）
-          if moved < level + 1 then
-            val dmg = Rules.afterArmor(SpellRules.rushCrash(level), p.ac)
-            if dmg > 0 then w.applyDamage(p, dmg, None)
+          if moved < level + 1 then w.strike(None, p, Blow(Defence.Armor, SpellRules.rushCrash(level))): Unit
         Result(moved, succeeded = false)
 
     val dur = math.max(1, result.moved) * RushStepMs

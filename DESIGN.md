@@ -37,7 +37,8 @@
     - `mir.rules`：ItemKind/ItemEffects/Requirement（items.ts）、Rules（rules.ts，随机数经 Rng 传入）、Rates（rates.ts）、Leveling。
     - `mir.protocol`：`ClientCmd = SessionCmd | GameCmd`（登录选人对时归服务端连接；游戏指令归世界）、`ServerMsg`（事件）+ 视野类型，zio-json 编码（外层键是分支名）。走路按原版：客户端带起点格和方向，服务端回 MoveOk / MoveDenied(拉回格)。
     - `mir.world`（#1153）：一张图一个 `World`（单线程用，内部可变，对外「`handle(玩家, GameCmd)` / `tick(时刻)` 进，`flush(): Outbox` 出」；随机数 Rng、物品编号 UidSource、时钟都从外面给；没玩家的图 tick 不做事）。
-      - 进出：`join(CharacterData, 宝宝)` 返回本图对象编号；`leave` 取存档；换图（传送点、传送菜单、回城、复活）在 `Outbox.departures` 里交给服务端送去目的地图。
+      - 进出：`join(CharacterData, Carried)` 返回本图对象编号；`leave` 取存档；换图（传送点、传送菜单、回城、复活）在 `Outbox.departures` 里交给服务端送去目的地图，`Carried`（宝宝、身上的限时状态、没回完的药，不进存档）跟着带过去（#1170）。
+      - 战斗结算（#1170）：所有攻击（剑术、魔法、怪物各种出招、火墙、野蛮冲撞）都造一个 `Blow`（扣防/扣魔防/不扣/自爆各一半、威力、要不要判命中）交给 `World.strike`：敌我与在不在图上 → 命中 → 扣防 → `applyDamage`（红毒 ×1.2、魔法盾、扣血、被打动作、死亡经验），返回 `StrikeResult`（毒液毒气的附带效果按是否打到身上判）。身上的限时状态是 `Actor.statuses`（`Status`：中毒、魔法盾、隐身、麻痹、神圣战甲术、幽灵盾、定住、发狂），每次 tick 开头统一到期，怪的名字颜色（mood）和自己的 SelfStatus 都从它算。延时回调只有 `afterOn(对象, 毫秒)`：到点时对象已不在本图或已死就不跑。普通药分跳回血是 `Player.potions`。
       - `Inventory`（#1159）：身上和仓库物品进出，同名可叠的并叠、按格判满、重量按个数、拆分；进图时 normalize（旧存档补数量、合并）。`GameCmd.Sell/Deposit/Withdraw` 带 `count`（空 = 整叠）。
       - `Behavior`（Race → 出招/藏身/附加本领）+ `MonsterAi`；`Combat`（普攻剑术、技能）；`PlayerOps`（指令：移动校验、物品、NPC 买卖存取，非法的回 Refused）；`AutoPlay`（自动喝药、按住攻击、还手、烈火、捡物，按角色设置在服务端跑）。
       - 视野：flush 时按切比雪夫 14 格算每个玩家的出现/消失，对象的动作/血量/外观按「和上次发出去的比，变了才发」，特效声音飘字只发给附近的人，自己的属性背包等变了才发。
@@ -80,6 +81,6 @@
 - [x] 怪物行为（#1139）：game/src/world/monster_ai.ts 按 Race 描述出招/藏身/附加本领（食人花钻地、石像、僵尸电光与复活、洞蛆麻痹、蜘蛛喷毒、角蝇巢/幻影蜘蛛放小怪、爆裂蜘蛛自爆、沃玛教主狂暴瞬移、祖玛教主召唤、赤月恶魔/触龙神范围攻击）；测试 `cd game && npm test`
 - [x] 传送菜单（#1139，用户要求）：左上「传送」键或 T 键，分组列城中心和各打怪地区入口（tools/build_data.py teleports；ui/classic/teleport.ts）
 - [x] 物品叠放（#1159，用户定，原版不叠）：药、卷轴、技能书、捆装药同名叠一格不设上限（`ItemKind.stacks` / items.ts `stacks`），装备、符毒、矿石不叠；`world/inventory.ts` 管并叠、拆分、按格判满、重量按个数；卖/存/取一叠弹数量框（`ui/classic/quantity.ts`，默认全部）；旧存档读档补数量 1 并合并同名。
-- [x] 法师、道士技能实际效果（#1163，Scala 版）：公式在 `mir.rules.SpellRules`（MagicManager.cs，随机数经 Rng，技能说明可求上下限）；`Combat.spell` 按技能做；地上持续法术（火墙、困魔咒光圈）是世界里的 `Field`，按视野发 `FieldAppear/FieldDisappear`，客户端照 ClEvent.pas 画；怪物被定住/发狂是 `Monster.seizedUntil/crazyUntil`，外观 `Look.Monster.mood` 让名字变色；神圣战甲术/幽灵盾是 `Actor.acUp/macUp`。本机 `?local&hero` 新建 40 级满技能角色看效果。
+- [x] 法师、道士技能实际效果（#1163，Scala 版）：公式在 `mir.rules.SpellRules`（MagicManager.cs，随机数经 Rng，技能说明可求上下限）；`Combat.spell` 按技能做；地上持续法术（火墙、困魔咒光圈）是世界里的 `Field`，按视野发 `FieldAppear/FieldDisappear`，客户端照 ClEvent.pas 画；怪物被定住/发狂、神圣战甲术/幽灵盾都是 `Actor.statuses` 里的状态（#1170），外观 `Look.Monster.mood` 让名字变色。本机 `?local&hero` 新建 40 级满技能角色看效果。
 - [x] 战士野蛮冲撞（#1168）：`world.Rush` 照 DoMotaebo/CharPushed，公式 `SpellRules.rush*`；被推用 `World.pushBack`（抗拒火环共用），动作 `ActKind.Rush`（from 为空＝撞不动原地冲）/`Backstep`（脸朝推的人倒退），客户端按原版 ActRushLeft/Right、倒放走路帧画。
 - [ ] 门（doorIndex）；按地图回城点（现在一律回比奇）

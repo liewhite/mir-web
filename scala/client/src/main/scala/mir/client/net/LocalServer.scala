@@ -74,7 +74,7 @@ final class LocalServer(catalog: Catalog, assets: Assets, listener: LinkEvent =>
         case Some((_, data)) =>
           here.flatMap((w, me) => w.leave(me)).foreach(d => chars = chars.map(c => if c._1.id == id then c._1 -> d else c))
           here = None
-          enter(chars.find(_._1.id == id).fold(data)(_._2), Nil)
+          enter(chars.find(_._1.id == id).fold(data)(_._2), Carried())
     case SessionCmd.Ping(ms) => deliver(ServerMsg.Pong(ms, clock))
 
   /** 地址带 &hero：新建的角色 40 级、学会本职业全部技能（3 级，前 8 个按 F1–F8）、左手镯戴护身符（本机看技能效果用）。 */
@@ -87,10 +87,10 @@ final class LocalServer(catalog: Catalog, assets: Assets, listener: LinkEvent =>
     val charm = catalog.item(ItemName("护身符")).map(it => mir.model.ItemInstance(uids.next(), it.name, 100_000, 100_000))
     d.copy(level = 40, hp = Hp(99_999), mp = Mp(99_999), skills = skills.toList, worn = d.worn ++ charm.map(mir.model.EquipSlot.BraceletL -> _))
 
-  private def enter(data: CharacterData, pets: List[PetData]): Unit =
+  private def enter(data: CharacterData, carried: Carried): Unit =
     world(data.place.map).recoverWith(_ => world(CharacterData.start.map)).foreach { w =>
       val place = if w.mapId == data.place.map then data.place else CharacterData.start
-      here = Some(w -> w.join(data.copy(place = place), pets))
+      here = Some(w -> w.join(data.copy(place = place), carried))
       if timer.isEmpty then timer = Some(dom.window.setInterval(() => tick(), TickMs))
     }
 
@@ -113,7 +113,7 @@ final class LocalServer(catalog: Catalog, assets: Assets, listener: LinkEvent =>
     out.messages.get(me).foreach(_.foreach(deliver))
     out.departures.find(_.player == me).foreach { d =>
       here = None
-      enter(d.data, d.pets)
+      enter(d.data, d.carried)
     }
   }
 

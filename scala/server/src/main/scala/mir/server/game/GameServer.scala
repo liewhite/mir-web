@@ -5,7 +5,7 @@ import mir.data.Catalog
 import mir.protocol.*
 import mir.server.{Account, LinkId}
 import mir.server.store.{Backups, Characters, StoredChar}
-import mir.world.{CharacterData, Place, UidSource, World}
+import mir.world.{Carried, CharacterData, Place, UidSource, World}
 
 import java.util.concurrent.ConcurrentLinkedQueue
 import scala.collection.mutable
@@ -80,12 +80,12 @@ final class GameServer(
       val out = attempt(s"取地图 ${w.mapId} 的消息")(w.flush())
       out.toVector.flatMap { o =>
         o.messages.foreach((actor, msgs) => byActor.get((w.mapId, actor)).flatMap(online.get).foreach(deliver(w, _, msgs)))
-        o.departures.flatMap(d => byActor.remove((w.mapId, d.player)).flatMap(online.get).map(_ -> d.data))
+        o.departures.flatMap(d => byActor.remove((w.mapId, d.player)).flatMap(online.get).map(_ -> d))
       }
     }
-    departures.foreach((o, data) => guard(s"换图 ${o.id}") {
-      save(o.id, data)
-      enter(o, data)
+    departures.foreach((o, d) => guard(s"换图 ${o.id}") {
+      save(o.id, d.data)
+      enter(o, d.data, d.carried)
     })
     if now - lastSave >= saveEveryMs then
       lastSave = now
@@ -155,14 +155,14 @@ final class GameServer(
     enter(o, data)
 
   /** 把角色放进存档里那张图；那张图开不了（数据表或素材缺了）就送回城，再不行送新手村。 */
-  private def enter(o: Online, data: CharacterData): Unit =
+  private def enter(o: Online, data: CharacterData, carried: Carried = Carried()): Unit =
     val tries = List(data.place, data.home, CharacterData.start).distinct
     val placed = tries.iterator.map(p => p -> maps.get(p.map)).collectFirst { case (p, Right(w)) => (p, w) }
     placed match
       case Some((p, w)) =>
         if p != data.place then System.err.println(s"角色 ${o.id} 去不了 ${data.place}，改到 $p")
         o.map = w.mapId
-        o.actor = w.join(data.copy(place = p))
+        o.actor = w.join(data.copy(place = p), carried)
         byActor((w.mapId, o.actor)) = o.id
         touched += w.mapId
       case None =>

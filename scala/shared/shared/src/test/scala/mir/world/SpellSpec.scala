@@ -61,7 +61,7 @@ object SpellSpec extends ZIOSpecDefault:
     s.w.spawnMonster(catalog.monster(MonsterName(name)).getOrElse(throw new AssertionError(name)), None, at, 0).get
 
   /** 把怪钉住不动（测试用：远远地定住，免得乱跑） */
-  private def pin(m: Monster): Unit = m.seizedUntil = Millis(Long.MaxValue / 2)
+  private def pin(m: Monster): Unit = m.statuses.put(Status.Seized, Millis(Long.MaxValue / 2))
 
   def spec = suite("技能效果（#1163）")(
     suite("公式")(
@@ -160,13 +160,13 @@ object SpellSpec extends ZIOSpecDefault:
       val p = caster(s, Job.Taoist, List(16), charm = true)
       val m = put(s, "蛤蟆", Cell(34, 30))
       s.cast(p, 16, Some(m), m.cell)
-      val held  = m.seizedUntil > s.w.now && m.look.asInstanceOf[Look.Monster].mood == Mood.Seized
+      val held  = m.statuses.has(StatusKind.Seized) && m.look.asInstanceOf[Look.Monster].mood == Mood.Seized
       val at    = m.cell
       s.run(5000)
       val still = m.cell == at
       val rings = s.w.activeFields.count(_.effect == FieldEffect.HolyCurtain)
       s.w.applyDamage(m, 1, Some(p.id))
-      assertTrue(held, still, rings == 8, m.seizedUntil == Millis.zero, s.view.fields.size == 8)
+      assertTrue(held, still, rings == 8, !m.statuses.has(StatusKind.Seized), s.view.fields.size == 8)
     },
     test("神圣战甲术、幽灵盾：没选自己人就加在自己身上，防御/魔防上限 + 等级/7+1，到时恢复") {
       val s   = sim()
@@ -230,7 +230,7 @@ object SpellSpec extends ZIOSpecDefault:
       m.hp = 10_000
       s.w.applyDamage(m, 100, Some(p.id))
       val plain = 10_000 - m.hp
-      m.poison = Some(Poison(PoisonKind.Red, s.w.now + 60_000, 0, s.w.now + 2000, p.id))
+      s.w.poison(m, PoisonKind.Red, 60_000, 0, p.id)
       s.w.applyDamage(m, 100, Some(p.id))
       assertTrue(plain == 100, 10_000 - plain - m.hp == 120)
     },

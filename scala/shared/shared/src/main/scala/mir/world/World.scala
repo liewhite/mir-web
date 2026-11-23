@@ -16,9 +16,12 @@ final case class Outbox(
     departures: Vector[Departure]
 )
 
-/** 一个玩家换图：存档（位置已是目的地）、跟着走的宝宝。 */
-final case class Departure(player: ActorId, data: CharacterData, pets: List[PetData]):
+/** 一个玩家换图：存档（位置已是目的地）、跟着走的不进存档的东西。 */
+final case class Departure(player: ActorId, data: CharacterData, carried: Carried):
   def to: Place = data.place
+
+/** 换图时跟着人走、但不进存档的东西：宝宝、身上的限时状态、还没回完的药（时刻都是服务端统一的时钟）。 */
+final case class Carried(pets: List[PetData] = Nil, statuses: List[Timed] = Nil, potions: List[PotionCourse] = Nil)
 
 object World:
   /** 视野：玩家能看到身边多少格以内（切比雪夫距离） */
@@ -167,27 +170,35 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
   private val timers   = mutable.ArrayBuffer.empty[Timer]
   private var timerSeq = 0L
 
-  /** 按游戏时间延后执行（飞行技能命中、药效分跳、钻回地下等）。 */
-  private[world] def after(ms: Long)(f: => Unit): Unit =
+  /**
+   * 过 ms 毫秒后对 a 做 f（飞行技能命中、钻回地下等）：到点时 a 已不在这张图上（下线、换图、尸体清掉）或已死就不做。
+   * 对象编号在一张图里不重复使用，所以「这个编号上还是它」就是它还在。
+   */
+  private[world] def afterOn[A <: Actor](a: A, ms: Long)(f: A => Unit): Unit =
     timerSeq += 1
-    timers += Timer(clock + ms, timerSeq, () => f)
+    timers += Timer(clock + ms, timerSeq, () => if present(a) && !a.dead then f(a))
+
+  /** a 还在这张图上。 */
+  private[world] def present(a: Actor): Boolean = actors.get(a.id).exists(_ eq a)
 
   /** 推进到 to（不会倒退）。没有玩家的图什么也不做（时钟照走）。 */
   def tick(to: Millis): Unit =
     if to > clock then clock = to
     if hasPlayers then
+      actors.values.toVector.foreach(expireStatuses)
       // 发狂的怪不算：野怪不会主动去找它，只在挨了它的打时还手
       fighters = actors.values.filter(a => side(a).exists(s => s != Side.Wild && s != Side.Crazy)).toVector
       val due = timers.filter(_.at <= clock).sortBy(t => (t.at.value, t.seq))
       timers.filterInPlace(_.at > clock)
       due.foreach(_.run())
+      players.toVector.foreach(drinkPotions)
       runSpawns()
       actors.values.toVector.foreach { a =>
         if actors.contains(a.id) then
           a match
             case m: Monster => MonsterAi.think(this, m)
             case _          => ()
-          tickStatus(a)
+          tickPoison(a)
       }
       tickFields()
       players.toVector.foreach { p =>
@@ -200,32 +211,40 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
       }
       ground.values.toVector.foreach(g => if clock - g.droppedAt > ItemKeepMs then ground.remove(g.id): Unit)
 
-  private def tickStatus(a: Actor): Unit =
-    a.poison match
-      case Some(p) if !a.dead =>
-        if clock >= p.until then a.poison = None
-        else if p.kind == PoisonKind.Green && clock >= p.nextTick then
-          a.poison = Some(p.copy(nextTick = clock + 2000))
-          applyDamage(a, math.max(1, p.power), Some(p.by), interrupt = false, struck = false)
-      case _ => ()
-    // 神圣战甲术、幽灵盾到期
-    val acEnd  = a.acUp.exists(_.until <= clock)
-    val macEnd = a.macUp.exists(_.until <= clock)
-    if acEnd then a.acUp = None
-    if macEnd then a.macUp = None
-    a match
-      case p: Player if acEnd || macEnd =>
-        recalc(p)
-        if acEnd then notice(p, "防御力回复正常", Tone.System)
-        if macEnd then notice(p, "魔法防御力回复正常", Tone.System)
-      case m: Monster => m.mood = m.moodAt(clock)
-      case _          => ()
+  // ---------------- 身上的限时状态 ----------------
 
-  /** 给对象加上神圣战甲术（acUp）或幽灵盾；再放一次不会把还没到期的时间缩短。 */
+  /** 到期的状态去掉；战甲、幽灵盾到期要重算属性并提示。 */
+  private def expireStatuses(a: Actor): Unit =
+    val ended = a.statuses.expire(clock).map(_.status.kind)
+    a match
+      case p: Player if ended.exists(k => k == StatusKind.ArmorUp || k == StatusKind.MagicArmorUp) =>
+        recalc(p)
+        if ended.contains(StatusKind.ArmorUp) then notice(p, "防御力回复正常", Tone.System)
+        if ended.contains(StatusKind.MagicArmorUp) then notice(p, "魔法防御力回复正常", Tone.System)
+      case _ => ()
+
+  /** 绿毒每 2 秒掉一次血（不算挨打：不 ×1.2、不打断动作）。 */
+  private def tickPoison(a: Actor): Unit =
+    a.statuses.find { case p: Status.Poisoned => p }.filter(p => !a.dead && p.poison == PoisonKind.Green && clock >= p.nextTick).foreach { p =>
+      a.statuses.revise(p.copy(nextTick = clock + 2000))
+      applyDamage(a, math.max(1, p.power), p.by, interrupt = false, struck = false)
+    }
+
+  /** 给对象上一个持续 ms 毫秒的状态（同种覆盖）。 */
+  private[world] def addStatus(a: Actor, s: Status, ms: Long): Unit = a.statuses.put(s, clock + ms)
+
+  /** 中毒（同种覆盖）：绿毒 2 秒后掉第一次血。 */
+  private[world] def poison(a: Actor, kind: PoisonKind, ms: Long, power: Int, by: ActorId): Unit =
+    addStatus(a, Status.Poisoned(kind, power, clock + 2000, Some(by)), ms)
+
+  /** 麻痹（原版 STONE 状态）：这段时间不能动；不会把还没到期的缩短。 */
+  private[world] def paralyze(a: Actor, ms: Long): Unit =
+    a.statuses.extend(Status.Paralyzed, clock + ms)
+    a.statuses.until(StatusKind.Paralyzed).foreach(u => if a.busyUntil < u then a.busyUntil = u)
+
+  /** 给对象加上神圣战甲术或幽灵盾；再放一次不会把还没到期的时间缩短。 */
   private[world] def defenceUp(a: Actor, magic: Boolean, amount: Int, secs: Int): Unit =
-    val until = clock + secs * 1000L
-    def merge(old: Option[Buff]) = Some(Buff(amount, old.fold(until)(o => if o.until > until then o.until else until)))
-    if magic then a.macUp = merge(a.macUp) else a.acUp = merge(a.acUp)
+    a.statuses.extend(if magic then Status.MagicArmorUp(amount) else Status.ArmorUp(amount), clock + secs * 1000L)
     a match
       case p: Player =>
         recalc(p)
@@ -234,14 +253,36 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
 
   /** 怪物被定住 / 发狂。 */
   private[world] def seize(m: Monster, secs: Int): Unit =
-    m.seizedUntil = clock + secs * 1000L
+    addStatus(m, Status.Seized, secs * 1000L)
     m.target = None
-    m.mood = m.moodAt(clock)
 
   private[world] def enrage(m: Monster, secs: Int): Unit =
-    m.crazyUntil = clock + secs * 1000L
+    addStatus(m, Status.Crazy, secs * 1000L)
     m.target = None
-    m.mood = m.moodAt(clock)
+
+  /** 喝下的普通药：分几跳慢慢回（PotionRules），到点的跳都补上。 */
+  private def drinkPotions(p: Player): Unit =
+    @scala.annotation.tailrec def run(c: PotionCourse): Option[PotionCourse] =
+      if c.next > clock then Some(c)
+      else
+        p.hp += math.max(0, math.min(c.hpPerTick, p.stats.maxHp - p.hp))
+        p.mp += math.max(0, math.min(c.mpPerTick, p.stats.maxMp - p.mp))
+        c.advanced match
+          case Some(rest) => run(rest)
+          case None       => None
+    if !p.dead then p.potions = p.potions.flatMap(run)
+
+  /** 自己身上的状态（界面上的图标和倒计时）。 */
+  private def selfStatus(p: Player): SelfStatus =
+    val s = p.statuses
+    SelfStatus(
+      poison = s.find { case q: Status.Poisoned => q.poison }, poisonUntil = s.until(StatusKind.Poison),
+      shieldUntil = s.until(StatusKind.Shield),
+      invisibleUntil = s.until(StatusKind.Invisible),
+      paralyzedUntil = s.until(StatusKind.Paralyzed),
+      acUpUntil = s.until(StatusKind.ArmorUp),
+      macUpUntil = s.until(StatusKind.MagicArmorUp)
+    )
 
   // ---------------- 地上持续的法术 ----------------
 
@@ -264,10 +305,8 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
             fields(f.id) = f.copy(nextBurn = clock + mir.rules.SpellRules.FireWallTickMs)
             for
               o <- actors.get(owner)
-              t <- occupant(f.cell) if isEnemy(o, t)
-            do
-              val dmg = Rules.afterMagicArmor(damage, t.mac)
-              if dmg > 0 then applyDamage(t, dmg, Some(owner), interrupt = false) else miss(t)
+              t <- occupant(f.cell)
+            do strike(Some(o), t, Blow(Defence.MagicArmor, damage, staggers = false)): Unit
           case _ => ()
     }
 
@@ -399,7 +438,7 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
    * 玩家进图：位置用存档里的格子（被占就找附近空格）。返回他在本图的对象编号。
    * 数据表里已不存在的物品、技能丢掉（旧存档不会把游戏弄坏）。
    */
-  def join(data: CharacterData, pets: List[PetData] = Nil): ActorId =
+  def join(data: CharacterData, carried: Carried = Carried()): ActorId =
     val cell = freeCellNear(data.place.cell).getOrElse(data.place.cell)
     val p    = Player(newActorId(), data.name, data.job, data.sex, data.hair, cell, data.dir, clock)
     def valid(it: ItemInstance): Option[ItemInstance] = catalog.item(it.name).map(_ => it)
@@ -418,13 +457,16 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
     p.wideHitOn = data.wideHitOn
     p.hp = data.hp.value
     p.mp = data.mp.value
+    carried.statuses.foreach(t => p.statuses.put(t.status, t.until))
+    p.statuses.until(StatusKind.Paralyzed).foreach(p.busyUntil = _)
+    p.potions = carried.potions
     recalc(p)
     if p.hp <= 0 then p.hp = math.max(1, p.stats.maxHp / 3) // 死着下线的，回来时活着
     actors(p.id) = p
     occupy(p)
     tell(p, ServerMsg.EnterMap(p.id, mapDef.id, p.cell, p.dir, clock))
     sound(p.cell, Sounds.spaceIn)
-    pets.foreach { pd =>
+    carried.pets.foreach { pd =>
       catalog.monster(pd.kind).flatMap(spawnMonster(_, None, p.cell, 1)).foreach { m =>
         m.master = Some(p.id)
         m.petLevel = pd.level
@@ -480,7 +522,12 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
         case m: Monster if !m.dead => PetData(m.defn.name, m.hp, m.maxHpNow, m.dc, m.petLevel)
       }.toList
       sound(p.cell, Sounds.spaceOut)
-      departed += Departure(p.id, snapshot(p).copy(place = to), pets)
+      // 下毒的人留在这张图：编号到了别的图不算数
+      val statuses = p.statuses.all.map {
+        case Timed(q: Status.Poisoned, until) => Timed(q.copy(by = None), until)
+        case t                                 => t
+      }
+      departed += Departure(p.id, snapshot(p).copy(place = to), Carried(pets, statuses, p.potions))
       removePlayer(p)
       p.pets.flatMap(actors.get).foreach(removeActor)
 
@@ -523,7 +570,7 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
       case _            => true
     val candidates = if side(m).contains(Side.Wild) then fighters.iterator.filter(a => actors.contains(a.id)) else actors.valuesIterator
     candidates
-      .filter(a => isEnemy(m, a) && (seesInvisible || a.invisibleUntil <= clock))
+      .filter(a => isEnemy(m, a) && (seesInvisible || !a.statuses.has(StatusKind.Invisible)))
       .map(a => a -> m.cell.chebyshev(a.cell))
       .filter(_._2 <= range)
       .minByOption(_._2)
@@ -533,19 +580,43 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
   private[world] def weaponShape(p: Player): Option[Int] =
     p.worn.get(EquipSlot.Weapon).flatMap(it => catalog.item(it.name)).map(_.shape)
 
-  /** 伤害结算：魔法盾减伤、被打动作、死亡、经验。 */
+  /**
+   * 一下攻击的完整结算（所有攻击都走这里）：是不是敌人 → 命中 → 扣防/魔防 → applyDamage（红毒、魔法盾、扣血）。
+   * by 是攻击方，要还在这张图上、活着、和目标是敌对的；None 是没有攻击方的伤害（冲撞撞墙自己挨的），不看敌我。
+   */
+  private[world] def strike(by: Option[Actor], target: Actor, blow: Blow): StrikeResult =
+    val reachable = !target.isInstanceOf[Npc] && !target.dead && present(target) &&
+      by.forall(b => present(b) && isEnemy(b, target))
+    if !reachable then StrikeResult.Ignored
+    else if blow.accuracy.exists(acc => !Rules.hits(acc, target.agility)) then
+      miss(target)
+      StrikeResult.Dodged
+    else
+      val dmg = blow.defence match
+        case Defence.Armor      => Rules.afterArmor(blow.power, target.ac)
+        case Defence.MagicArmor => Rules.afterMagicArmor(blow.power, target.mac)
+        case Defence.Pierce     => blow.power
+        case Defence.Blast      => Rules.afterArmor(blow.power / 2, target.ac) + Rules.afterMagicArmor(blow.power / 2, target.mac)
+      if dmg <= 0 then
+        miss(target)
+        StrikeResult.Blocked
+      else
+        applyDamage(target, dmg, by.map(_.id), interrupt = blow.staggers)
+        StrikeResult.Wounded(dmg)
+
+  /** 扣血：红毒加伤、魔法盾减伤、被打动作、死亡、经验。攻击走 strike；这里直接用的是不判敌我防御的（毒发、秒杀）。 */
   private[world] def applyDamage(target: Actor, amount: Int, source: Option[ActorId], interrupt: Boolean = true, struck: Boolean = true): Unit =
     target match
       case _: Npc => ()
       case _ if target.dead => ()
       case _ =>
         // 中红毒的挨打 ×1.2（绿毒自己掉的血不算挨打）
-        val poisoned = if struck && target.poison.exists(_.kind == PoisonKind.Red) then mir.rules.SpellRules.redPoisonDamage(amount) else amount
-        val dmg = target match
-          case _: Player if target.shieldUntil > clock =>
-            val absorb = mir.rules.SpellRules.shieldAbsorb(target.shieldLevel)
-            math.max(1, math.round(poisoned * (1 - absorb)).toInt)
-          case _ => poisoned
+        val redPoison = target.statuses.find { case p: Status.Poisoned if p.poison == PoisonKind.Red => p }.isDefined
+        val poisoned  = if struck && redPoison then mir.rules.SpellRules.redPoisonDamage(amount) else amount
+        val shield    = target match
+          case _: Player => target.statuses.find { case s: Status.Shielded => s.level }
+          case _         => None
+        val dmg = shield.fold(poisoned)(lv => math.max(1, math.round(poisoned * (1 - mir.rules.SpellRules.shieldAbsorb(lv))).toInt))
         target.hp -= dmg
         target.lastHitBy = source
         val src = source.flatMap(actors.get)
@@ -564,9 +635,7 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
           target match
             case m: Monster if interrupt =>
               // 被定住的挨打就醒（AnimalObject 收到 RM_STRUCK 时 BreakHolySeizeMode）
-              if m.seizedUntil > clock then
-                m.seizedUntil = Millis.zero
-                m.mood = m.moodAt(clock)
+              m.statuses.remove(StatusKind.Seized)
               val dur = actTable(m).fold(200)(t => math.max(200, t.struck.frames * t.struck.frameTime))
               if m.action.kind == ActKind.Stand || m.action.kind == ActKind.Struck then
                 setAction(m, ActKind.Struck, dur)
@@ -579,7 +648,7 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
 
   private def kill(target: Actor, killer: Option[ActorId]): Unit =
     target.dead = true
-    target.poison = None
+    target.statuses.remove(StatusKind.Poison)
     setAction(target, ActKind.Die, 1200)
     target match
       case m: Monster =>
@@ -600,6 +669,7 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
       case p: Player =>
         sound(p.cell, if p.sex == Sex.Female then Sounds.womDie else Sounds.manDie)
         p.intent = Intent.Idle
+        p.potions = Nil
         tell(p, ServerMsg.Died)
         notice(p, "你死了。点「回城复活」回到城里。", Tone.Bad)
       case _: Npc => ()
@@ -688,7 +758,7 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
     }
     def lv(id: Int): Option[Int] = p.skill(SkillId(id)).map(_.level)
     val base = Rules.computeStats(p.job, p.level, effects, PassiveSkills(oneSword = lv(3), spiritSword = lv(4), powerHit = lv(7)))
-    p.stats = base.copy(ac = p.acUp.fold(base.ac)(_.on(base.ac)), mac = p.macUp.fold(base.mac)(_.on(base.mac)))
+    p.stats = base.copy(ac = p.buffedAc(base.ac), mac = p.buffedMac(base.mac))
     p.hp = math.min(p.hp, p.stats.maxHp)
     p.mp = math.min(p.mp, p.stats.maxMp)
 
@@ -720,14 +790,7 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
       stats = SelfStats(p.level, p.exp, catalog.expToNext(p.level), Hp(p.hp), Mp(p.mp), p.gold, p.stats),
       bag = p.bag.toVector, belt = p.belt.toVector, worn = p.worn.toMap, storage = p.storage.toList, skills = p.skills.toList,
       cooldowns = p.cooldown.toMap,
-      status = SelfStatus(
-        poison = p.poison.map(_.kind), poisonUntil = p.poison.map(_.until),
-        shieldUntil = Option.when(p.shieldUntil > clock)(p.shieldUntil),
-        invisibleUntil = Option.when(p.invisibleUntil > clock)(p.invisibleUntil),
-        paralyzedUntil = Option.when(p.paralyzedUntil > clock)(p.paralyzedUntil),
-        acUpUntil = p.acUp.map(_.until),
-        macUpUntil = p.macUp.map(_.until)
-      ),
+      status = selfStatus(p),
       sword = SwordState(p.longHitOn, p.wideHitOn, p.fireReady),
       settings = p.settings
     )

@@ -72,22 +72,12 @@ object Combat:
         case HitStyle.Normal => None
       styleSound.foreach(w.sound(p.cell, _))
       resolveHit(w, p, dir, style, target)
-      if p.invisibleUntil > w.now then p.invisibleUntil = Millis.zero
+      p.statuses.remove(StatusKind.Invisible)
       Outcome.Done
 
-  private def physicalHit(w: World, p: Player, t: Actor, power: Int, ignoreArmor: Boolean)(using Rng): Boolean =
-    if !w.isEnemy(p, t) then false
-    else if !Rules.hits(p.stats.hit, t.agility) then
-      w.miss(t)
-      false
-    else
-      val dmg = if ignoreArmor then power else Rules.afterArmor(power, t.ac)
-      if dmg <= 0 then
-        w.miss(t)
-        false
-      else
-        w.applyDamage(t, dmg, Some(p.id))
-        true
+  /** 一刀：判命中，扣防御（刺杀隔一格的那下不扣）。 */
+  private def physicalHit(w: World, p: Player, t: Actor, power: Int, ignoreArmor: Boolean): Unit =
+    w.strike(Some(p), t, Blow(if ignoreArmor then Defence.Pierce else Defence.Armor, power, accuracy = Some(p.stats.hit))): Unit
 
   private def resolveHit(w: World, p: Player, dir: Dir, style: HitStyle, target: Option[Actor]): Unit =
     given rng: Rng = w.rngOf
@@ -153,11 +143,9 @@ object Combat:
     27 -> ("magic", 1790, 10, 60), 29 -> ("magic", 3880, 10, 60), 30 -> ("magic", 3920, 10, 60), 31 -> ("magic", 3840, 10, 60)
   )
 
+  /** 魔法打一下：必中，扣魔防。 */
   private def hitMagic(w: World, p: Player, t: Actor, power: Int): Unit =
-    given Rng = w.rngOf
-    if w.actor(t.id).contains(t) && w.isEnemy(p, t) then
-      val dmg = Rules.afterMagicArmor(power, t.mac)
-      if dmg > 0 then w.applyDamage(t, dmg, Some(p.id)) else w.miss(t)
+    w.strike(Some(p), t, Blow(Defence.MagicArmor, power)): Unit
 
   private def enemiesAround(w: World, p: Player, c: Cell, r: Int): Vector[Actor] =
     w.actorsNow.filter(a => w.isEnemy(p, a) && a.cell.chebyshev(c) <= r)
@@ -201,12 +189,12 @@ object Combat:
                 p.busyUntil = w.now + SpellInterval
                 cooldownMs(d).foreach(ms => p.cooldown(skillId) = w.now + ms)
                 train(w, p, skillId, 1 + rng.random(3))
-                if p.invisibleUntil > w.now && skillId.value != 18 then p.invisibleUntil = Millis.zero
+                if skillId.value != 18 then p.statuses.remove(StatusKind.Invisible)
                 Outcome.Done
               case Effect.Acted(trained) =>
                 p.mp -= cost
                 if trained then train(w, p, skillId, 1 + rng.random(3))
-                if p.invisibleUntil > w.now then p.invisibleUntil = Millis.zero
+                p.statuses.remove(StatusKind.Invisible)
                 Outcome.Done
               case Effect.Instant => Outcome.Done
               case Effect.Fail(why) => Outcome.Refused(why)
@@ -245,7 +233,7 @@ object Combat:
     def charmFly(center: Cell, burst: Int, frames: Int, frameTime: Int): Unit =
       val delay = 80 * p.cell.chebyshev(center)
       if delay > 0 then fx("magic", 1160 + p.cell.dir16(center) * 10, 3, 60, Anchor.OnCell(center), from = Some(p.cell), duration = Some(delay))
-      w.after(delay)(fx("magic", burst, frames, frameTime, Anchor.OnCell(center)))
+      w.afterOn(p, delay)(_ => fx("magic", burst, frames, frameTime, Anchor.OnCell(center)))
     s.id.value match
       case id @ (1 | 5 | 11) => // 火球术、大火球、雷电术
         run(enemy.flatMap { t =>
@@ -254,15 +242,14 @@ object Combat:
             val power = if id == 11 && isUndead(t) then SpellRules.vsUndead(mcPower()) else mcPower()
             val delay = if id == 11 then 100 else 80 * p.cell.chebyshev(t.cell)
             w.sound(p.cell, Sounds.magic(id, SpellPhase.Fly))
-            w.after(delay) {
+            val base = if id == 1 then 0 else 400
+            w.afterOn(t, delay) { t =>
               w.sound(t.cell, Sounds.magic(id, SpellPhase.Burst))
               hitMagic(w, p, t, power)
+              if id != 11 then fx("magic", base + 170, 10, 50, Anchor.OnActor(t.id)) // 火球炸开
             }
             if id == 11 then fx("magic2", 10, 5, 80, Anchor.OnActor(t.id))
-            else
-              val base = if id == 1 then 0 else 400
-              fx("magic", base + 10 + p.cell.dir16(t.cell) * 10, 6, 50, Anchor.OnActor(t.id), from = Some(p.cell), duration = Some(delay))
-              w.after(delay)(fx("magic", base + 170, 10, 50, Anchor.OnActor(t.id)))
+            else fx("magic", base + 10 + p.cell.dir16(t.cell) * 10, 6, 50, Anchor.OnActor(t.id), from = Some(p.cell), duration = Some(delay))
             Right(())
         })
       case id @ (9 | 10) => // 地狱火（直线 5 格）、疾光电影（直线 8 格，打不死系 ×1.5）：MagPassThroughMagic
@@ -273,7 +260,7 @@ object Combat:
         else fx("magic", 970 + aimDir16 * 10, 6, 50, Anchor.OnActor(p.id)) // TLightingThunder：在施法者身上按 16 方向画光束
         cells.flatMap(w.occupant).distinctBy(_.id).filter(w.isEnemy(p, _)).foreach { a =>
           val pw = if id == 10 && isUndead(a) then SpellRules.vsUndead(power) else power
-          w.after(100)(hitMagic(w, p, a, pw))
+          w.afterOn(a, 100)(hitMagic(w, p, _, pw))
         }
         Effect.Cast
       case id @ (23 | 33) => // 爆裂火焰、冰咆哮：目标周围 1 格（MagBigExplosion）
@@ -281,13 +268,13 @@ object Combat:
           val power = mcPower()
           val hit   = enemiesAround(w, p, aim, SpellRules.BlastRadius)
           if id == 23 then fx("magic", 1660, 20, 80, Anchor.OnCell(aim)) else fx("magic", 3850, 20, 80, Anchor.OnCell(aim))
-          w.after(200)(hit.foreach(hitMagic(w, p, _, power)))
+          hit.foreach(w.afterOn(_, 200)(hitMagic(w, p, _, power)))
         })
       case 24 => // 地狱雷光：自己周围 2 格，不死系全额、其余十分之一（MagElecBlizzard）
         val power = mcPower()
         enemiesAround(w, p, p.cell, SpellRules.ThunderStormRadius).foreach { a =>
           val pw = SpellRules.thunderStorm(power, isUndead(a))
-          w.after(200)(hitMagic(w, p, a, pw))
+          w.afterOn(a, 200)(hitMagic(w, p, _, pw))
         }
         Effect.Cast
       case 22 => // 火墙：目标格和上下左右共 5 格烧一阵（MagMakeFireCross / FireBurnEvent）
@@ -308,19 +295,17 @@ object Combat:
         Effect.Cast
       case 21 => // 瞬息移动：成功时回到回城点那张图的随机位置（MagSaceMove → MapRandomMove(HomeMap)）
         if SpellRules.spaceMoveWorks(lv) then
-          w.after(SpellAnimMs) {
-            if w.actor(p.id).contains(p) && !p.dead then
-              val home = p.home
-              val dest =
-                if home.map != w.mapId then Some(home) // 别的图的地形这里不知道：送到回城点，由那张图找空格
-                else Iterator.fill(300)(Cell(rng.random(w.terrain.width), rng.random(w.terrain.height))).find(w.canEnter).map(Place(w.mapId, _))
-              dest.foreach(w.transfer(p, _))
+          w.afterOn(p, SpellAnimMs) { p =>
+            val home = p.home
+            val dest =
+              if home.map != w.mapId then Some(home) // 别的图的地形这里不知道：送到回城点，由那张图找空格
+              else Iterator.fill(300)(Cell(rng.random(w.terrain.width), rng.random(w.terrain.height))).find(w.canEnter).map(Place(w.mapId, _))
+            dest.foreach(w.transfer(p, _))
           }
         else w.notice(p, "瞬息移动失败", Tone.Bad)
         Effect.Cast
       case 31 => // 魔法盾
-        p.shieldUntil = w.now + SpellRules.shieldSecs(d, lv, mc) * 1000L
-        p.shieldLevel = lv
+        w.addStatus(p, Status.Shielded(lv), SpellRules.shieldSecs(d, lv, mc) * 1000L)
         w.notice(p, "魔法盾开启", Tone.System)
         Effect.Cast
       case 20 => // 诱惑之光（MagTamming）
@@ -367,7 +352,7 @@ object Combat:
           amulet(w, p).flatten.toRight(Effect.Fail("左手镯位要装备灰色或黄色药粉")).map { kind =>
             consumeAmulet(w, p)
             val secs = SpellRules.poisonSecs(d, lv, sc, green = kind == PoisonKind.Green)
-            t.poison = Some(Poison(kind, w.now + secs * 1000L, SpellRules.poisonTick(sc), w.now + 2000, p.id))
+            w.poison(t, kind, secs * 1000L, SpellRules.poisonTick(sc), p.id)
             t match
               case m: Monster if m.target.isEmpty => m.target = Some(p.id)
               case _                              => ()
@@ -382,7 +367,7 @@ object Combat:
             val delay = 80 * p.cell.chebyshev(t.cell)
             fx("magic", 1160 + p.cell.dir16(t.cell) * 10, 3, 60, Anchor.OnActor(t.id), from = Some(p.cell), duration = Some(delay))
             w.sound(p.cell, Sounds.magic(13, SpellPhase.Fly))
-            w.after(delay) {
+            w.afterOn(t, delay) { t =>
               w.sound(t.cell, Sounds.magic(13, SpellPhase.Burst))
               hitMagic(w, p, t, power)
               fx("magic", 1320, 10, 50, Anchor.OnActor(t.id))
@@ -447,7 +432,7 @@ object Combat:
         run(charm.map { _ =>
           consumeAmulet(w, p)
           val secs = SpellRules.invisibleSecs(d, lv, sc)
-          friendsAround(w, p, friendCenter, SpellRules.GroupRadius).filter(_.invisibleUntil <= w.now).foreach(makeInvisible(w, _, secs))
+          friendsAround(w, p, friendCenter, SpellRules.GroupRadius).filterNot(_.statuses.has(StatusKind.Invisible)).foreach(makeInvisible(w, _, secs))
           charmFly(friendCenter, 1540, 10, 60)
         })
       case 28 => // 心灵启示：看穿目标的血量（ShowHp）
@@ -525,7 +510,7 @@ object Combat:
 
   /** 隐身：盯着他的怪（看不穿隐身的）丢掉目标。 */
   private def makeInvisible(w: World, a: Actor, secs: Int): Unit =
-    a.invisibleUntil = w.now + secs * 1000L
+    w.addStatus(a, Status.Invisible, secs * 1000L)
     w.monsters.filter(m => m.target.contains(a.id) && m.defn.coolEye == 0).foreach(_.target = None)
     a match
       case q: Player => w.notice(q, s"隐身 $secs 秒（打怪或被打会现身）", Tone.System)
@@ -536,9 +521,8 @@ object Combat:
     m.master = Some(p.id)
     m.target = None
     m.spawn = None
-    m.seizedUntil = Millis.zero
-    m.crazyUntil = Millis.zero
-    m.mood = Mood.Calm
+    m.statuses.remove(StatusKind.Seized)
+    m.statuses.remove(StatusKind.Crazy)
     m.petLevel = level
     m.walkInterval = math.min(m.walkInterval, SpellRules.petWalkCap(level))
     m.attackInterval = math.min(m.attackInterval, SpellRules.petAttackCap(level))

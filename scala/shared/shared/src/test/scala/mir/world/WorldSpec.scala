@@ -222,6 +222,27 @@ object WorldSpec extends ZIOSpecDefault:
           s.consistent(b)
         )
       },
+      test("喝了普通药马上换图：没回完的药、魔法盾跟到新图接着生效（#1170）") {
+        val s   = sim()
+        val p   = join(s.w, "甲", Cell(30, 30), tough = false)
+        val pot = p.belt.flatten.head
+        val hp  = catalog.item(pot.name).map(mir.rules.ItemKind.of).collect { case mir.rules.ItemKind.Potion(h, _, false) => h }.get
+        p.hp = 1
+        s.w.addStatus(p, Status.Shielded(2), 60_000)
+        s.cmd(p, GameCmd.UseItem(pot.uid))
+        s.w.handle(p.id, GameCmd.Teleport(TeleportRef(0)))
+        s.flush()
+        val d   = s.departures.find(_.player == p.id).get
+        val s2  = sim(testMap.copy(id = MapId("U")))
+        val p2  = s2.w.player(s2.w.join(d.data.copy(place = Place(s2.w.mapId, Cell(30, 30))), d.carried)).get
+        s2.run(1700) // 药 5 跳在 0~1600 毫秒，自然回复要到 2000 毫秒
+        assertTrue(
+          s.w.player(p.id).isEmpty,
+          p2.hp == math.min(p2.stats.maxHp, 1 + mir.rules.PotionRules.Ticks * mir.rules.PotionRules.perTick(hp)),
+          p2.potions.isEmpty,
+          s2.w.selfView(p2).status.shieldUntil.contains(Millis(60_000))
+        )
+      },
       test("离开视野范围就消失，走回来重新出现") {
         val s = sim()
         val a = join(s.w, "甲", Cell(5, 30))

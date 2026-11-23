@@ -3,7 +3,7 @@ package mir.world
 import mir.core.*
 import mir.model.*
 import mir.protocol.Anchor
-import mir.rules.{Rng, Rules}
+import mir.rules.Rng
 
 /**
  * 怪物每次思考做什么：按 Behavior 出招、藏身、附加本领、追人、闲逛。
@@ -29,7 +29,7 @@ object MonsterAi:
     val rng = w.rngOf
     if w.now >= m.nextThink && w.now >= m.busyUntil then
       if m.dead then tryRevive(w, m)
-      else if m.seizedUntil > w.now then
+      else if m.statuses.has(StatusKind.Seized) then
         // 被定住（诱惑之光、困魔咒）：站着不动不打
         m.nextThink = w.now + 200
         if m.action.kind != ActKind.Stand && w.now >= m.action.startedAt + m.action.duration then w.setAction(m, ActKind.Stand, 0)
@@ -48,7 +48,7 @@ object MonsterAi:
   private def hunt(w: World, m: Monster, b: Behavior): Unit =
     val master = m.master.flatMap(w.actor)
     val kept = m.target.flatMap(w.actor).filter { t =>
-      !t.dead && w.isEnemy(m, t) && m.cell.chebyshev(t.cell) <= 14 && t.invisibleUntil <= w.now
+      !t.dead && w.isEnemy(m, t) && m.cell.chebyshev(t.cell) <= 14 && !t.statuses.has(StatusKind.Invisible)
     }
     val target = kept.orElse {
       if b.passive && master.isEmpty then None
@@ -134,28 +134,19 @@ object MonsterAi:
     m.target = None
     m.coverAt = w.now
     val dur = digAnim(w, m, ActKind.DigDown)
-    w.after(dur) { if !m.dead then m.cover = Cover.Buried }
+    w.afterOn(m, dur)(_.cover = Cover.Buried)
 
   // ---------------- 出招 ----------------
 
   private def power(w: World, m: Monster): Int = m.dc.lo + w.rngOf.random(math.max(0, m.dc.hi - m.dc.lo) + 1)
 
-  private def damage(w: World, m: Monster, t: Actor, amount: Int): Unit =
-    if amount > 0 then w.applyDamage(t, amount, Some(m.id)) else w.miss(t)
+  /** 物理一下：扣防御；checkHit 时按怪的准确判命中。 */
+  private def physical(w: World, m: Monster, t: Actor, pw: Int, checkHit: Boolean = true): StrikeResult =
+    w.strike(Some(m), t, Blow(Defence.Armor, pw, accuracy = Option.when(checkHit)(m.hit)))
 
-  private def physical(w: World, m: Monster, t: Actor, pw: Int, checkHit: Boolean = true): Unit =
-    given Rng = w.rngOf
-    t match
-      case _: Npc => ()
-      case _ =>
-        if checkHit && !Rules.hits(m.hit, t.agility) then w.miss(t)
-        else damage(w, m, t, Rules.afterArmor(pw, t.ac))
-
-  private def magical(w: World, m: Monster, t: Actor, pw: Int): Unit =
-    given Rng = w.rngOf
-    t match
-      case _: Npc => ()
-      case _      => damage(w, m, t, Rules.afterMagicArmor(pw, t.mac))
+  /** 魔法一下：扣魔防；checkHit 时按怪的准确判命中（毒液、毒气）。 */
+  private def magical(w: World, m: Monster, t: Actor, pw: Int, checkHit: Boolean = false): StrikeResult =
+    w.strike(Some(m), t, Blow(Defence.MagicArmor, pw, accuracy = Option.when(checkHit)(m.hit)))
 
   /** 攻击动作：按动作表放动画，播声音和特效。返回动画时长。 */
   private def swing(w: World, m: Monster, t: Option[Actor]): Int =
@@ -209,12 +200,12 @@ object MonsterAi:
                 swing(w, m, Some(t))
                 val pw = power(w, m)
                 s match
-                  case Strike.Melee => physical(w, m, t, pw)
-                  case Strike.Magic => magical(w, m, t, pw)
+                  case Strike.Melee => physical(w, m, t, pw): Unit
+                  case Strike.Magic => magical(w, m, t, pw): Unit
                   case Strike.Split(ratio) =>
                     val ph = math.round(pw * ratio).toInt
-                    if ph > 0 then physical(w, m, t, ph, checkHit = false)
-                    magical(w, m, t, pw - ph)
+                    if ph > 0 then physical(w, m, t, ph, checkHit = false): Unit
+                    magical(w, m, t, pw - ph): Unit
                   case _ => gas(w, m, t, pw)
           true
       case Strike.Spit =>
@@ -227,10 +218,7 @@ object MonsterAi:
             val pw = power(w, m)
             for k <- 1 to 2 do
               w.occupant(m.cell.step(dir, k)).foreach { a =>
-                given Rng = rng
-                if !a.isInstanceOf[Npc] && w.isEnemy(m, a) && Rules.hits(m.hit, a.agility) then
-                  magical(w, m, a, pw)
-                  if !a.dead && rng.random(20) == 0 then poisonGreen(w, a, m, 30_000, 1)
+                if magical(w, m, a, pw, checkHit = true).connected && !a.dead && rng.random(20) == 0 then poisonGreen(w, a, m, 30_000, 1)
               }
           true
       case Strike.Missile(range, fly) =>
@@ -244,7 +232,7 @@ object MonsterAi:
                 from = Some(m.cell), blend = false, duration = Some(delay))
             }
             val pw = power(w, m)
-            w.after(delay) { if !t.dead && !m.dead && w.actor(t.id).isDefined then physical(w, m, t, pw, checkHit = false) }
+            w.afterOn(t, delay)(physical(w, m, _, pw, checkHit = false): Unit)
           true
       case Strike.Lightning =>
         if d <= 2 && rng.random(3) == 0 && stepAway(w, m, t.cell) then true
@@ -254,7 +242,7 @@ object MonsterAi:
             swing(w, m, Some(t))
             val dir = m.cell.dirTo(t.cell)
             val pw  = power(w, m)
-            (1 to 8).flatMap(k => w.occupant(m.cell.step(dir, k))).distinctBy(_.id).filter(w.isEnemy(m, _)).foreach(magical(w, m, _, pw))
+            (1 to 8).flatMap(k => w.occupant(m.cell.step(dir, k))).distinctBy(_.id).foreach(magical(w, m, _, pw): Unit)
           true
       case Strike.Area(range, poison) =>
         if d < range && ready(w, m) then
@@ -262,44 +250,34 @@ object MonsterAi:
           val pw    = power(w, m)
           val delay = if poison then 600 else 200
           w.actorsNow.filter(a => w.isEnemy(m, a) && m.cell.chebyshev(a.cell) < range).foreach { a =>
-            w.after(delay) {
-              if !a.dead && !m.dead && w.actor(a.id).isDefined then
-                magical(w, m, a, pw)
-                if poison && !a.dead && rng.random(4) == 0 then
-                  if rng.random(3) != 0 then poisonGreen(w, a, m, 60_000, 3) else paralyze(w, a, 5000)
+            w.afterOn(a, delay) { a =>
+              if magical(w, m, a, pw).connected && poison && !a.dead && rng.random(4) == 0 then
+                if rng.random(3) != 0 then poisonGreen(w, a, m, 60_000, 3) else paralyze(w, a, 5000)
             }
           }
         true // 不动的怪：够不着就等人走近
       case Strike.Spawn(_, _) => true
 
+  /** 毒气：判命中的魔法一下，打到身上有 1/20 麻痹。 */
   private def gas(w: World, m: Monster, t: Actor, pw: Int): Unit =
-    given Rng = w.rngOf
-    if !Rules.hits(m.hit, t.agility) then w.miss(t)
-    else
-      magical(w, m, t, pw)
-      if !t.dead && w.rngOf.random(20) == 0 then paralyze(w, t, 5000)
+    if magical(w, m, t, pw, checkHit = true).connected && !t.dead && w.rngOf.random(20) == 0 then paralyze(w, t, 5000)
 
   private def poisonGreen(w: World, t: Actor, m: Monster, ms: Int, pw: Int): Unit =
-    t.poison = Some(Poison(PoisonKind.Green, w.now + ms, pw, w.now + 2000, m.id))
+    w.poison(t, PoisonKind.Green, ms, pw, m.id)
     t match
       case p: Player => w.notice(p, "你中毒了", mir.protocol.Tone.Bad)
       case _         => ()
 
   /** 麻痹（原版 STONE 状态）：这段时间不能动。 */
   private def paralyze(w: World, t: Actor, ms: Int): Unit =
-    val until = w.now + ms
-    if t.paralyzedUntil < until then t.paralyzedUntil = until
-    if t.busyUntil < t.paralyzedUntil then t.busyUntil = t.paralyzedUntil
+    w.paralyze(t, ms)
     t match
       case p: Player => w.notice(p, s"你被麻痹了（${ms / 1000} 秒）", mir.protocol.Tone.Bad)
       case _         => ()
 
   private def explode(w: World, m: Monster): Unit =
-    given Rng = w.rngOf
     val pw = power(w, m)
-    w.actorsNow.filter(a => w.isEnemy(m, a) && m.cell.chebyshev(a.cell) <= 1 && !a.isInstanceOf[Npc]).foreach { a =>
-      damage(w, m, a, Rules.afterArmor(pw / 2, a.ac) + Rules.afterMagicArmor(pw / 2, a.mac))
-    }
+    w.actorsNow.filter(a => m.cell.chebyshev(a.cell) <= 1).foreach(a => w.strike(Some(m), a, Blow(Defence.Blast, pw)): Unit)
     w.killWithoutReward(m)
 
   private def spawnTick(w: World, m: Monster, s: Strike.Spawn): Unit =
@@ -309,13 +287,12 @@ object MonsterAi:
       w.nearestEnemy(m, 9).filter(_ => m.minions.size < 15).foreach { t =>
         swing(w, m, None)
         w.catalog.monster(s.child).foreach { d =>
-          w.after(500) {
-            if !m.dead then
-              val at = if s.below then m.cell.step(Dir.Down) else m.cell
-              w.spawnMonster(d, None, at, 1).foreach { c =>
-                c.target = Some(t.id)
-                m.minions += c.id
-              }
+          w.afterOn(m, 500) { m =>
+            val at = if s.below then m.cell.step(Dir.Down) else m.cell
+            w.spawnMonster(d, None, at, 1).foreach { c =>
+              c.target = Some(t.id)
+              m.minions += c.id
+            }
           }
         }
       }

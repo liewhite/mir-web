@@ -153,13 +153,7 @@ object PlayerOps:
             if h > 0 then w.nearby(p.cell, ServerMsg.Heal(p.id, h))
           else
             // 普通药：分几跳慢慢回（PotionRules）
-            (0 until PotionRules.Ticks).foreach { i =>
-              w.after(i.toLong * PotionRules.TickMs) {
-                if !p.dead then
-                  p.hp += math.max(0, math.min(PotionRules.perTick(hp), p.stats.maxHp - p.hp))
-                  p.mp += math.max(0, math.min(PotionRules.perTick(mp), p.stats.maxMp - p.mp))
-              }
-            }
+            p.potions = p.potions :+ PotionCourse(PotionRules.perTick(hp), PotionRules.perTick(mp), PotionRules.Ticks, w.now)
           ok
         case ItemKind.Bundle(_) =>
           w.catalog.bundleContent(d) match
