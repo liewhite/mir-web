@@ -154,6 +154,23 @@ object SpellRules:
    * 5. 收服：Random(n) == 0，n = 最大血量/100（≤2 取 2，否则翻倍）；失败时 1/14 被打死。
    */
   def tame(casterLevel: Int, level: Int, t: TameTarget)(using rng: Rng): TameOutcome =
+    // 倍率：先按「原版收服概率 × Rates.tame」判一次；没收服再走原版流程决定定住/发狂/打死（流程里的收服改为没效果）
+    if rng.random(1_000_000) < math.round(tameChance(casterLevel, level, t) * 1_000_000).toInt then TameOutcome.Tamed
+    else
+      original(casterLevel, level, t) match
+        case TameOutcome.Tamed => TameOutcome.NoEffect
+        case other             => other
+
+  /** 一次诱惑收服的概率（含倍率，最高 1）：原版各关相乘 × Rates.tame。一定不行的由 tameBlocker 挡。 */
+  def tameChance(casterLevel: Int, level: Int, t: TameTarget): Double =
+    val n0   = t.maxHp / 100
+    val n    = if n0 <= 2 then 2 else n0 * 2
+    val roll = casterLevel + 20 + level * 5
+    val pass = math.max(0, roll - t.level - 11).toDouble / roll
+    math.min(1.0, 1.0 / (4 - level) * 0.5 * (1.0 / 3) * pass / n * Rates.tame)
+
+  /** 原版 MagTamming 的流程。 */
+  private def original(casterLevel: Int, level: Int, t: TameTarget)(using rng: Rng): TameOutcome =
     def crazy = TameOutcome.Crazy(rng.random(20) + 10)
     if rng.random(4 - level) != 0 then TameOutcome.NoEffect
     else if rng.random(2) != 0 then TameOutcome.Seized(level * 5 + 10)

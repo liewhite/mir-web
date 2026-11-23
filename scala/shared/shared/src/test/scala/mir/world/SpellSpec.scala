@@ -65,14 +65,21 @@ object SpellSpec extends ZIOSpecDefault:
 
   def spec = suite("技能效果（#1163）")(
     suite("公式")(
-      test("诱惑之光：3 级必起作用；一半机会定住 25 秒；一路过关就收服") {
-        val t = TameTarget(level = 5, maxHp = 20, undead = false)
+      test("诱惑之光：先按收服概率（×倍率）判；没收服再按原版定住 25 秒 / 发狂 / 没效果") {
+        val t    = TameTarget(level = 5, maxHp = 20, undead = false)
+        val miss = 999_999 // 第一次判收服不中
         assertTrue(
-          SpellRules.tame(10, 3, t)(using Rng.sequence(0, 1)) == TameOutcome.Seized(25),
-          SpellRules.tame(10, 3, t)(using Rng.sequence(0, 0, 0, 40, 0)) == TameOutcome.Tamed,
-          SpellRules.tame(10, 3, t)(using Rng.sequence(0, 0, 1, 7)) == TameOutcome.Crazy(17),
-          SpellRules.tame(10, 0, t)(using Rng.sequence(1)) == TameOutcome.NoEffect
+          SpellRules.tame(10, 3, t)(using Rng.sequence(0)) == TameOutcome.Tamed,
+          SpellRules.tame(10, 3, t)(using Rng.sequence(miss, 0, 1)) == TameOutcome.Seized(25),
+          SpellRules.tame(10, 3, t)(using Rng.sequence(miss, 0, 0, 0, 40, 0)) == TameOutcome.NoEffect,
+          SpellRules.tame(10, 3, t)(using Rng.sequence(miss, 0, 0, 1, 7)) == TameOutcome.Crazy(17),
+          SpellRules.tame(10, 0, t)(using Rng.sequence(miss, 1)) == TameOutcome.NoEffect
         )
+      },
+      test("诱惑之光收服概率：原版 30 级 3 级技能对蛤蟆约 5.4%，×10 倍约 54%；血多的怪更难") {
+        val toad = SpellRules.tameChance(30, 3, TameTarget(12, 20, undead = false))
+        val moth = SpellRules.tameChance(30, 3, TameTarget(32, 220, undead = false))
+        assertTrue(math.abs(toad - 42.0 / 65 / 12 * 10) < 1e-9, moth < toad, SpellRules.tameChance(13, 0, TameTarget(12, 20, false)) > 0.05)
       },
       test("诱惑之光：一定不行的情况放之前就说明") {
         def b(t: TameTarget, pets: Int = 0) = SpellRules.tameBlocker(20, t, pets)

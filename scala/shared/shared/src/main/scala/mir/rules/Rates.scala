@@ -15,6 +15,8 @@ object Rates:
   /** 高级装备（要求 20 级以上，或要求攻击/魔法/道术）的掉落概率下限 */
   val highEquipMin: Double = 0.2
   val highEquipLevel: Int  = 20
+  /** 诱惑之光收服概率倍数（用户 11-23 在 #1163 要求提升；原版 3 级技能对低级怪约 5%），最高 100% */
+  val tame: Int = 10
 
   /** 一行爆率实际的掉落概率（0..1）。def 为空表示金币。 */
   def dropChance(d: DropDef, item: Option[ItemDef]): Double =
