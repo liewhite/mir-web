@@ -66,6 +66,17 @@
     - `window.__mir` 另有 `screen()`、`chat()`、`bag()`、`worn()`、`gold()`、`sent()`（最近发出的游戏指令）、`goTo(x,y)`。
 - 测试：怪物行为（TS 版 7 项）、多人（互相看见、各打各的、掉落、换图消失、60 秒随机操作每步副本与世界一致、比奇省满图性能）、非法指令；game.json 完整解码与引用检查；规则与 TS 版逐条对照（`scala/testdata/ts-golden.json`，TS 规则改了就跑 `scala/testdata/gen-golden.sh` 重算）；协议每种消息往返（新加消息必须补样例，测试会查）。
 
+## 怎么加技能/怪物/状态/窗口（#1175，按「加代码 + 加表」）
+路径省略前缀 `scala/shared/shared/src/main/scala/` 与 `scala/client/src/main/scala/`。
+- **新地图、新怪（只用已有的出招方式）、刷怪、爆率、商店**：只改数据（`tools/build_data.py` 产出的 game.json / ref 数据表），不改代码；新怪的 Race 已在 `Behavior.of` 里有对应就自动有行为，外观特征按 RaceImg 在 `mir.data.MonsterLook`。
+- **加技能**：`mir.rules.Skill` 加一项（编号、用法）→ `mir.world.skills` 下对应职业写一个 `SkillHandler`（效果、起手特效）→ `SkillHandlers.of` 注册一行 → 客户端 `SkillInfo` 写说明（按 Skill 穷举，漏了编译不过）。公式放 `SpellRules`/`SwordRules`，说明从同一个函数现算。耗蓝、冷却、施法动作、熟练度由 `Combat.cast` 统一处理，不用写。
+- **加怪物出招方式**：`Strike` 加分支 → `MonsterAi` 里处理（伤害一律造 `Blow` 交给 `vitals.strike`）→ `Behavior.of` 把 Race 映射过去。藏身方式同理加 `Hiding` 分支。
+- **加 Boss 本领**：`Extra` 加分支和 `initial` → `ExtraState` 加它的状态 → `MonsterAi` 本领处理加一个分支；不往 `Monster` 加字段。
+- **加身上状态**：`StatusKind` 加一种、`Status` 加带参数的分支 → 上状态的地方 `statuses.put/extend`，生效的地方 `has/find`，到期由世界统一去掉；要让人看见时在 `Entities.mood`（怪名字颜色）或 `Visibility.selfStatus`（自己的状态栏）加一行；换图自动随 `Carried` 带走。
+- **加界面窗口**：`mir.client.ui` 写一个 `Window` 实现（isOpen/draw/close，可选 itemAt/hover）→ 在 `ClassicUi.windows` 按层次排位置；要快捷键或底栏按钮就加 `UiAction` 一项和 `UiAction.Keys` 一行。
+- **加协议消息**：`ServerMsg`/`GameCmd` 加分支，协议往返测试里补样例（测试会查漏）。
+- 结构约定由 `OwnershipSpec` 按源码检查（谁能改血量、位置；客户端不 import `mir.world`），违反了 `sbt test` 报错。
+
 ## 进度
 - [x] 找素材、找数据、核实平台存储限制
 - [x] WIL/WZL/MAP 解析，比奇地图渲染验证
