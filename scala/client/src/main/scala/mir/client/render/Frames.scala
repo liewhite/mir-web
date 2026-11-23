@@ -38,6 +38,15 @@ object Frames:
   private def once(info: ActionInfo, a: ActionView, dir: Dir, now: Millis): Int = pick(info, dir.code, frameOf(info, a, now, loop = false))
   private def looped(info: ActionInfo, a: ActionView, dir: Int, now: Millis): Int = pick(info, dir, frameOf(info, a, now, loop = true))
 
+  /** 野蛮冲撞：每冲一格放半圈跑步帧，左右脚轮流（原版 ActRushLeft / ActRushRight）。 */
+  private def rush(a: ActionView, dir: Dir, now: Millis): Int =
+    val per = mir.world.World.RushStepMs / 3.0
+    pick(HA.run, dir.code, ((math.max(0L, now - a.startedAt) / per).toInt) % HA.run.frames)
+
+  /** 被推倒退：走路帧倒着放（原版 SM_BACKSTEP）。 */
+  private def backstep(info: ActionInfo, a: ActionView, dir: Dir, now: Millis): Int =
+    pick(info, dir.code, info.frames - 1 - frameOf(info, a, now, loop = false))
+
   /** 人物当前帧（0..599）。 */
   def human(a: ActionView, dir: Dir, now: Millis, dead: Boolean): Int =
     if dead && (a.kind != ActKind.Die || finished(a, now)) then pick(HA.die, dir.code, HA.die.frames - 1)
@@ -46,6 +55,8 @@ object Frames:
       a.kind match
         case ActKind.Walk   => once(HA.walk, a, dir, now)
         case ActKind.Run    => once(HA.run, a, dir, now)
+        case ActKind.Rush   => rush(a, dir, now)
+        case ActKind.Backstep => backstep(HA.walk, a, dir, now)
         case ActKind.Attack => once(HA.hit, a, dir, now)
         case ActKind.Heavy =>
           a.hit match
@@ -88,8 +99,10 @@ object Frames:
     else if finished(a, now) then stand
     else
       a.kind match
-        case ActKind.Walk | ActKind.Run =>
+        case ActKind.Walk | ActKind.Run | ActKind.Rush =>
           if t.walk.frames > 0 then once(t.walk, a, dir, now) else pick(t.stand, dir.code, 0)
+        case ActKind.Backstep =>
+          if t.walk.frames > 0 then backstep(t.walk, a, dir, now) else pick(t.stand, dir.code, 0)
         case ActKind.Attack | ActKind.Heavy | ActKind.Spell =>
           val info = if style.criticalAttack then t.critical else t.attack
           once(info, a, dir, now)

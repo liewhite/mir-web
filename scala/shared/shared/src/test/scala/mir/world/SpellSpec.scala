@@ -247,5 +247,60 @@ object SpellSpec extends ZIOSpecDefault:
       s.cast(p, 23, Some(b), b.cell)
       s.run(1000)
       assertTrue(a.dead, b.dead, c.dead)
-    }
+    },
+    suite("野蛮冲撞（#1168）")(
+      test("公式：冲 max(2, 等级+1) 格；推得越少撞得越狠；比自己等级低才推得动") {
+        assertTrue(
+          SpellRules.rushSteps(0) == 2,
+          SpellRules.rushSteps(3) == 4,
+          SpellRules.rushImpact(3, 4)(using Rng.sequence(0)) == 10,
+          SpellRules.rushImpact(3, 0)(using Rng.sequence(49)) == 49 + 50,
+          SpellRules.rushCrash(3)(using Rng.sequence(0)) == 15,
+          !SpellRules.rushPushes(10, 10, 3)(using Rng.sequence(0)),
+          SpellRules.rushPushes(10, 9, 0)(using Rng.sequence(6)),
+          !SpellRules.rushPushes(10, 9, 0)(using Rng.sequence(7))
+        )
+      },
+      test("2 级推着怪冲 3 格：怪脸朝自己倒退、挨一下；3 秒内不能再放；加熟练度") {
+        val s = sim()
+        val p = caster(s, Job.Warrior, List(27))
+        val i = p.skills.indexWhere(_.id == SkillId(27))
+        p.skills(i) = p.skills(i).copy(level = 2)
+        val m = put(s, "蛤蟆", Cell(31, 30))
+        pin(m)
+        val hp0 = m.hp
+        s.cast(p, 27, Some(m), m.cell)
+        val pushed = (p.cell, m.cell, m.action.kind, m.action.from, p.action.kind, p.action.from, m.dir)
+        val train  = p.skills(i).train
+        s.run(1000)
+        s.cast(p, 27, Some(m), m.cell)
+        assertTrue(
+          pushed == (Cell(33, 30), Cell(34, 30), ActKind.Backstep, Some(Cell(31, 30)), ActKind.Rush, Some(Cell(30, 30)), Dir.Left),
+          m.hp < hp0 || m.dead,
+          train > 0,
+          p.cell == Cell(33, 30)
+        )
+      },
+      test("推不动（自己的宝宝）原地撞一下，提示冲撞力不够，不扣血") {
+        val s   = sim()
+        val p   = caster(s, Job.Warrior, List(27))
+        val pet = put(s, "蛤蟆", Cell(31, 30))
+        pet.master = Some(p.id)
+        val hp0 = pet.hp
+        s.cast(p, 27, None, Cell(31, 30))
+        assertTrue(p.cell == Cell(30, 30), pet.cell == Cell(31, 30), pet.hp == hp0, p.action.kind == ActKind.Rush, s.notices.contains("冲撞力不够!!!"))
+      },
+      test("前面没人一直冲；冲劲没用完撞墙，自己挨一下") {
+        val flags = new Array[Byte](60 * 60)
+        flags(30 * 60 + 33) = 1 // (33,30) 是墙
+        val s = Sim(World(catalog, testMap, Terrain.fromFlags(60, 60, flags), Rng.seeded(1), UidSource.counter(1_000_000), Millis(0)))
+        val p = caster(s, Job.Warrior, List(27))
+        p.stats = p.stats.copy(ac = Span(0, 0))
+        s.cast(p, 27, None, Cell(31, 30))
+        val walled = (p.cell, p.hp, s.notices.contains("冲撞力不够!!!"))
+        s.run(4000)
+        s.cast(p, 27, None, Cell(32, 29))
+        assertTrue(walled._1 == Cell(32, 30), walled._2 < 100_000, walled._3, p.cell == Cell(32, 26))
+      }
+    )
   )

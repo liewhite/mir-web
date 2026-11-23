@@ -30,6 +30,12 @@ object World:
   val HitAnimMs   = 510
   val SpellAnimMs = 600
   val SpellInterval = 800
+  /** 野蛮冲撞每冲一格的时长（原版跑步半圈）、冲完的晕眩（原版 g_dwDizzyDelayTime） */
+  val RushStepMs  = RunMs / 2
+  val RushDizzyMs = 300
+  /** 被推后退一格的时长（原版倒放走路、跳帧，约走路的一半）；怪被推后多歇的时间（CharPushed 的 WalkTick + 800） */
+  val BackstepMs     = WalkMs / 2
+  val PushedPauseMs  = 800
   val CorpseMs    = 10_000L
   val ItemKeepMs  = 10 * 60_000L
 
@@ -344,8 +350,39 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
       case (false, false) => Sounds.walkGround
     selfSound(p, if stepFoot % 2 == 0 then pair._1 else pair._2)
     stepFoot += 1
-    // 踩到传送点
+    arrived(p)
+
+  /** 玩家停在新格上：踩到传送点就传送。 */
+  private[world] def arrived(p: Player): Unit =
     catalog.routesByMap.getOrElse(mapDef.id, Nil).find(_.at == p.cell).foreach(r => transfer(p, Place(r.to, r.target)))
+
+  /** 挨推、冲撞时挪一格（不改动作和朝向，由调用方定）。进不去返回 false。 */
+  private[world] def shove(a: Actor, dir: Dir): Boolean =
+    val to = a.cell.step(dir)
+    if a.dead || !canEnter(to) then false
+    else
+      vacate(a)
+      a.cell = to
+      occupy(a)
+      true
+
+  /**
+   * 被推着倒退最多 n 格（原版 CharPushed）：脸朝推的人、倒着走，怪被推后多歇一会儿。返回实际退了几格。
+   * 同一刻接着推（野蛮冲撞每冲一格推一次）时动画从最初的格算，一口气退过去。
+   */
+  private[world] def pushBack(a: Actor, dir: Dir, n: Int): Int =
+    val origin = a.action match
+      case ActionView(ActKind.Backstep, at, _, Some(from), _, _) if at == clock => from
+      case _                                                                   => a.cell
+    val moved = (1 to n).takeWhile(_ => shove(a, dir)).size
+    if moved > 0 then
+      val dur = origin.chebyshev(a.cell) * BackstepMs
+      a.dir = dir.opposite
+      setAction(a, ActKind.Backstep, dur, from = Some(origin))
+      a.busyUntil = clock + dur + (a match
+        case _: Monster => PushedPauseMs
+        case _          => 0)
+    moved
 
   private[world] def face(a: Actor, d: Dir): Unit = a.dir = d
 

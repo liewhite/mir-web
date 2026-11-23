@@ -3,7 +3,8 @@ package mir.rules
 import mir.data.{SkillDef, Span}
 
 /**
- * 法师、道士技能的数值公式：威力、持续秒数、成功率、范围。出处 ref/Mir176 MagicManager.cs（配置取 GameSvrConf 默认值）。
+ * 技能的数值公式：威力、持续秒数、成功率、范围。出处 ref/Mir176 MagicManager.cs（配置取 GameSvrConf 默认值），
+ * 野蛮冲撞出自 PlayObject.Base.cs DoMotaebo。
  * 只算数、不改状态；随机数经 Rng 传入（技能说明用「全取最小 / 全取最大」的 Rng 求精确上下限，#1165）。
  * 技能等级 level 为 0–3。
  */
@@ -115,6 +116,31 @@ object SpellRules:
     Option.when(casterLevel > targetLevel && rng.random(20) < 6 + level * 3 + (casterLevel - targetLevel)) {
       1 + math.max(0, level - 1) + rng.random(2)
     }
+
+  // ---------------- 野蛮冲撞 ----------------
+
+  /** 野蛮冲撞多久能放一次（DoMotaeboTick 的 3 秒） */
+  val RushCooldownMs = 3000
+
+  /** 一次最多冲几格：max(2, 技能等级 + 1)。 */
+  def rushSteps(level: Int): Int = math.max(2, level + 1)
+
+  /** 能不能把挡路的推开一格：比自己等级低，且 Random(20) < 技能等级×4 + 6 + 等级差（DoMotaeboCanMotaebo）。 */
+  def rushPushes(casterLevel: Int, targetLevel: Int, level: Int)(using rng: Rng): Boolean =
+    casterLevel > targetLevel && rng.random(20) < level * 4 + 6 + (casterLevel - targetLevel)
+
+  /**
+   * 撞到的对象挨多少（扣防御前）：Random((n+1)×10) + (n+1)×10。
+   * n = 技能等级 + 1 - 推着它走的格数（不小于 0），推得越少撞得越狠。
+   */
+  def rushImpact(level: Int, pushedSteps: Int)(using rng: Rng): Int =
+    val n = math.max(0, level + 1 - pushedSteps)
+    rng.random((n + 1) * 10) + (n + 1) * 10
+
+  /** 空冲撞墙、自己挨多少（扣防御前）：Random(n×10) + (n+1)×3，n = 技能等级 + 1。 */
+  def rushCrash(level: Int)(using rng: Rng): Int =
+    val n = level + 1
+    rng.random(n * 10) + (n + 1) * 3
 
   // ---------------- 诱惑之光 ----------------
 

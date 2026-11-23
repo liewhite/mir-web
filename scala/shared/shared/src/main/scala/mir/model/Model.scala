@@ -43,10 +43,19 @@ object EquipSlot:
 /** 正在做的动作；客户端按它取帧和插值位置。 */
 enum ActKind:
   case Stand, Walk, Run, Attack, Heavy, Spell, Struck, Die, Dead
+  /** 野蛮冲撞往前冲（from 为空时是撞不动、原地冲一下，原版 SM_RUSH / SM_RUSHKUNG） */
+  case Rush
+  /** 被推得倒退（脸朝推的人，原版 SM_BACKSTEP） */
+  case Backstep
   /** 怪物从地下钻出、石像醒来、僵尸复活 */
   case DigUp
   /** 钻回地下 */
   case DigDown
+
+  /** 从一格挪到另一格的动作（有 from 时画面按时间插值位置） */
+  def moving: Boolean = this match
+    case Walk | Run | Rush | Backstep => true
+    case _                            => false
 
 object ActKind:
   given JsonCodec[ActKind] = EnumCodec.byName(values, _.toString)

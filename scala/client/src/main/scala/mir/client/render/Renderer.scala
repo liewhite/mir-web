@@ -136,7 +136,7 @@ final class Renderer(canvas: dom.HTMLCanvasElement, sprites: SpriteStore, assets
   /** 角色在世界中的像素位置（含走路插值）。 */
   def actorPixel(a: ActorView, now: Millis): Px =
     a.action.from match
-      case Some(from) if a.action.kind == ActKind.Walk || a.action.kind == ActKind.Run =>
+      case Some(from) if a.action.kind.moving =>
         val t = math.min(1.0, math.max(0.0, (now - a.action.startedAt).toDouble / math.max(1, a.action.duration)))
         Px((from.x + (a.cell.x - from.x) * t) * UnitX, (from.y + (a.cell.y - from.y) * t) * UnitY)
       case _ => Px(a.cell.x * UnitX.toDouble, a.cell.y * UnitY.toDouble)

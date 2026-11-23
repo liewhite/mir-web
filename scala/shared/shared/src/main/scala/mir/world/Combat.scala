@@ -202,6 +202,11 @@ object Combat:
                 train(w, p, skillId, 1 + rng.random(3))
                 if p.invisibleUntil > w.now && skillId.value != 18 then p.invisibleUntil = Millis.zero
                 Outcome.Done
+              case Effect.Acted(trained) =>
+                p.mp -= cost
+                if trained then train(w, p, skillId, 1 + rng.random(3))
+                if p.invisibleUntil > w.now then p.invisibleUntil = Millis.zero
+                Outcome.Done
               case Effect.Instant => Outcome.Done
               case Effect.Fail(why) => Outcome.Refused(why)
       case _ => Outcome.Refused("还没学会")
@@ -209,6 +214,8 @@ object Combat:
   /** 技能本身做了什么：要进施法动作的；不进施法动作的开关、蓄力；不能放的原因。 */
   private enum Effect:
     case Cast, Instant
+    /** 自己做了别的动作（野蛮冲撞）：扣蓝，trained 时加熟练度 */
+    case Acted(trained: Boolean)
     case Fail(why: String)
 
   private def spell(w: World, p: Player, s: LearnedSkill, d: SkillDef, t: Option[Actor], cell: Cell, cost: Int)(using rng: Rng): Effect =
@@ -293,7 +300,7 @@ object Combat:
         enemiesAround(w, p, p.cell, 1).foreach { a =>
           SpellRules.repelPush(p.level, levelOf(a), lv).foreach { n =>
             val dir = p.cell.dirTo(a.cell)
-            (1 to n).takeWhile(_ => w.move(a, dir, run = false))
+            w.pushBack(a, dir, n): Unit
           }
         }
         fx("magic", 900, 6, 80, Anchor.OnActor(p.id))
@@ -480,6 +487,9 @@ object Combat:
           w.notice(p, "烈火剑法准备好了", Tone.System)
           p.mp -= cost
           Effect.Instant
+      case 27 => // 野蛮冲撞：朝目标（没有就朝面向）冲，3 秒一次
+        p.cooldown(s.id) = w.now + SpellRules.RushCooldownMs
+        Effect.Acted(trained = Rush(w, p, aimDir, lv).succeeded)
       case 25 => // 半月弯刀：开关
         setSword(w, p, mir.protocol.SwordArt.WideHit, !p.wideHitOn)
         Effect.Instant
@@ -492,7 +502,7 @@ object Combat:
     case m: Monster => m.defn.undead > 0
     case _          => false
 
-  private def levelOf(a: Actor): Int = a match
+  private[world] def levelOf(a: Actor): Int = a match
     case m: Monster => m.defn.level
     case q: Player  => q.level
     case _: Npc     => 0
