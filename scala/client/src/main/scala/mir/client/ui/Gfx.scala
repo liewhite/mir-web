@@ -98,7 +98,8 @@ final class Gfx(val ctx: dom.CanvasRenderingContext2D, sprites: SpriteStore):
     ctx.fillRect(x, y, w, h)
 
   /** 原版 ShowHint 风格的黑底说明框，摆在 (x, y)，超出界面就往回挪。 */
-  def hint(lines: List[Line], x: Double, y: Double, maxW: Double, maxH: Double): Unit =
+  def hint(all: List[Line], x: Double, y: Double, maxW: Double, maxH: Double): Unit =
+    val lines = wrap(all, math.min(360, maxW - 14))
     if lines.nonEmpty then
       val w  = lines.map(l => width(l.text)).max + 10
       val h  = lines.size * 14 + 6
@@ -106,6 +107,24 @@ final class Gfx(val ctx: dom.CanvasRenderingContext2D, sprites: SpriteStore):
       val hy = math.min(y, maxH - h - 2)
       rect(hx, hy, w, h, "rgba(0,0,0,.85)")
       lines.zipWithIndex.foreach((l, i) => text(l.text, hx + 5, hy + 3 + i * 14, l.tint.color))
+
+  /** 超过 maxW 像素宽的行按字折开，续行缩进一个全角空格、颜色不变。 */
+  def wrap(lines: List[Line], maxW: Double): List[Line] =
+    lines.flatMap { l =>
+      if width(l.text) <= maxW then List(l)
+      else
+        val out = List.newBuilder[Line]
+        val cur = new StringBuilder
+        l.text.foreach { c =>
+          if cur.nonEmpty && width(cur.toString + c) > maxW then
+            out += l.copy(text = cur.toString)
+            cur.clear()
+            cur.append('　')
+          cur.append(c)
+        }
+        if cur.nonEmpty then out += l.copy(text = cur.toString)
+        out.result()
+    }
 
   /** 在 (x, y) 处放大 s 倍画（原版底栏在手机上缩得很小，自己画的面板按触屏倍数放大）。 */
   def scaled(x: Double, y: Double, s: Double)(draw: => Unit): Unit =

@@ -33,5 +33,9 @@ final class Catalog(val data: GameData):
 
   def displayName(m: MonsterName): MonsterName = data.displayNames.getOrElse(m, m)
 
+  /** 捆装药（StdMode 31）里装的那种药：包的 Shape = 那种药的 AniCount。 */
+  def bundleContent(bundle: ItemDef): Option[ItemDef] =
+    Option.when(bundle.mode == 31)(bundle.shape).flatMap(a => data.items.find(i => i.mode != 31 && i.ani == a))
+
 object Catalog:
   def decode(json: String): Either[String, Catalog] = GameData.decode(json).map(Catalog(_))

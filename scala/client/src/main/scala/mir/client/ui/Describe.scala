@@ -1,85 +1,130 @@
 package mir.client.ui
 
-import mir.data.{ItemDef, SkillDef, Span}
-import mir.model.{ItemInstance, Job, LearnedSkill, PoisonKind}
+import mir.data.{Catalog, ItemDef, SkillDef, Span}
+import mir.model.{EquipSlot, ItemInstance, Job, LearnedSkill, PoisonKind}
 import mir.protocol.SelfStats
-import mir.rules.{ItemEffects, ItemKind, Requirement, Rules, ScrollEffect}
+import mir.rules.{Durability, ItemEffects, ItemKind, PotionRules, Pricing, Recovery, Requirement, Rules, ScrollEffect, dressSex}
 import mir.world.Combat
 
 /**
- * 把物品、属性、技能讲成人话（用户要求：属性增益要明确）。纯函数，只出文字。照 TS 版 ui/describe.ts。
+ * 把物品、属性、技能讲成可量化的说明（用户 #1165：所有效果给精确数值）。纯函数，只出文字。
+ * 数值和规则一律从 shared 的规则代码取（Rules、Recovery、PotionRules、Durability、Pricing、ItemEffects），
+ * 不在这里另抄一份：规则改了说明跟着变。
  */
 object Describe:
   private def r(v: Span): String  = if v.lo == v.hi then s"${v.lo}" else s"${v.lo}-${v.hi}"
   private def has(v: Span): Boolean = v.lo > 0 || v.hi > 0
+  private def pct(x: Double): String = s"${math.round(x * 100)}%"
+  private def sec(ms: Int): String =
+    if ms % 1000 == 0 then s"${ms / 1000} 秒" else s"${BigDecimal(ms) / 1000} 秒"
+  private def signed(n: Int): String = if n >= 0 then s"+$n" else s"$n"
 
-  /** 一件装备的效果，逐项写成说明。 */
+  private val notYet = "（本服暂未生效）"
+
+  /** 一件装备的效果，逐项写成说明：加多少，以及这一项在规则里怎么起作用。 */
   def effectLines(e: ItemEffects): List[Line] =
+    val step = Rules.HitIntervalStepMs
     List(
-      Option.when(has(e.dc))(Line(s"攻击 +${r(e.dc)}　（普通攻击和战士剑术的伤害）")),
-      Option.when(has(e.mc))(Line(s"魔法 +${r(e.mc)}　（法师技能的伤害）")),
-      Option.when(has(e.sc))(Line(s"道术 +${r(e.sc)}　（道士技能的伤害、治疗量和召唤物强度）")),
-      Option.when(has(e.ac))(Line(s"防御 +${r(e.ac)}　（每次挨打减去这个范围里的随机值）")),
-      Option.when(has(e.mac))(Line(s"魔防 +${r(e.mac)}　（魔法伤害减去这个范围里的随机值）")),
-      Option.when(e.hit != 0)(Line(s"准确 +${e.hit}　（更不容易打空）")),
-      Option.when(e.agility != 0)(Line(s"敏捷 +${e.agility}　（更容易躲开怪物的攻击）")),
-      Option.when(e.attackSpeed > 0)(Line(s"攻击速度 +${e.attackSpeed}　（每 2 点让两刀之间快 60 毫秒）", Tint.Good)),
-      Option.when(e.attackSpeed < 0)(Line(s"攻击速度 ${e.attackSpeed}　（出刀变慢）", Tint.Bad)),
-      Option.when(e.luck != 0)(Line(s"幸运 +${e.luck}　（打出最大攻击的机会更高）", Tint.Good)),
-      Option.when(e.curse != 0)(Line(s"诅咒 +${e.curse}　（打出最小攻击的机会更高）", Tint.Bad)),
-      Option.when(e.magicAvoid != 0)(Line(s"魔法躲避 +${e.magicAvoid}　（有机会完全躲开魔法）")),
-      Option.when(e.poisonAvoid != 0)(Line(s"毒物躲避 +${e.poisonAvoid}　（有机会不中毒）")),
-      Option.when(e.hpRegen != 0)(Line(s"体力恢复 +${e.hpRegen}　（每 2 秒多回 ${e.hpRegen} 点血）")),
-      Option.when(e.mpRegen != 0)(Line(s"魔法恢复 +${e.mpRegen}　（每 2 秒多回 ${e.mpRegen} 点蓝）")),
-      Option.when(e.poisonRegen != 0)(Line(s"中毒恢复 +${e.poisonRegen}　（中毒时间缩短）"))
+      Option.when(has(e.dc))(Line(s"攻击 +${r(e.dc)}　普攻每刀 = 攻击区间内随机 − 目标防御")),
+      Option.when(has(e.mc))(Line(s"魔法 +${r(e.mc)}　法师攻击技能的伤害加成（见技能说明）")),
+      Option.when(has(e.sc))(Line(s"道术 +${r(e.sc)}　道士技能的威力、治疗量、持续时间加成（见技能说明）")),
+      Option.when(has(e.ac))(Line(s"防御 +${r(e.ac)}　挨物理攻击时伤害减去防御区间内随机值")),
+      Option.when(has(e.mac))(Line(s"魔防 +${r(e.mac)}　挨魔法攻击时伤害减去魔防区间内随机值")),
+      Option.when(e.hit != 0)(Line(s"准确 ${signed(e.hit)}　命中率 =（准确+1）÷ 目标敏捷")),
+      Option.when(e.agility != 0)(Line(s"敏捷 ${signed(e.agility)}　被打中率 =（对方准确+1）÷ 你的敏捷")),
+      Option.when(e.attackSpeed != 0)(Line(
+        if e.attackSpeed > 0 then s"攻击速度 ${signed(e.attackSpeed)}　全身攻速合计每 2 点，两刀间隔 −$step 毫秒"
+        else s"攻击速度 ${signed(e.attackSpeed)}　全身攻速合计为负时，从 −1 起每 2 点两刀间隔 +$step 毫秒",
+        if e.attackSpeed > 0 then Tint.Good else Tint.Bad
+      )),
+      Option.when(e.luck != 0)(Line(s"幸运 +${e.luck}　全身幸运 L>0 时每刀有 1/(10−L) 机会打出攻击上限", Tint.Good)),
+      Option.when(e.curse != 0)(Line(s"诅咒 +${e.curse}　抵消幸运；幸运为负时每刀有 1/(10−|L|) 机会只打出攻击下限", Tint.Bad)),
+      Option.when(e.magicAvoid != 0)(Line(s"魔法躲避 +${e.magicAvoid}$notYet", Tint.Dim)),
+      Option.when(e.poisonAvoid != 0)(Line(s"毒物躲避 +${e.poisonAvoid}$notYet", Tint.Dim)),
+      Option.when(e.hpRegen != 0)(Line(s"体力恢复 +${e.hpRegen}　每 ${sec(Recovery.IntervalMs)}自然回血多 ${e.hpRegen} 点")),
+      Option.when(e.mpRegen != 0)(Line(s"魔法恢复 +${e.mpRegen}　每 ${sec(Recovery.IntervalMs)}自然回蓝多 ${e.mpRegen} 点")),
+      Option.when(e.poisonRegen != 0)(Line(s"中毒恢复 +${e.poisonRegen}$notYet", Tint.Dim))
     ).flatten
 
+  private def scrollText(e: ScrollEffect): String = e match
+    case ScrollEffect.Town   => "使用后立即回到回城点（角色出生的城）"
+    case ScrollEffect.Escape => "使用后立即回到回城点（角色出生的城）"
+    case ScrollEffect.Random => "传送到当前地图上随机一个能站的格子"
+    case ScrollEffect.Other  => "暂时不能使用"
+
+  private def potionLines(hp: Int, mp: Int, instant: Boolean): List[Line] =
+    def what(f: Int => Int) =
+      List(Option.when(hp > 0)(s"体力 ${f(hp)}"), Option.when(mp > 0)(s"魔法 ${f(mp)}")).flatten.mkString("、")
+    if instant then List(Line(s"立即回复 ${what(identity)}"))
+    else
+      val (n, gap) = (PotionRules.Ticks, PotionRules.TickMs)
+      List(
+        Line(s"每 ${sec(gap)}回复 ${what(PotionRules.perTick)}，共 $n 次"),
+        Line(s"${sec(gap * (n - 1))}内共回 ${what(v => PotionRules.perTick(v) * n)}，超过上限的部分浪费", Tint.Dim)
+      )
+
+  private def amuletLines(poison: Option[PoisonKind], inst: Option[ItemInstance]): List[Line] =
+    List(
+      Some(Line(poison match
+        case None                   => "道士灵魂火符、召唤骷髅、召唤神兽、隐身术每次用 1 张"
+        case Some(PoisonKind.Green) => "施毒术用：绿毒，中毒期间持续掉血（数值见施毒术说明）"
+        case Some(PoisonKind.Red)   => s"施毒术用：红毒，降低目标防御$notYet"
+      )),
+      Some(Line("装备在左手镯位置才能用", Tint.Dim)),
+      inst.map(i => Line(s"剩余 ${Durability.usesLeft(i.dura)} 次", Tint.Dim))
+    ).flatten
+
+  /** 穿上它要的东西：等级/属性要求、性别、腕力或穿戴负重。 */
+  private def wearLines(d: ItemDef, slots: List[EquipSlot], me: SelfStats): List[Line] =
+    val s   = me.stats
+    val req = Requirement.of(d)
+    val need = Option.when(req.value > 0) {
+      val have = Requirement.current(req, me.level, s)
+      Line(s"需要${req.label} ${req.value}（你现在 $have）", if have >= req.value then Tint.Dim else Tint.Bad)
+    }
+    val sex = dressSex(d).map(x => Line(s"${x.label}穿", Tint.Dim))
+    val load =
+      if slots.contains(EquipSlot.Weapon) then
+        Line(s"武器重 ${d.weight}，要腕力 ≥ ${d.weight}（你的腕力 ${s.maxHandWeight}）", if s.maxHandWeight >= d.weight then Tint.Dim else Tint.Bad)
+      else
+        Line(s"穿戴负重 +${d.weight}（你已穿 ${me.wearWeight}/${s.maxWearWeight}）", if me.wearWeight + d.weight <= s.maxWearWeight then Tint.Dim else Tint.Bad)
+    need.toList ++ sex ++ List(load)
+
+  private def durabilityLines(slots: List[EquipSlot], inst: Option[ItemInstance]): List[Line] =
+    inst.toList.flatMap { i =>
+      val wear =
+        if slots.contains(EquipSlot.Weapon) then
+          s"每次砍中目标有 1/${Durability.WeaponWearOdds} 机会磨损 ${BigDecimal(Durability.WeaponWearPerHit) / Durability.PerPoint}"
+        else "不会磨损"
+      List(
+        Line(s"持久 ${Durability.shown(i.dura)}/${Durability.shown(i.duraMax)}", if i.dura > 0 then Tint.Plain else Tint.Bad),
+        Line(s"$wear；持久为 0 时不加任何属性", Tint.Dim)
+      )
+    }
+
   /** 物品说明（含与身上同部位装备的对比）。 */
-  def itemLines(d: ItemDef, inst: Option[ItemInstance], job: Job, me: SelfStats, compareWith: Option[ItemDef]): List[Line] =
+  def itemLines(catalog: Catalog, d: ItemDef, inst: Option[ItemInstance], job: Job, me: SelfStats, compareWith: Option[ItemDef]): List[Line] =
     val k = ItemKind.of(d)
     val body: List[Line] = k match
-      case ItemKind.Potion(hp, mp, instant) =>
-        val how = if instant then "（立即）" else "（几秒内慢慢回满）"
-        List(Option.when(hp > 0)(Line(s"回复体力 $hp$how")), Option.when(mp > 0)(Line(s"回复魔法 $mp$how"))).flatten
+      case ItemKind.Potion(hp, mp, instant) => potionLines(hp, mp, instant)
       case ItemKind.Book(bookJob, level) =>
         val ok = bookJob.contains(job) && me.level >= level
-        List(Line(s"${bookJob.fold("")(_.label)}技能书，$level 级可学", if ok then Tint.Plain else Tint.Bad))
-      case ItemKind.Scroll(e) =>
-        List(Line(e match
-          case ScrollEffect.Town   => "回到城里"
-          case ScrollEffect.Escape => "离开地下城回到城里"
-          case ScrollEffect.Random => "随机传送到本地图某处"
-          case ScrollEffect.Other  => "特殊卷轴"
-        ))
-      case ItemKind.Bundle(_) => List(Line("双击拆成 6 瓶（需要 6 个空位）"))
-      case ItemKind.Amulet(poison) =>
-        List(
-          Some(Line(poison match
-            case None                   => "道士施法消耗（灵魂火符、召唤、隐身）"
-            case Some(PoisonKind.Green) => "施毒术用：绿毒，持续掉血"
-            case Some(PoisonKind.Red)   => "施毒术用：红毒，降低防御"
-          )),
-          Some(Line("装备在左手镯位置使用", Tint.Dim)),
-          inst.map(i => Line(s"剩余 ${math.ceil(i.dura / 100.0).toInt} 次", Tint.Dim))
-        ).flatten
-      case ItemKind.Equip(_) =>
+        List(Line(s"技能书：${bookJob.fold("")(_.label)}人物 $level 级可学「${d.name.value}」", if ok then Tint.Plain else Tint.Bad))
+      case ItemKind.Scroll(e) => List(Line(scrollText(e)))
+      case ItemKind.Bundle(_) =>
+        val one = catalog.bundleContent(d).fold("药")(x => s"「${x.name.value}」")
+        List(Line(s"双击拆成 ${ItemKind.BundleSize} 个$one"), Line("并进包裹里同名的那叠，没有就占 1 格", Tint.Dim))
+      case ItemKind.Amulet(poison) => amuletLines(poison, inst)
+      case ItemKind.Equip(slots) =>
         val e = ItemEffects.of(d)
-        effectLines(e) ++ compareWith.filter(_.name != d.name).fold(Nil)(c => compareLines(e, ItemEffects.of(c), c.name.value))
+        Line(s"装备位置：${slots.map(_.label).mkString("或")}", Tint.Dim) :: effectLines(e) ++ wearLines(d, slots, me) ++
+          durabilityLines(slots, inst) ++
+          compareWith.filter(_.name != d.name).fold(Nil)(c => compareLines(e, ItemEffects.of(c), c.name.value))
       case ItemKind.Material | ItemKind.Other => Nil
-    val need = k match
-      case ItemKind.Equip(_) =>
-        val req = Requirement.of(d)
-        Option.when(req.value > 0) {
-          val have = Requirement.current(req, me.level, me.stats)
-          Line(s"需要${req.label} ${req.value}", if have >= req.value then Tint.Dim else Tint.Bad)
-        }.toList
-      case _ => Nil
-    val dura = (inst, k) match
-      case (Some(i), ItemKind.Equip(_)) => s"　持久 ${math.ceil(i.dura / 1000.0).toInt}/${math.ceil(i.duraMax / 1000.0).toInt}"
-      case _                            => ""
-    Line(d.name.value, Tint.Title) :: body ++ need ++ List(
-      Line(s"重量 ${d.weight}$dura", Tint.Dim),
-      Line(s"卖给商店约 ${d.price / 2} 金币", Tint.Gold)
+    val count = inst.filter(_.count > 1).fold("")(i => s"，这叠 ${i.count} 个共 ${d.weight * i.count}")
+    Line(d.name.value, Tint.Title) :: body ++ List(
+      Line(s"重量 ${d.weight}$count（包裹 ${me.bagWeight}/${me.stats.maxBagWeight}）", Tint.Dim),
+      Line(s"商店收购价 ${Pricing.sell(d)} 金币", Tint.Gold)
     )
 
   private def compareLines(a: ItemEffects, b: ItemEffects, oldName: String): List[Line] =
@@ -93,28 +138,45 @@ object Describe:
     val diffs = List(
       range("攻击", a.dc, b.dc), range("魔法", a.mc, b.mc), range("道术", a.sc, b.sc), range("防御", a.ac, b.ac),
       range("魔防", a.mac, b.mac), num("准确", a.hit, b.hit), num("敏捷", a.agility, b.agility),
-      num("攻速", a.attackSpeed, b.attackSpeed), num("幸运", a.luck - a.curse, b.luck - b.curse)
+      num("攻速", a.attackSpeed, b.attackSpeed), num("幸运", a.luck - a.curse, b.luck - b.curse),
+      num("体力恢复", a.hpRegen, b.hpRegen), num("魔法恢复", a.mpRegen, b.mpRegen)
     ).flatten
     if diffs.isEmpty then Nil else Line(s"换下 $oldName 后：", Tint.Dim) :: diffs
 
-  /** 属性面板：每项属性写出它实际意味着什么。用附近常见怪的敏捷、准确估算命中率。 */
+  /**
+   * 属性面板：每项属性的当前值和它在规则里的具体作用。
+   * 命中、闪避用附近怪物的平均敏捷 monsterAgility、平均准确 monsterHit 算出实际概率。
+   */
   def statLines(name: String, job: Job, me: SelfStats, monsterAgility: Int, monsterHit: Int): List[Line] =
-    val s       = me.stats
-    val hitPct  = math.round(Rules.hitChance(s.hit, monsterAgility) * 100)
-    val dodgePct = math.round((1 - Rules.hitChance(monsterHit, s.agility)) * 100)
+    val s     = me.stats
+    val luck  = Rules.luckOdds(s.luck).map { n =>
+      if s.luck > 0 then s"幸运 ${s.luck}：每刀有 1/$n（${pct(1.0 / n)}）机会直接打出攻击上限 ${s.dc.hi}"
+      else s"幸运 ${s.luck}（诅咒）：每刀有 1/$n（${pct(1.0 / n)}）机会只打出攻击下限 ${s.dc.lo}"
+    }
     List(
       Some(Line(s"$name　${job.label}　${me.level} 级", Tint.Title)),
-      Some(Line(s"体力 ${me.hp.value}/${s.maxHp}　魔法 ${me.mp.value}/${s.maxMp}")),
-      Some(Line(s"攻击 ${r(s.dc)}：普通攻击每刀伤害在这之间随机，再减去怪物防御")),
-      Option.when(has(s.mc))(Line(s"魔法 ${r(s.mc)}：法师技能威力 = 技能基础值 + 这个范围里的随机值")),
-      Option.when(has(s.sc))(Line(s"道术 ${r(s.sc)}：治愈、火符威力和召唤物强度都按它算")),
-      Some(Line(s"防御 ${r(s.ac)}：每次挨打先减掉这个范围里的随机值")),
-      Some(Line(s"魔防 ${r(s.mac)}：魔法伤害先减掉这个范围里的随机值")),
-      Some(Line(s"准确 ${s.hit}：打附近怪物（敏捷约 $monsterAgility）命中率约 $hitPct%")),
-      Some(Line(s"敏捷 ${s.agility}：附近怪物（准确约 $monsterHit）打你约 $dodgePct% 打空")),
-      Some(Line(s"攻击间隔 ${s.hitInterval} 毫秒（装备攻速每 2 点快 60 毫秒）")),
-      Option.when(s.luck != 0)(Line(s"幸运 ${s.luck}")),
-      Some(Line(s"负重：包裹 ${s.maxBagWeight}，穿戴 ${s.maxWearWeight}，腕力 ${s.maxHandWeight}（能拿的武器重量）", Tint.Dim))
+      Some(Line(s"体力 ${me.hp.value}/${s.maxHp}：每 ${sec(Recovery.IntervalMs)}自然回 ${Recovery.hpPerTick(s)}")),
+      Some(Line(s"魔法 ${me.mp.value}/${s.maxMp}：每 ${sec(Recovery.IntervalMs)}自然回 ${Recovery.mpPerTick(s)}")),
+      Some(Line(s"攻击 ${r(s.dc)}：普攻每刀在 ${s.dc.lo}-${s.dc.hi} 间随机，再减目标防御，≤0 算打空")),
+      luck.map(Line(_, if s.luck > 0 then Tint.Good else Tint.Bad)),
+      Option.when(has(s.mc))(Line(s"魔法 ${r(s.mc)}：法师攻击技能的伤害加成（见技能说明）")),
+      Option.when(has(s.sc))(Line(s"道术 ${r(s.sc)}：道士技能的威力、治疗量、持续时间加成（见技能说明）")),
+      Some(Line(s"防御 ${r(s.ac)}：挨物理攻击时伤害减去 ${s.ac.lo}-${s.ac.hi} 间随机值")),
+      Some(Line(s"魔防 ${r(s.mac)}：挨魔法攻击时伤害减去 ${s.mac.lo}-${s.mac.hi} 间随机值")),
+      Some(Line(
+        s"准确 ${s.hit}：命中率 =（${s.hit}+1）÷ 目标敏捷，打附近怪（敏捷约 $monsterAgility）${pct(Rules.hitChance(s.hit, monsterAgility))}"
+      )),
+      Some(Line(
+        s"敏捷 ${s.agility}：被打中率 =（对方准确+1）÷ ${s.agility}，附近怪（准确约 $monsterHit）打中你 ${pct(Rules.hitChance(monsterHit, s.agility))}"
+      )),
+      Some(Line(
+        s"攻击间隔 ${s.hitInterval} 毫秒：基础 ${Rules.hitInterval(0)}，全身攻速每 2 点 −${Rules.HitIntervalStepMs}，最快 ${Rules.HitIntervalMinMs}"
+      )),
+      Option.when(s.magicAvoid != 0)(Line(s"魔法躲避 ${s.magicAvoid}$notYet", Tint.Dim)),
+      Option.when(s.poisonAvoid != 0)(Line(s"毒物躲避 ${s.poisonAvoid}$notYet", Tint.Dim)),
+      Some(Line(s"包裹负重 ${me.bagWeight}/${s.maxBagWeight}：超过就捡不起、买不了", Tint.Dim)),
+      Some(Line(s"穿戴负重 ${me.wearWeight}/${s.maxWearWeight}：武器以外的装备总重上限", Tint.Dim)),
+      Some(Line(s"腕力 ${s.maxHandWeight}：能拿的武器最重 ${s.maxHandWeight}", Tint.Dim))
     ).flatten
 
   /** 技能说明。 */

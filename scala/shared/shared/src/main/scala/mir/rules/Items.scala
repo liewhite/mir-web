@@ -38,6 +38,9 @@ enum ItemKind:
   case Other
 
 object ItemKind:
+  /** 一个捆装药拆出几个 */
+  val BundleSize = 6
+
   def of(d: ItemDef): ItemKind = d.mode match
     case 0 => Potion(d.ac.lo, d.mac.lo, d.shape == 1)
     case 3 =>
@@ -145,6 +148,31 @@ object Requirement:
     case Dc(_)    => stats.dc.hi
     case Mc(_)    => stats.mc.hi
     case Sc(_)    => stats.sc.hi
+
+/** 喝药：普通药分 Ticks 跳、每隔 TickMs 毫秒回一跳，每跳回 总量/Ticks（向上取整）；太阳水类（instant）一次回完。 */
+object PotionRules:
+  val Ticks  = 5
+  val TickMs = 400
+  def perTick(total: Int): Int = math.ceil(total / Ticks.toDouble).toInt
+
+/**
+ * 持久：存的是千分之一点（界面显示 存值/PerPoint 向上取整）。
+ * 武器每次砍到目标有 1/WeaponWearOdds 的机会掉 WeaponWearPerHit；其他装备不掉持久。持久为 0 的装备不加任何属性。
+ * 护身符、药粉的持久是剩余次数：每用一次扣 PerUse。
+ */
+object Durability:
+  val PerPoint         = 1000
+  val WeaponWearOdds   = 3
+  val WeaponWearPerHit = 1
+  val PerUse           = 100
+
+  def shown(raw: Int): Int    = math.ceil(raw / PerPoint.toDouble).toInt
+  def usesLeft(raw: Int): Int = math.ceil(raw / PerUse.toDouble).toInt
+
+/** 商店买卖：买按表价，卖给商店得表价的一半（向下取整）。 */
+object Pricing:
+  def buy(d: ItemDef): Int  = d.price
+  def sell(d: ItemDef): Int = d.price / 2
 
 /** 男装/女装：StdMode 10 男、11 女，其余不限。 */
 def dressSex(d: ItemDef): Option[Sex] = d.mode match

@@ -238,8 +238,8 @@ object ClientSpec extends ZIOSpecDefault:
       val me     = r.client.view.stats.get
       val wood   = catalog.item(ItemName("木剑")).get
       val bronze = catalog.item(ItemName("青铜剑")).get
-      val lines  = Describe.itemLines(bronze, None, Job.Warrior, me, Some(wood))
-      val potion = Describe.itemLines(catalog.item(ItemName("金创药(小量)")).get, None, Job.Warrior, me, None)
+      val lines  = Describe.itemLines(catalog, bronze, None, Job.Warrior, me, Some(wood))
+      val potion = Describe.itemLines(catalog, catalog.item(ItemName("金创药(小量)")).get, None, Job.Warrior, me, None)
       val stats  = Describe.statLines("甲", Job.Warrior, me, 15, 8)
       val fire   = catalog.skill(SkillId(1)).get
       assertTrue(
@@ -248,7 +248,11 @@ object ClientSpec extends ZIOSpecDefault:
         lines.exists(l => l.text.startsWith("换下 木剑")),
         // 1 级穿不了青铜剑：要求标红
         lines.exists(l => l.text.startsWith("需要等级") && l.tint == Tint.Bad),
-        potion.exists(_.text.startsWith("回复体力 20")),
+        // 药写清每跳回多少、几跳、共回多少（金创药(小量) 体力 20：每 0.4 秒 4 点，5 次）
+        potion.exists(_.text == "每 0.4 秒回复 体力 4，共 5 次"),
+        potion.exists(_.text.contains("共回 体力 20")),
+        lines.exists(_.text.startsWith("持久")) == false, // 没有实例时不写持久
+        stats.exists(_.text.startsWith("体力")) && stats.exists(_.text.contains("自然回")),
         stats.head.text.contains("战士"),
         Describe.skillLines(fire, LearnedSkill(fire.id, 0, 3, Some(1))).exists(_.text.startsWith("耗魔法"))
       )

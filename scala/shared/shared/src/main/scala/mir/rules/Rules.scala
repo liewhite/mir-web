@@ -152,9 +152,34 @@ object Rules:
       passive.oneSword.filter(_ > 0).fold(0)(l => round(3.0 * l)) +
         passive.spiritSword.filter(_ > 0).fold(0)(l => round(8.0 / 3 * l)) +
         passive.powerHit.filter(_ > 0).getOrElse(0)
-    val speed    = equips.iterator.map(_.attackSpeed).sum
-    val hitSpeed = math.min(15, if speed > 0 then speed / 2 else (speed - 1) / 2)
-    worn.copy(hit = worn.hit + passiveHit, hitInterval = math.max(300, 900 - hitSpeed * 60))
+    worn.copy(hit = worn.hit + passiveHit, hitInterval = hitInterval(equips.iterator.map(_.attackSpeed).sum))
+
+  /** 没有攻速加成时两次普通攻击的间隔（毫秒）、每档攻速缩短的毫秒数、间隔下限、攻速档上限。 */
+  val HitIntervalBaseMs = 900
+  val HitIntervalStepMs = 60
+  val HitIntervalMinMs  = 300
+  val HitSpeedMaxLevel  = 15
+
+  /** 全身装备攻速合计 → 攻速档：x>0 取 x/2，否则 (x-1)/2（向零取整），上限 15（PlayObject.RecalcHitSpeed）。 */
+  def hitSpeedLevel(speedSum: Int): Int =
+    math.min(HitSpeedMaxLevel, if speedSum > 0 then speedSum / 2 else (speedSum - 1) / 2)
+
+  /** 全身装备攻速合计 → 两次普通攻击的最短间隔（毫秒）。 */
+  def hitInterval(speedSum: Int): Int =
+    math.max(HitIntervalMinMs, HitIntervalBaseMs - hitSpeedLevel(speedSum) * HitIntervalStepMs)
+
+  /**
+   * 幸运/诅咒触发的机会是「N 次里 1 次」，N = 10 - min(9, |幸运|)；幸运为 0 时不触发（None）。
+   * 幸运触发：这一刀直接打出攻击上限；诅咒（幸运为负）触发：只打出攻击下限。
+   */
+  def luckOdds(luck: Int): Option[Int] = Option.when(luck != 0)(10 - math.min(9, math.abs(luck)))
+
+  /** 普通攻击的威力：攻击区间里随机，再按幸运/诅咒改成上限/下限（BaseObject.GetAttackPower）。 */
+  def meleePower(dc: Span, luck: Int)(using rng: Rng): Int =
+    val power = attackPower(dc.lo, dc.hi - dc.lo)
+    luckOdds(luck).filter(n => rng.random(n) == 0) match
+      case Some(_) => if luck > 0 then dc.hi else dc.lo
+      case None    => power
 
   /** 命中判定：攻方准确 < Random(守方敏捷) 时打空（BaseObject._Attack）。 */
   def hits(attackerHit: Int, defenderAgility: Int)(using rng: Rng): Boolean =
@@ -190,3 +215,12 @@ object Rules:
 
   /** GetAttackPower(base, spread)：base + Random(spread + 1) */
   def attackPower(base: Int, spread: Int)(using rng: Rng): Int = base + rng.random(math.max(0, spread) + 1)
+
+/**
+ * 自然回复：每 IntervalMs 毫秒回一次血和蓝。每次回 max(1, 上限/75) + 装备的体力/魔法恢复。
+ * （原版 1.76 是每 6 秒回 上限/75+1、蓝每 16 秒回 上限/18+1，这里沿用 TS 版加快后的规则。）
+ */
+object Recovery:
+  val IntervalMs = 2000
+  def hpPerTick(s: Stats): Int = math.max(1, s.maxHp / 75) + s.hpRegen
+  def mpPerTick(s: Stats): Int = math.max(1, s.maxMp / 75) + s.mpRegen

@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.SkillDef
 import mir.model.*
 import mir.protocol.{Anchor, ServerMsg, Tone}
-import mir.rules.{ItemKind, Rng, Rules}
+import mir.rules.{Durability, ItemKind, Rng, Rules}
 
 /** 一个操作的结果：做了；在忙（冷却、上个动作没做完，不用提示）；不行（告诉玩家原因）。 */
 enum Outcome:
@@ -91,12 +91,7 @@ object Combat:
 
   private def resolveHit(w: World, p: Player, dir: Dir, style: HitStyle, target: Option[Actor]): Unit =
     given rng: Rng = w.rngOf
-    val dc = p.stats.dc
-    var power = Rules.attackPower(dc.lo, dc.hi - dc.lo)
-    // 幸运：有机会直接打出攻击上限；诅咒：有机会只打出下限
-    val luck = p.stats.luck
-    if luck > 0 && rng.random(10 - math.min(9, luck)) == 0 then power = dc.hi
-    else if luck < 0 && rng.random(10 - math.min(9, -luck)) == 0 then power = dc.lo
+    var power = Rules.meleePower(p.stats.dc, p.stats.luck)
     style match
       case HitStyle.Power =>
         // 攻杀：额外 + (5 + 技能等级)（HitPlus）
@@ -136,7 +131,7 @@ object Combat:
       if p.powerHitCount == p.powerHitPoint then p.powerHitReady = true
     }
     p.worn.get(EquipSlot.Weapon).foreach { wpn =>
-      val wear = if rng.random(3) == 0 && target.isDefined then 1 else 0
+      val wear = if rng.random(Durability.WeaponWearOdds) == 0 && target.isDefined then Durability.WeaponWearPerHit else 0
       if wear > 0 then p.worn(EquipSlot.Weapon) = wpn.copy(dura = math.max(0, wpn.dura - wear))
     }
 
@@ -171,7 +166,7 @@ object Combat:
   /** 用掉一张护身符/一份毒药。 */
   private def consumeAmulet(w: World, p: Player): Unit =
     p.worn.get(EquipSlot.BraceletL).foreach { it =>
-      val left = it.dura - 100
+      val left = it.dura - Durability.PerUse
       if left <= 0 then
         p.worn.remove(EquipSlot.BraceletL)
         w.notice(p, s"${it.name.value} 用完了", Tone.Bad)

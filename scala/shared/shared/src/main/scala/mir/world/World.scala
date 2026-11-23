@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.{Catalog, DropDef, MapDef, MonsterActionTable, MonsterDef}
 import mir.model.*
 import mir.protocol.*
-import mir.rules.{ItemEffects, ItemKind, Leveling, PassiveSkills, Progress, Rates, Rng, Rules}
+import mir.rules.{ItemEffects, ItemKind, Leveling, PassiveSkills, Progress, Rates, Recovery, Rng, Rules}
 
 import scala.collection.mutable
 
@@ -194,13 +194,13 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
         applyDamage(a, math.max(1, p.power), Some(p.by), interrupt = false)
     case _ => ()
 
-  /** 每 2 秒回一点血蓝（maxHp/75 + 装备的体力恢复）。 */
+  /** 自然回复（规则见 Recovery）。 */
   private def regen(p: Player): Unit =
-    if !p.dead && clock - p.lastRegen >= 2000 then
+    if !p.dead && clock - p.lastRegen >= Recovery.IntervalMs then
       p.lastRegen = clock
       val s = p.stats
-      p.hp = math.min(s.maxHp, p.hp + math.max(1, s.maxHp / 75) + s.hpRegen).max(p.hp)
-      p.mp = math.min(s.maxMp, p.mp + math.max(1, s.maxMp / 75) + s.mpRegen).max(p.mp)
+      p.hp = math.min(s.maxHp, p.hp + Recovery.hpPerTick(s)).max(p.hp)
+      p.mp = math.min(s.maxMp, p.mp + Recovery.mpPerTick(s)).max(p.mp)
 
   private def runSpawns(): Unit = spawns.foreach { (s, i) =>
     if spawnDue.get(i).exists(_ <= clock) then

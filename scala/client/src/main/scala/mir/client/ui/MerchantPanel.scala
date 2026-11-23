@@ -5,7 +5,7 @@ import mir.core.*
 import mir.data.{ItemDef, MerchantDef, MerchantService}
 import mir.model.{ItemInstance, ItemPlace}
 import mir.protocol.GameCmd
-import mir.rules.ItemKind
+import mir.rules.{Durability, ItemKind, Pricing}
 
 /** 商人对话的哪一页：说话、买、卖、存、取。 */
 enum MerchantMode:
@@ -115,7 +115,7 @@ final class MerchantPanel(ui: ClassicUi):
       m.view.storage.toVector.flatMap { it =>
         catalog.item(it.name).map { d =>
           val dura = ItemKind.of(d) match
-            case ItemKind.Equip(_) => s"${math.ceil(it.dura / 1000.0).toInt}/${math.ceil(it.duraMax / 1000.0).toInt}"
+            case ItemKind.Equip(_) => s"${Durability.shown(it.dura)}/${Durability.shown(it.duraMax)}"
             case _                 => "-"
           val label = if it.count > 1 then s"${it.name.value} ×${it.count}" else it.name.value
           MenuRow(label, dura, "", d, Some(it),
@@ -125,7 +125,7 @@ final class MerchantPanel(ui: ClassicUi):
     case _ =>
       s.defn.goods.toVector.flatMap { gd =>
         catalog.item(gd.name).map { d =>
-          MenuRow(d.name.value, s"${d.price} 金币", if d.dura > 100 then math.ceil(d.dura / 1000.0).toInt.toString else "-", d, None,
+          MenuRow(d.name.value, s"${Pricing.buy(d)} 金币", if d.dura > 100 then Durability.shown(d.dura).toString else "-", d, None,
             () => ui.send(GameCmd.Buy(s.npc, d.name)))
         }
       }
@@ -155,7 +155,7 @@ final class MerchantPanel(ui: ClassicUi):
         if ui.touch then
           menuIndex = i
           ui.itemMenu = Some(ItemMenu(
-            Describe.itemLines(r.defn, r.item, m.job, m.stats, None),
+            Describe.itemLines(catalog, r.defn, r.item, m.job, m.stats, None),
             List(MenuAction(if store then "取回" else s"购买 ${r.col1}", r.take)),
             rr,
             keepOpen = !store
@@ -176,7 +176,7 @@ final class MerchantPanel(ui: ClassicUi):
       s <- session
       if mode == MerchantMode.Buy || mode == MerchantMode.GetBack
       (r, _) <- rows(m, s).zipWithIndex.slice(menuTop, menuTop + MaxMenu).find((_, i) => rowRect(origin, i - menuTop).contains(ui.mouse.x, ui.mouse.y))
-    yield Describe.itemLines(r.defn, r.item, m.job, m.stats, None)
+    yield Describe.itemLines(catalog, r.defn, r.item, m.job, m.stats, None)
 
   // ---------------- 出售、保管框 ----------------
 
@@ -192,7 +192,7 @@ final class MerchantPanel(ui: ClassicUi):
     sellSpot.flatMap(h => catalog.item(h.item.name)).foreach { d =>
       val count = sellSpot.fold(1)(_.item.count)
       g.item(d.look, count, spot)
-      if !store then g.text(s"${d.price / 2 * count} 金币", x + 30, y + 128, "#ff0")
+      if !store then g.text(s"${Pricing.sell(d) * count} 金币", x + 30, y + 128, "#ff0")
     }
     ui.button(Button(Rect(x + 85, y + 150, 24, 13), () => confirm(s), img = Some(393), always = true))
     ui.button(Button(Rect(x + 115, y, 16, 23), () => { sellSpot = None; mode = MerchantMode.Talk }, img = Some(64)))
@@ -218,7 +218,7 @@ final class MerchantPanel(ui: ClassicUi):
     session.toList.flatMap { s =>
       mode match
         case MerchantMode.Sell =>
-          val each = d.price / 2
+          val each = Pricing.sell(d)
           List(MenuAction(if it.count > 1 then s"卖出（每个 $each 金币）" else s"卖出 $each 金币", () => sellOrStore(s, it)))
         case MerchantMode.Store => List(MenuAction("保管", () => sellOrStore(s, it)))
         case _                  => Nil
@@ -229,7 +229,7 @@ final class MerchantPanel(ui: ClassicUi):
     if mode == MerchantMode.Store then
       ui.askCount(it, s"保管 ${it.name.value}", _ => None, n => ui.send(GameCmd.Deposit(s.npc, it.uid, Some(n))))
     else
-      val each = catalog.item(it.name).fold(0)(_.price / 2)
+      val each = catalog.item(it.name).fold(0)(Pricing.sell)
       ui.askCount(it, s"卖出 ${it.name.value}", n => Some(s"得到 ${each * n} 金币"), n => ui.send(GameCmd.Sell(s.npc, it.uid, Some(n))))
 
 object MerchantPanel:

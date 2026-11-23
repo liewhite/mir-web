@@ -4,7 +4,7 @@ import mir.client.input.Pt
 import mir.core.*
 import mir.model.*
 import mir.protocol.{GameCmd, Look, Tone}
-import mir.rules.ItemKind
+import mir.rules.{ItemKind, Recovery}
 
 /**
  * 原版窗口（照 FState.pas，TS 版 ui/classic/classic.ts）：小地图、状态窗 4 页（装备/属性/能力/技能）、包裹、
@@ -79,7 +79,10 @@ final class Panels(ui: ClassicUi):
         val vals = List(s.ac, s.mac, s.dc, s.mc, s.sc).map(r => s"${r.lo}-${r.hi}") ++
           List(s"${m.stats.hp.value}/${s.maxHp}", s"${m.stats.mp.value}/${s.maxMp}")
         vals.zipWithIndex.foreach((v, i) => g.text(v, o.x + 112, o.y + 99 + i * 20))
-      case 2 => drawAbilityPage(m, o)
+        infoTap(statRect)(statLines(m))
+      case 2 =>
+        drawAbilityPage(m, o)
+        infoTap(statRect)(statLines(m))
       case _ => drawMagicPage(m, o)
     ui.button(Button(Rect(o.x + 8, o.y + 39, 16, 23), () => ui.stateOpen = false, img = Some(371)))
     ui.button(Button(Rect(o.x + 7, o.y + 128, 24, 23), () => ui.statePage = (ui.statePage + 3) % 4, img = Some(373)))
@@ -125,11 +128,11 @@ final class Panels(ui: ClassicUi):
       ("腕力", s"$weapon/${s.maxHandWeight}", false),
       ("准确", s.hit.toString, false),
       ("敏捷", s.agility.toString, false),
-      ("魔法躲避", s"+${s.magicAvoid * 10}%", false),
-      ("毒物躲避", s"+${s.poisonAvoid * 10}%", false),
+      ("魔法躲避", s"${s.magicAvoid}", false),
+      ("毒物躲避", s"${s.poisonAvoid}", false),
       ("攻击间隔", s"${s.hitInterval}ms", false),
-      ("体力恢复", s"+${s.hpRegen * 10}%", false),
-      ("魔法恢复", s"+${s.mpRegen * 10}%", false)
+      ("体力恢复", s"${Recovery.hpPerTick(s)}/${Recovery.IntervalMs / 1000}秒", false),
+      ("魔法恢复", s"${Recovery.mpPerTick(s)}/${Recovery.IntervalMs / 1000}秒", false)
     )
     rows.zipWithIndex.foreach { case ((k, v, bad), i) =>
       g.text(k, bx, by + 14 * i, "#c0c0c0")
@@ -141,6 +144,10 @@ final class Panels(ui: ClassicUi):
     val bbx  = o.x + 38
     val bby  = o.y + 52
     val list = m.view.skills
+    // 触屏没有悬停：点技能那一行弹说明（图标在上层，点图标仍是设快捷键）
+    list.zipWithIndex.slice(magicPage * 5, magicPage * 5 + 5).foreach { (ls, i) =>
+      catalog.skill(ls.id).foreach(d => infoTap(magicRow(i - magicPage * 5))(Describe.skillLines(d, ls)))
+    }
     list.zipWithIndex.slice(magicPage * 5, magicPage * 5 + 5).foreach { (ls, i) =>
       catalog.skill(ls.id).foreach { d =>
         val row  = i - magicPage * 5
@@ -159,6 +166,13 @@ final class Panels(ui: ClassicUi):
     val pages = math.max(1, (list.size + 4) / 5)
     ui.button(Button(Rect(o.x + 213, o.y + 113, 12, 21), () => magicPage = math.max(0, magicPage - 1), img = Some(398), always = true))
     ui.button(Button(Rect(o.x + 213, o.y + 143, 12, 21), () => magicPage = math.min(pages - 1, magicPage + 1), img = Some(396), always = true))
+
+  /** 属性页（第 2、3 页）上数值那一块：悬停或点它看说明 */
+  private def statRect: Rect = Rect(stateOrigin.x + 40, 90, 180, 150)
+
+  /** 触屏没有悬停：点这块弹出说明（不带按钮，点别处关掉）。电脑上靠悬停，不登记。 */
+  private def infoTap(r: Rect)(lines: => List[Line]): Unit =
+    if ui.touch then ui.hit(r)(ui.itemMenu = Some(ItemMenu(lines, Nil, r)))
 
   /** 技能页第几行（屏幕上）的范围：悬停说明用 */
   private def magicRow(row: Int): Rect =
@@ -295,7 +309,7 @@ final class Panels(ui: ClassicUi):
   /** 一件物品的说明（装备和身上同部位的比较）。 */
   def describe(m: Me, it: ItemInstance): List[Line] = catalog.item(it.name).fold(Nil) { d =>
     val cur = ItemKind.slots(ItemKind.of(d)).headOption.flatMap(m.view.worn.get).filter(_.uid != it.uid).flatMap(c => catalog.item(c.name))
-    Describe.itemLines(d, Some(it), m.job, m.stats, cur)
+    Describe.itemLines(catalog, d, Some(it), m.job, m.stats, cur)
   }
 
   def drawHover(m: Me): Unit =
@@ -303,7 +317,7 @@ final class Panels(ui: ClassicUi):
     val lines: List[Line] =
       hoverItem(m).map((it, _) => describe(m, it))
         .orElse(ui.merchant.hoverLines(m))
-        .orElse(Option.when(ui.stateOpen && ui.statePage == 1 && Rect(stateOrigin.x + 40, 90, 180, 150).contains(x, y))(statLines(m)))
+        .orElse(Option.when(ui.stateOpen && (ui.statePage == 1 || ui.statePage == 2) && statRect.contains(x, y))(statLines(m)))
         .orElse(Option.when(ui.stateOpen && ui.statePage == 3)(skillHover(m)).flatten)
         .getOrElse(Nil)
     g.hint(lines, x + 14, y + 14, ui.W, ui.H)
@@ -357,12 +371,13 @@ final class Panels(ui: ClassicUi):
    * 画物品菜单，返回它占的范围（界面像素）。原版底栏在手机上缩得很小，菜单按触屏操作件的倍数放大，手指才点得到；
    * 排版在菜单自己的坐标里算（未放大），摆放和点击区换算成界面坐标。
    */
-  def drawItemMenu(menu: ItemMenu): Rect =
+  def drawItemMenu(m0: ItemMenu): Rect =
     val lh   = 15.0
     val btnH = 32.0
     val pad  = 6.0
     val s    = math.min(ui.ctlScale, (ui.W - 8) / 200)
     val maxW = (ui.W - 8) / s
+    val menu = m0.copy(lines = g.wrap(m0.lines, math.min(360, maxW - pad * 2)))
     val btnW = menu.actions.map(a => math.max(56, g.width(a.label) + 20))
     val textW = menu.lines.map(l => g.width(l.text)).maxOption.getOrElse(0.0)
     val w    = math.min(maxW, math.max(textW, btnW.sum + 6 * (btnW.size - 1)) + pad * 2)
@@ -371,7 +386,7 @@ final class Panels(ui: ClassicUi):
       val cur = acc.last
       val used = cur.map(_._2).sum + 6 * cur.size
       if cur.nonEmpty && used + ab._2 > w - pad * 2 then acc :+ Vector(ab) else acc.init :+ (cur :+ ab)
-    }
+    }.filter(_.nonEmpty)
     val h = pad + menu.lines.size * lh + 4 + rows.size * (btnH + 6) + pad - 6
     // 优先摆在格子右边，放不下就左边；纵向尽量和格子顶对齐
     val (sw, sh) = (w * s, h * s)

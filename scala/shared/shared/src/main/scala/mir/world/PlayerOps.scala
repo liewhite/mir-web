@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.{ItemDef, MerchantService}
 import mir.model.*
 import mir.protocol.{GameCmd, ServerMsg, ChatKind, Tone}
-import mir.rules.{ItemKind, Requirement, ScrollEffect, dressSex}
+import mir.rules.{ItemKind, PotionRules, Pricing, Requirement, ScrollEffect, dressSex}
 
 /**
  * 玩家指令的执行：移动、攻击、施法、物品、NPC 买卖存取、设置、说话。
@@ -154,25 +154,24 @@ object PlayerOps:
             p.mp += math.max(0, math.min(mp, p.stats.maxMp - p.mp))
             if h > 0 then w.nearby(p.cell, ServerMsg.Heal(p.id, h))
           else
-            // 普通药：分 5 跳慢慢回
-            (0 until 5).foreach { i =>
-              w.after(i * 400L) {
+            // 普通药：分几跳慢慢回（PotionRules）
+            (0 until PotionRules.Ticks).foreach { i =>
+              w.after(i.toLong * PotionRules.TickMs) {
                 if !p.dead then
-                  p.hp += math.max(0, math.min(math.ceil(hp / 5.0).toInt, p.stats.maxHp - p.hp))
-                  p.mp += math.max(0, math.min(math.ceil(mp / 5.0).toInt, p.stats.maxMp - p.mp))
+                  p.hp += math.max(0, math.min(PotionRules.perTick(hp), p.stats.maxHp - p.hp))
+                  p.mp += math.max(0, math.min(PotionRules.perTick(mp), p.stats.maxMp - p.mp))
               }
             }
           ok
-        case ItemKind.Bundle(of) =>
-          // 包的 Shape = 里面那种药的 AniCount
-          w.catalog.data.items.find(i => i.mode != 31 && i.ani == of) match
+        case ItemKind.Bundle(_) =>
+          w.catalog.bundleContent(d) match
             case None => Left("这个包拆不开")
             case Some(one) =>
-              // 拆出的 6 个并成一叠：身上已有这种药就并进去；没有就要一个空位（这包是最后一个时它腾出的格子也算）
+              // 拆出的几个并成一叠：身上已有这种药就并进去；没有就要一个空位（这包是最后一个时它腾出的格子也算）
               if it.count > 1 && !Inventory.hasRoom(p, one) then Left("包裹满了，拆包需要一个空位")
               else
                 consumeOne(w, p, uid)
-                w.newItem(one.name).foreach(x => addToBag(w, p, x.copy(count = 6)))
+                w.newItem(one.name).foreach(x => addToBag(w, p, x.copy(count = ItemKind.BundleSize)))
                 ok
         case ItemKind.Scroll(ScrollEffect.Town | ScrollEffect.Escape) =>
           consumeOne(w, p, uid)
@@ -310,13 +309,13 @@ object PlayerOps:
       n <- npcFor(w, p, npc, _ == MerchantService.Shop)
       _ <- Either.cond(n.defn.goods.exists(_.name == name), (), s"${n.defn.name}不卖这个")
       d <- w.catalog.item(name).toRight("数据表里没有这件物品")
-      _ <- Either.cond(p.gold.value >= d.price, (), "金币不够")
+      _ <- Either.cond(p.gold.value >= Pricing.buy(d), (), "金币不够")
       _ <- fits(w, p, d)
       it <- w.newItem(name).toRight("数据表里没有这件物品")
     yield
       addToBag(w, p, it)
-      p.gold = p.gold - Gold(d.price)
-      w.notice(p, s"买了 ${d.name.value}，花费 ${d.price} 金币", Tone.Item)
+      p.gold = p.gold - Gold(Pricing.buy(d))
+      w.notice(p, s"买了 ${d.name.value}，花费 ${Pricing.buy(d)} 金币", Tone.Item)
 
   /** 卖出一件的 n 个（None = 整叠），每个半价。 */
   def sell(w: World, p: Player, npc: ActorId, uid: ItemUid, n: Option[Int] = None): Result =
@@ -327,7 +326,7 @@ object PlayerOps:
       _          <- Either.cond(shop.defn.itemModes.isEmpty || shop.defn.itemModes.contains(d.mode), (), s"${shop.defn.name}不收这种东西")
       sold       <- takeOwned(w, p, uid, n)
     yield
-      val price = d.price / 2 * sold.count
+      val price = Pricing.sell(d) * sold.count
       p.gold = p.gold + Gold(price)
       w.notice(p, s"卖出 ${label(sold)}，得到 $price 金币", Tone.Item)
 
