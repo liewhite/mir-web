@@ -23,8 +23,6 @@ const RINGS = [92, 152];
 const ANGLES = [180, 210, 240, 270];
 const CHAT_KEEP_MS = 12_000;
 const CHAT_MAX = 5;
-/** 横屏和竖屏的分界（界面像素宽） */
-const WIDE = 700;
 /** 左上状态块高度 */
 const STATUS_H = 96;
 const TARGET_W = 210;
@@ -48,8 +46,9 @@ export class TouchLayout implements Layout {
   private get B(): number {
     return this.h.H - this.h.safe.bottom;
   }
+  /** 横屏（宽大于高）：窗口左右并排；竖屏：窗口上下叠放 */
   private get wide(): boolean {
-    return this.h.W >= WIDE;
+    return this.h.W > this.h.H;
   }
 
   // ---------------- 窗口位置 ----------------
@@ -81,19 +80,27 @@ export class TouchLayout implements Layout {
     return { x: this.L + STICK_R + 30, y: this.B - STICK_R - 24 };
   }
 
+  /**
+   * 快捷栏 6 格：优先放在最底下摇杆和攻击键之间（和技能键不打架时）；
+   * 放不下（竖屏窄、技能多）就贴在摇杆上方，技能键伸过来时再往上让开。
+   */
   beltRects(): Rect[] {
     const total = 6 * SLOT + 5 * GAP;
-    if (!this.wide) {
-      // 竖屏：在摇杆和技能外圈上方一行
-      const y = this.attackCenter().y - RINGS[1]! - SKILL_R - 12 - SLOT;
-      return Array.from({ length: 6 }, (_, i) => ({ x: this.L + 8 + i * (SLOT + GAP), y, w: SLOT, h: SLOT }));
+    const row = (x0: number, y: number): Rect[] => Array.from({ length: 6 }, (_, i) => ({ x: x0 + i * (SLOT + GAP), y, w: SLOT, h: SLOT }));
+    const skills = this.skillButtons().map((b) => b.r);
+    const hits = (rs: Rect[]): boolean => rs.some((r) => skills.some((k) => overlap(r, k)));
+    const left = this.stickHome().x + STICK_R + 12;
+    const right = this.attackCenter().x - ATTACK_R - 12;
+    if (right - left >= total) {
+      const bottom = row(Math.round(left + (right - left - total) / 2), this.B - SLOT - 6);
+      if (!hits(bottom)) return bottom;
+      // 靠左贴着摇杆再试一次
+      const tight = row(left, this.B - SLOT - 6);
+      if (!hits(tight)) return tight;
     }
-    // 横屏：摇杆和技能键之间的底边
-    const left = this.stickHome().x + STICK_R + 16;
-    const right = this.attackCenter().x - RINGS[1]! - SKILL_R - 6;
-    const x0 = Math.round(left + Math.max(0, (right - left - total) / 2));
-    const y = this.B - SLOT - 6;
-    return Array.from({ length: 6 }, (_, i) => ({ x: x0 + i * (SLOT + GAP), y, w: SLOT, h: SLOT }));
+    const x0 = this.L + 8;
+    const tops = [this.stickHome().y - STICK_R, ...skills.filter((k) => k.x < x0 + total).map((k) => k.y)];
+    return row(x0, Math.min(...tops) - 10 - SLOT);
   }
 
   // ---------------- HUD ----------------
@@ -201,11 +208,13 @@ export class TouchLayout implements Layout {
     ];
     const size = 40;
     const step = size + 4;
-    // 横屏：放在状态窗（右上 232 宽）左边；竖屏：放在小地图下面
-    const right = this.wide ? this.R - 236 : this.R;
-    const y = this.wide ? this.T + 4 : this.T + 126;
+    // 横屏：顶边一行，在状态窗（右上 232 宽）左边；竖屏：右边一列，在小地图下面
+    const at = (i: number): Rect =>
+      this.wide
+        ? { x: this.R - 236 - (items.length - i) * step, y: this.T + 4, w: size, h: size }
+        : { x: this.R - size - 4, y: this.T + 126 + i * step, w: size, h: size };
     items.forEach((it, i) => {
-      const r = { x: right - (items.length - i) * step, y, w: size, h: size };
+      const r = at(i);
       const pressed = this.h.isPressed(r);
       g.frame(r.x, r.y, r.w, r.h, pressed ? 'rgba(90,70,30,.85)' : 'rgba(0,0,0,.55)', '#8a6a3a');
       if (typeof it.icon === 'number') g.imgScaled(MAIN, it.icon, r.x + size / 2, r.y + size / 2, 1.4);
@@ -243,31 +252,40 @@ export class TouchLayout implements Layout {
     return out;
   }
 
-  private drawSkills(now: number): void {
-    void now;
-    const { g, p, catalog, world } = this.h;
+  /** 技能键的位置：F1-F4 内圈、F5-F8 外圈，围着攻击键左上方 */
+  private skillButtons(): { id: number; key: number; cx: number; cy: number; r: Rect }[] {
     const c = this.attackCenter();
-    for (const slot of this.slots()) {
-      const def = catalog.skillsById.get(slot.id);
-      const ls = p.skills.find((s) => s.id === slot.id);
-      if (!def || !ls) continue;
+    return this.slots().map((slot) => {
       const ring = RINGS[slot.key <= 4 ? 0 : 1]!;
       const a = (ANGLES[(slot.key - 1) % 4]! * Math.PI) / 180;
       const cx = c.x + ring * Math.cos(a);
       const cy = c.y + ring * Math.sin(a);
-      const r = { x: cx - SKILL_R, y: cy - SKILL_R, w: SKILL_R * 2, h: SKILL_R * 2 };
+      return { ...slot, cx, cy, r: { x: cx - SKILL_R, y: cy - SKILL_R, w: SKILL_R * 2, h: SKILL_R * 2 } };
+    });
+  }
+
+  private drawSkills(now: number): void {
+    void now;
+    const { g, p, catalog, world } = this.h;
+    for (const { id, key, cx, cy, r } of this.skillButtons()) {
+      const def = catalog.skillsById.get(id);
+      const ls = p.skills.find((s) => s.id === id);
+      if (!def || !ls) continue;
       g.circle(cx, cy, SKILL_R, this.h.isPressed(r) ? 'rgba(90,70,30,.9)' : 'rgba(0,0,0,.6)', '#8a6a3a');
       g.imgCenter('magicon', def.effect * 2, r.x, r.y, r.w, r.h);
-      const cd = (p.cooldown.get(slot.id) ?? 0) - world.now;
+      const cd = (p.cooldown.get(id) ?? 0) - world.now;
       if (cd > 0) {
         g.circle(cx, cy, SKILL_R, 'rgba(0,0,0,.6)');
         const t = (cd / 1000).toFixed(cd < 10_000 ? 1 : 0);
         g.text(t, cx - g.width(t) / 2, cy - 6, '#fff', true);
       } else if (p.mp < manaCost(def, ls.level)) g.circle(cx, cy, SKILL_R, 'rgba(0,0,80,.45)');
-      g.text(`F${slot.key}`, r.x - 2, r.y - 4, '#ff0', true);
+      g.text(`F${key}`, r.x - 2, r.y - 4, '#ff0', true);
       this.h.area(r);
-      const id = slot.id;
       this.h.button({ ...r, img: -1, onClick: () => this.h.ctl.castSkillAuto(id) });
     }
   }
+}
+
+function overlap(a: Rect, b: Rect): boolean {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 }
