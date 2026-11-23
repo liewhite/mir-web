@@ -11,6 +11,7 @@ import type { Controller } from '../../game/controller';
 import type { LayoutKind } from '../viewport';
 import type { Joystick } from '../../game/joystick';
 import { type Gfx, MAIN, type Rect } from './gfx';
+import { TouchControls } from './controls';
 
 export interface Pt {
   x: number;
@@ -56,6 +57,8 @@ export interface UiHost {
   readonly chat: readonly ChatLine[];
   readonly stateOpen: boolean;
   readonly joystick: Joystick;
+  /** 触屏操作件（摇杆、攻击键、技能键）的放大倍数，保证手指点得到 */
+  readonly ctlScale: number;
   /** 登记按钮（原版图按钮按下时会画出来） */
   button(b: Button): void;
   /** 这个按钮正被按着（自己画的按钮用来画按下效果） */
@@ -74,6 +77,8 @@ export interface UiHost {
 
 export interface Layout {
   readonly kind: LayoutKind;
+  /** 用摇杆走路、点怪只锁定（false = 原版鼠标：点哪走哪、点怪就打） */
+  readonly joystick: boolean;
   /** 物品格点一下：false = 原版拿起/放下（双击使用）；true = 选中并弹出操作菜单（手机） */
   readonly itemMenu: boolean;
   /** 设置窗每行高度（手机上加大好点） */
@@ -97,10 +102,19 @@ const CHAT_LINES = 9;
 /** 原版底栏布局。 */
 export class BoardLayout implements Layout {
   readonly kind = 'board' as const;
-  readonly itemMenu = false;
   readonly settingsRowH = 19;
+  /** 触屏上没有悬停和右键：物品点一下弹说明和操作菜单 */
+  readonly itemMenu: boolean;
+  private readonly controls: TouchControls | null;
 
-  constructor(private readonly h: UiHost, private readonly touchSkills: boolean) {}
+  /**
+   * touch：触屏设备；joystick：底栏上方叠摇杆、攻击键、技能环（用户 #1140 定：原版底栏不动）。
+   * 不用摇杆的触屏设备在右侧画一列技能键。
+   */
+  constructor(private readonly h: UiHost, private readonly touch: boolean, readonly joystick: boolean) {
+    this.itemMenu = touch;
+    this.controls = joystick ? new TouchControls(h) : null;
+  }
 
   private boardX(): number {
     return Math.round((this.h.W - BOARD_W) / 2);
@@ -134,8 +148,17 @@ export class BoardLayout implements Layout {
 
   drawHud(now: number): void {
     this.drawBottom();
-    if (this.touchSkills) this.drawTouchSkills();
     void now;
+    const c = this.controls;
+    if (c) {
+      // 叠在底栏上方：左边摇杆、右边攻击键（底栏上沿 40 像素是透明的装饰，往上再让 16 像素）
+      const top = this.h.H - BOARD_H - 16;
+      c.draw({
+        stick: { x: this.h.safe.left + c.stickR + 30, y: top - c.stickR },
+        attack: { x: this.h.W - this.h.safe.right - c.attackR - 30, y: top - c.attackR },
+        targetTop: this.h.safe.top + 6,
+      });
+    } else if (this.touch) this.drawTouchSkills();
   }
 
   private drawBottom(): void {

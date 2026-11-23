@@ -158,6 +158,7 @@ async function main(): Promise<void> {
     // 手机布局底下没有高底栏，人物放正中
     renderer.centerY = view.kind === 'touch' ? 0.5 : 0.47;
     ui.setLayout(view.kind);
+    ui.ctlScale = view.ctlScale;
     const css = getComputedStyle(document.documentElement);
     const inset = (name: string): number => (parseFloat(css.getPropertyValue(name)) || 0) / view.uiScale;
     ui.safe = { left: inset('--safe-l'), right: inset('--safe-r'), top: inset('--safe-t'), bottom: inset('--safe-b') };
@@ -174,8 +175,8 @@ async function main(): Promise<void> {
   await sprites.preload('prguse', [1, 3, 370]);
   (window as unknown as Record<string, unknown>).__mir = { world, renderer, ctl, sprites, ui };
   ui.message(
-    view.kind === 'touch'
-      ? '欢迎来到玛法大陆。左边摇杆走路（推远了跑）；点怪锁定，右下角「攻击」打它；点物品看说明和操作。'
+    ui.layout.joystick
+      ? '欢迎来到玛法大陆。左边摇杆走路（推远了跑）；点怪锁定，右边「攻击」打它；点物品看说明和操作。'
       : '欢迎来到玛法大陆。F9 包裹，F10 状态，F11 技能，右下角按钮也可以打开。',
     'good',
   );
@@ -235,7 +236,7 @@ async function main(): Promise<void> {
       }
     }
     world.events = [];
-    renderer.targetActor = view.kind === 'touch' ? (ctl.focused()?.id ?? 0) : 0;
+    renderer.targetActor = ui.layout.joystick ? (ctl.focused()?.id ?? 0) : 0;
     renderer.draw();
     renderer.scaleTo(view.uiScale);
     ui.draw(window.innerWidth / view.uiScale, window.innerHeight / view.uiScale, world.now);

@@ -22,6 +22,8 @@ export class Joystick {
   pointer: number | null = null;
   base: Pt = { x: 0, y: 0 };
   knob: Pt = { x: 0, y: 0 };
+  /** 摇杆半径（界面像素），布局按放大倍数设置 */
+  radius = STICK_R;
 
   get active(): boolean {
     return this.pointer !== null;
@@ -38,13 +40,14 @@ export class Joystick {
     const vx = at.x - this.base.x;
     const vy = at.y - this.base.y;
     const d = Math.hypot(vx, vy);
-    const k = d > STICK_R ? STICK_R / d : 1;
+    const R = this.radius;
+    const k = d > R ? R / d : 1;
     this.knob = { x: this.base.x + vx * k, y: this.base.y + vy * k };
     if (d < DEAD) return null;
     // 8 方向：每 45° 一格
     const sector = Math.round(Math.atan2(vy, vx) / (Math.PI / 4));
     const a = (sector * Math.PI) / 4;
-    return { dx: Math.round(Math.cos(a)) as StickDir['dx'], dy: Math.round(Math.sin(a)) as StickDir['dy'], run: d >= STICK_R * RUN_AT };
+    return { dx: Math.round(Math.cos(a)) as StickDir['dx'], dy: Math.round(Math.sin(a)) as StickDir['dy'], run: d >= R * RUN_AT };
   }
 
   end(): void {

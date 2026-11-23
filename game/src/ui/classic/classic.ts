@@ -13,7 +13,7 @@ import type { Controller } from '../../game/controller';
 import { SETTING_LABELS } from '../../game/settings';
 import { JOB_NAME } from '../../world/rules';
 import { type Line, itemLines, statLines } from '../describe';
-import type { LayoutKind } from '../viewport';
+import { BOARD_JOYSTICK, type LayoutKind } from '../viewport';
 import { Gfx, MAIN, type Rect, distTo, goldStr, inside } from './gfx';
 import { BoardLayout, type Button, type ChatColor, type ChatLine, type Insets, type Layout, type Pt, type UiHost } from './layout';
 import { TouchLayout } from './touch';
@@ -98,6 +98,8 @@ export class ClassicUi implements UiHost {
   /** 安全区（刘海、圆角），界面像素；触屏按钮和贴边的小地图要避开 */
   safe: Insets = { left: 0, right: 0, top: 0, bottom: 0 };
   layout: Layout;
+  /** 触屏操作件放大倍数（main 按屏幕设） */
+  ctlScale = 1;
 
   constructor(
     readonly g: Gfx,
@@ -107,13 +109,13 @@ export class ClassicUi implements UiHost {
     /** 触屏为主的设备（平板用原版底栏时右侧加一列技能键） */
     private readonly touch: boolean,
   ) {
-    this.layout = new BoardLayout(this, touch);
+    this.layout = new BoardLayout(this, touch, BOARD_JOYSTICK);
   }
 
   /** 切换布局（屏幕大小变了时）。 */
   setLayout(kind: LayoutKind): void {
     if (kind === this.layout.kind) return;
-    this.layout = kind === 'touch' ? new TouchLayout(this) : new BoardLayout(this, this.touch);
+    this.layout = kind === 'touch' ? new TouchLayout(this) : new BoardLayout(this, this.touch, BOARD_JOYSTICK);
     this.itemMenu = null;
   }
 
@@ -193,8 +195,9 @@ export class ClassicUi implements UiHost {
     this.buttons = [];
     this.z = 0;
     this.menuRect = null;
-    this.layout.drawHud(now);
+    // 小地图先画：触屏技能环伸到右上角时压在小地图上面，点得到
     if (this.miniMap) this.drawMiniMap(now);
+    this.layout.drawHud(now);
     if (this.npc) this.drawMerchant();
     if (this.bagOpen) this.drawBag();
     if (this.stateOpen) this.drawState();

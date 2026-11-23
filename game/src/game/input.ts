@@ -58,7 +58,7 @@ export function bindInput(canvas: HTMLCanvasElement, r: Renderer, ctl: Controlle
     } catch {
       /* 合成事件没有真实指针，抓不了也不影响 */
     }
-    if (ui.layout.kind === 'touch') {
+    if (ui.layout.joystick) {
       const target = actorUnder(p, true);
       if (target) return ctl.lock(target);
       const item = groundItem(p);

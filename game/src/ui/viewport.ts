@@ -12,28 +12,33 @@ export interface Viewport {
   worldZoom: number;
   /** 界面：1 界面像素 = 多少 CSS 像素 */
   uiScale: number;
+  /** 触屏操作件相对界面的放大倍数 */
+  ctlScale: number;
 }
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 
 /**
- * 用户 11-23（#1140）：暂时只保留手机布局（摇杆），电脑、平板也用它。
- * 原版布局代码留着，以后要恢复电脑端时把它打开。
+ * 用户 11-23（#1140）：所有设备都用原版底栏，摇杆、攻击键、技能环叠在底栏上方；不做电脑鼠标操作。
+ * 手机精简布局（TouchLayout）代码留着，USE_COMPACT 打开即可恢复。
  */
-const MOBILE_ONLY = true;
+const USE_COMPACT = false;
+export const BOARD_JOYSTICK = true;
 
 export function chooseViewport(cssW: number, cssH: number, coarsePointer: boolean): Viewport {
   const fit800 = Math.min(cssW / 800, cssH / 600);
   const short = Math.min(cssW, cssH);
-  if (MOBILE_ONLY || (coarsePointer && short < 600)) {
+  if (USE_COMPACT && coarsePointer && short < 600) {
     return {
       kind: 'touch',
       worldZoom: Math.max(fit800, short / 560),
       // 横屏按高 390 排得下商店+商品列表，竖屏按宽 420 排得下商人对话框
       uiScale: clamp(Math.min(cssW / 420, cssH / 390), 0.9, 1.3),
+      ctlScale: 1,
     };
   }
-  return { kind: 'board', worldZoom: fit800, uiScale: fit800 };
+  // 原版底栏按 800x600 缩放；手机上缩得很小，摇杆和按钮按约 0.95 倍实际大小画，手指才点得到
+  return { kind: 'board', worldZoom: fit800, uiScale: fit800, ctlScale: clamp(0.95 / fit800, 1, 2) };
 }
 
 /** 设备是不是以触屏为主（手指，没有悬停） */
