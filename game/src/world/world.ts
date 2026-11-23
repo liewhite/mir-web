@@ -3,7 +3,7 @@
  * 单机：只模拟玩家所在的地图；换地图时旧地图清空，新地图按刷怪表重新生成。
  */
 import { type Dir, type Pos, chebyshev, samePos, step } from '../core/geom';
-import type { Catalog, DropDef, MonsterActionTable, MonsterDef } from '../data/defs';
+import type { Catalog, DropDef, MonsterActionTable, MonsterDef, TeleportDef } from '../data/defs';
 import type { MapData } from '../assets/mapdata';
 import {
   type Action, type ActKind, type Actor, type GroundItem, type HitStyle, Monster, Npc, Player, isGold,
@@ -306,6 +306,14 @@ export class World {
     // 踩到传送点
     const r = this.catalog.data.routes.find((r) => r.from === this.map.id && r.x === p.x && r.y === p.y);
     if (r) this.pendingTeleport = { map: r.to, x: r.tx, y: r.ty };
+  }
+
+  /** 传送菜单：任意地方直接传到目的地（用户 #1139 定，不要钱、不看地图禁传标记）。返回不能传的原因。 */
+  teleportTo(t: TeleportDef): string | null {
+    if (this.player.dead) return '你已经死了';
+    if (this.pendingTeleport) return '正在传送';
+    this.pendingTeleport = { map: t.map, x: t.x, y: t.y };
+    return null;
   }
 
   /** 由游戏控制器在加载完新地图后执行。 */

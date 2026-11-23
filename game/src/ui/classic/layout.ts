@@ -70,6 +70,7 @@ export interface UiHost {
   toggleBag(): void;
   toggleState(page: number): void;
   toggleSettings(): void;
+  toggleTeleport(): void;
   toggleMiniMap(): void;
   logout(): void;
   message(text: string): void;
@@ -159,6 +160,24 @@ export class BoardLayout implements Layout {
         targetTop: this.h.safe.top + 6,
       });
     } else if (this.touch) this.drawTouchSkills();
+    this.drawTeleportButton();
+  }
+
+  /** 左上角「传送」键（原版没有，用户 #1139 要的传送菜单）；按触屏操作件的倍数放大。 */
+  private drawTeleportButton(): void {
+    const { g } = this.h;
+    const s = this.h.ctlScale;
+    const r = { x: this.h.safe.left + 6, y: this.h.safe.top + 6, w: 52 * s, h: 28 * s };
+    const ctx = g.ctx;
+    ctx.save();
+    ctx.translate(r.x, r.y);
+    ctx.scale(s, s);
+    g.frame(0, 0, 52, 28, this.h.isPressed(r) ? 'rgba(90,70,30,.9)' : 'rgba(0,0,0,.6)', '#c9a060');
+    const t = '传送';
+    g.text(t, (52 - g.width(t)) / 2, 8, '#ffe08a', true);
+    ctx.restore();
+    this.h.area(r);
+    this.h.button({ ...r, img: -1, onClick: () => this.h.toggleTeleport() });
   }
 
   private drawBottom(): void {

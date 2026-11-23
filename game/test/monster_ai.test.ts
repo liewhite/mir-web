@@ -116,3 +116,12 @@ test('祖玛教主掉血会召唤祖玛怪', () => {
   run(w, 3000);
   assert.ok(k.minions.length > 0);
 });
+
+test('传送菜单：每个目的地都是游戏里有的地图，传送会排上', () => {
+  const w = setup();
+  const list = w.catalog.data.teleports;
+  assert.ok(list.length > 10);
+  for (const t of list) assert.ok(w.catalog.mapsById.has(t.map), t.map);
+  assert.equal(w.teleportTo(list[1]!), null);
+  assert.deepEqual(w.pendingTeleport, { map: list[1]!.map, x: list[1]!.x, y: list[1]!.y });
+});

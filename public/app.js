@@ -1895,6 +1895,13 @@ var World = class {
     const r2 = this.catalog.data.routes.find((r3) => r3.from === this.map.id && r3.x === p.x && r3.y === p.y);
     if (r2) this.pendingTeleport = { map: r2.to, x: r2.tx, y: r2.ty };
   }
+  /** 传送菜单：任意地方直接传到目的地（用户 #1139 定，不要钱、不看地图禁传标记）。返回不能传的原因。 */
+  teleportTo(t) {
+    if (this.player.dead) return "\u4F60\u5DF2\u7ECF\u6B7B\u4E86";
+    if (this.pendingTeleport) return "\u6B63\u5728\u4F20\u9001";
+    this.pendingTeleport = { map: t.map, x: t.x, y: t.y };
+    return null;
+  }
   // ---------------- 战斗 ----------------
   isEnemy(a, b) {
     if (a.dead || b.dead || a === b || b.kind === "npc" || a.kind === "npc") return false;
@@ -3333,6 +3340,10 @@ function bindInput(canvas, r2, ctl, ui, uiScale) {
         e.preventDefault();
         ui.toggleMiniMap();
         break;
+      case "t":
+        e.preventDefault();
+        ui.toggleTeleport();
+        break;
       case "escape":
         ui.closeAll();
         break;
@@ -3887,6 +3898,23 @@ var BoardLayout = class {
         targetTop: this.h.safe.top + 6
       });
     } else if (this.touch) this.drawTouchSkills();
+    this.drawTeleportButton();
+  }
+  /** 左上角「传送」键（原版没有，用户 #1139 要的传送菜单）；按触屏操作件的倍数放大。 */
+  drawTeleportButton() {
+    const { g } = this.h;
+    const s = this.h.ctlScale;
+    const r2 = { x: this.h.safe.left + 6, y: this.h.safe.top + 6, w: 52 * s, h: 28 * s };
+    const ctx = g.ctx;
+    ctx.save();
+    ctx.translate(r2.x, r2.y);
+    ctx.scale(s, s);
+    g.frame(0, 0, 52, 28, this.h.isPressed(r2) ? "rgba(90,70,30,.9)" : "rgba(0,0,0,.6)", "#c9a060");
+    const t = "\u4F20\u9001";
+    g.text(t, (52 - g.width(t)) / 2, 8, "#ffe08a", true);
+    ctx.restore();
+    this.h.area(r2);
+    this.h.button({ ...r2, img: -1, onClick: () => this.h.toggleTeleport() });
   }
   drawBottom() {
     const { g, p, catalog, world } = this.h;
@@ -4097,7 +4125,7 @@ var TouchLayout = class {
       g.text(String(i + 1), r2.x + 3, r2.y + 2, "#ffe08a", true);
     });
   }
-  /** 包裹、状态、技能、设置、小地图。 */
+  /** 包裹、状态、技能、设置、小地图、传送。 */
   drawMenuButtons() {
     const { g } = this.h;
     const items = [
@@ -4105,7 +4133,8 @@ var TouchLayout = class {
       { icon: 8, onClick: () => this.h.toggleState(0) },
       { icon: 10, onClick: () => this.h.toggleState(3) },
       { icon: 11, onClick: () => this.h.toggleSettings() },
-      { icon: "\u5730\u56FE", onClick: () => this.h.toggleMiniMap() }
+      { icon: "\u5730\u56FE", onClick: () => this.h.toggleMiniMap() },
+      { icon: "\u4F20\u9001", onClick: () => this.h.toggleTeleport() }
     ];
     const size = 40;
     const step2 = size + 4;
@@ -4131,6 +4160,78 @@ var TouchLayout = class {
 function overlap(a, b) {
   return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 }
+
+// src/ui/classic/teleport.ts
+var BTN_W = 124;
+var BTN_H = 34;
+var GAP2 = 6;
+var PAD = 10;
+var HEAD = 40;
+var TeleportPanel = class {
+  constructor(h) {
+    this.h = h;
+    /** 选中的分组；null = 在选分组 */
+    this.group = null;
+  }
+  /** 打开时回到分组页。 */
+  reset() {
+    this.group = null;
+  }
+  draw() {
+    const { g } = this.h;
+    const groups = [...new Set(this.h.teleports.map((t) => t.group))];
+    const here = new Set(this.h.teleports.filter((t) => t.map === this.h.mapId).map((t) => t.group));
+    const entries = this.group === null ? groups.map((name) => ({ label: name, active: here.has(name), onClick: () => this.group = name })) : this.h.teleports.filter((t) => t.group === this.group).map((t) => ({
+      label: t.name,
+      active: t.map === this.h.mapId,
+      onClick: () => this.go(t)
+    }));
+    const width = (cols2) => PAD * 2 + cols2 * BTN_W + (cols2 - 1) * GAP2;
+    const want = this.h.scale;
+    const cols = (this.h.W - 8) / want >= width(3) ? 3 : 2;
+    const rows = Math.ceil(entries.length / cols);
+    const w = width(cols);
+    const hh = HEAD + rows * (BTN_H + GAP2) + PAD;
+    const s = Math.min(want, (this.h.W - 8) / w, (this.h.H - 8) / hh);
+    const o = this.h.dialogOrigin(w * s, hh * s);
+    const toUi = (r2) => ({ x: o.x + r2.x * s, y: o.y + r2.y * s, w: r2.w * s, h: r2.h * s });
+    this.h.area(toUi({ x: 0, y: 0, w, h: hh }));
+    const ctx = g.ctx;
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    ctx.scale(s, s);
+    g.frame(0, 0, w, hh, "rgba(16,11,6,.96)", "#8a6a3a");
+    g.text(this.group === null ? "\u4F20\u9001\uFF1A\u9009\u5730\u533A" : `\u4F20\u9001\uFF1A${this.group}`, PAD + 4, 13, "#ffe08a", true);
+    const buttons = [];
+    const close = { x: w - 50, y: 4, w: 46, h: 30 };
+    buttons.push({ r: close, label: "\u5173\u95ED", onClick: () => this.h.close() });
+    if (this.group !== null) buttons.push({ r: { x: close.x - 52, y: 4, w: 46, h: 30 }, label: "\u8FD4\u56DE", onClick: () => this.group = null });
+    entries.forEach((e, i) => {
+      const r2 = { x: PAD + i % cols * (BTN_W + GAP2), y: HEAD + Math.floor(i / cols) * (BTN_H + GAP2), w: BTN_W, h: BTN_H };
+      buttons.push({ r: r2, label: e.label, onClick: e.onClick, color: e.active ? "#9cff8a" : "#fff" });
+    });
+    for (const b of buttons) this.flatButton(b.r, toUi(b.r), b.label, b.onClick, b.color);
+    ctx.restore();
+  }
+  go(t) {
+    const why = this.h.go(t);
+    if (why) {
+      this.h.message(why);
+      return;
+    }
+    this.h.message(`\u4F20\u9001\u5230 ${t.group === "\u57CE\u5E02" ? t.name : `${t.group} \xB7 ${t.name}`}`);
+    this.h.close();
+  }
+  /** r：面板内坐标（画）；hit：界面坐标（点击区）。 */
+  flatButton(r2, hit, label, onClick, color = "#ffe08a") {
+    const { g } = this.h;
+    g.frame(r2.x, r2.y, r2.w, r2.h, this.h.isPressed(hit) ? "#7a5a2a" : "#3a2a16", "#c9a060");
+    let text = label;
+    while (text.length > 2 && g.width(text) > r2.w - 8) text = text.slice(0, -1);
+    g.text(text, r2.x + (r2.w - g.width(text)) / 2, r2.y + (r2.h - 14) / 2 + 1, color, true);
+    this.h.button({ ...hit, img: -1, onClick });
+  }
+};
 
 // src/ui/classic/classic.ts
 var LINE_H = 14;
@@ -4174,6 +4275,7 @@ var ClassicUi = class {
     this.magicPage = 0;
     this.bagOpen = false;
     this.settingsOpen = false;
+    this.teleportOpen = false;
     this.keyDlg = null;
     this.npc = null;
     this.mode = "talk";
@@ -4205,6 +4307,30 @@ var ClassicUi = class {
     /** 物品菜单这一帧画在哪（点在里面不关菜单） */
     this.menuRect = null;
     this.layout = new BoardLayout(this, touch, BOARD_JOYSTICK);
+    const ui = this;
+    this.teleport = new TeleportPanel({
+      g,
+      get W() {
+        return ui.W;
+      },
+      get H() {
+        return ui.H;
+      },
+      get scale() {
+        return ui.ctlScale;
+      },
+      teleports: catalog.data.teleports,
+      get mapId() {
+        return ui.world.map.id;
+      },
+      dialogOrigin: (w, h) => this.layout.dialogOrigin(w, h),
+      area: (r2) => this.area(r2),
+      button: (b) => this.button(b),
+      isPressed: (r2) => this.isPressed(r2),
+      go: (t) => this.world.teleportTo(t),
+      message: (t) => this.message(t),
+      close: () => this.teleportOpen = false
+    });
   }
   /** 切换布局（屏幕大小变了时）。 */
   setLayout(kind) {
@@ -4232,6 +4358,7 @@ var ClassicUi = class {
     this.stateOpen = false;
     this.bagOpen = false;
     this.settingsOpen = false;
+    this.teleportOpen = false;
     this.keyDlg = null;
     this.itemMenu = null;
     this.cancelHand();
@@ -4250,6 +4377,14 @@ var ClassicUi = class {
   }
   toggleSettings() {
     this.settingsOpen = !this.settingsOpen;
+  }
+  /** 传送窗口（每次打开回到选地区那一页）。 */
+  toggleTeleport() {
+    this.teleportOpen = !this.teleportOpen;
+    if (this.teleportOpen) {
+      this.teleport.reset();
+      this.itemMenu = null;
+    }
   }
   logout() {
     this.onLogout();
@@ -4281,6 +4416,7 @@ var ClassicUi = class {
     if (this.bagOpen) this.drawBag();
     if (this.stateOpen) this.drawState();
     if (this.settingsOpen) this.drawSettings();
+    if (this.teleportOpen) this.teleport.draw();
     if (this.keyDlg) this.drawKeyDlg();
     if (this.itemMenu) this.drawItemMenu(this.itemMenu);
     else this.drawHover();
@@ -5071,7 +5207,7 @@ var ClassicUi = class {
   drawItemMenu(m) {
     const g = this.g;
     const LH = 15;
-    const BTN_H = 32;
+    const BTN_H2 = 32;
     const pad = 6;
     const btnW = m.actions.map((a2) => Math.max(56, g.width(a2.label) + 20));
     const textW = Math.max(...m.lines.map((l) => g.width(l.text)));
@@ -5088,7 +5224,7 @@ var ClassicUi = class {
       rows[rows.length - 1].push({ a: a2, w: bw });
       rowW += (rowW > 0 ? 6 : 0) + bw;
     });
-    const h = pad + m.lines.length * LH + 4 + rows.length * (BTN_H + 6) + pad - 6;
+    const h = pad + m.lines.length * LH + 4 + rows.length * (BTN_H2 + 6) + pad - 6;
     const a = m.anchor;
     let x = a.x + a.w + 4;
     if (x + w > this.W - this.safe.right) x = a.x - w - 4;
@@ -5103,7 +5239,7 @@ var ClassicUi = class {
     for (const row of rows) {
       let bx = x + pad;
       for (const { a: act, w: bw } of row) {
-        const r2 = { x: bx, y: by, w: bw, h: BTN_H };
+        const r2 = { x: bx, y: by, w: bw, h: BTN_H2 };
         g.frame(r2.x, r2.y, r2.w, r2.h, this.isPressed(r2) ? "#7a5a2a" : "#3a2a16", "#c9a060");
         g.text(act.label, r2.x + (bw - g.width(act.label)) / 2, r2.y + 10, "#ffe08a", true);
         this.hit({
@@ -5116,7 +5252,7 @@ var ClassicUi = class {
         });
         bx += bw + 6;
       }
-      by += BTN_H + 6;
+      by += BTN_H2 + 6;
     }
   }
   useOrEquip(it) {

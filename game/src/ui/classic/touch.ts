@@ -155,7 +155,7 @@ export class TouchLayout implements Layout {
     });
   }
 
-  /** 包裹、状态、技能、设置、小地图。 */
+  /** 包裹、状态、技能、设置、小地图、传送。 */
   private drawMenuButtons(): void {
     const { g } = this.h;
     const items: { icon: number | string; onClick: () => void }[] = [
@@ -164,6 +164,7 @@ export class TouchLayout implements Layout {
       { icon: 10, onClick: () => this.h.toggleState(3) },
       { icon: 11, onClick: () => this.h.toggleSettings() },
       { icon: '地图', onClick: () => this.h.toggleMiniMap() },
+      { icon: '传送', onClick: () => this.h.toggleTeleport() },
     ];
     const size = 40;
     const step = size + 4;

@@ -17,6 +17,7 @@ import { BOARD_JOYSTICK, type LayoutKind } from '../viewport';
 import { Gfx, MAIN, type Rect, distTo, goldStr, inside } from './gfx';
 import { BoardLayout, type Button, type ChatColor, type ChatLine, type Insets, type Layout, type Pt, type UiHost } from './layout';
 import { TouchLayout } from './touch';
+import { TeleportPanel } from './teleport';
 import { Joystick } from '../../game/joystick';
 
 const LINE_H = 14; // 商品列表行高
@@ -76,6 +77,9 @@ export class ClassicUi implements UiHost {
   private magicPage = 0;
   bagOpen = false;
   settingsOpen = false;
+  teleportOpen = false;
+  private readonly teleport: TeleportPanel;
+
   private keyDlg: { skill: number } | null = null;
   private npc: Npc | null = null;
   private mode: MerchantMode = 'talk';
@@ -110,6 +114,22 @@ export class ClassicUi implements UiHost {
     private readonly touch: boolean,
   ) {
     this.layout = new BoardLayout(this, touch, BOARD_JOYSTICK);
+    const ui = this;
+    this.teleport = new TeleportPanel({
+      g,
+      get W() { return ui.W; },
+      get H() { return ui.H; },
+      get scale() { return ui.ctlScale; },
+      teleports: catalog.data.teleports,
+      get mapId() { return ui.world.map.id; },
+      dialogOrigin: (w, h) => this.layout.dialogOrigin(w, h),
+      area: (r) => this.area(r),
+      button: (b) => this.button(b),
+      isPressed: (r) => this.isPressed(r),
+      go: (t) => this.world.teleportTo(t),
+      message: (t) => this.message(t),
+      close: () => (this.teleportOpen = false),
+    });
   }
 
   /** 切换布局（屏幕大小变了时）。 */
@@ -142,6 +162,7 @@ export class ClassicUi implements UiHost {
     this.stateOpen = false;
     this.bagOpen = false;
     this.settingsOpen = false;
+    this.teleportOpen = false;
     this.keyDlg = null;
     this.itemMenu = null;
     this.cancelHand();
@@ -163,6 +184,15 @@ export class ClassicUi implements UiHost {
 
   toggleSettings(): void {
     this.settingsOpen = !this.settingsOpen;
+  }
+
+  /** 传送窗口（每次打开回到选地区那一页）。 */
+  toggleTeleport(): void {
+    this.teleportOpen = !this.teleportOpen;
+    if (this.teleportOpen) {
+      this.teleport.reset();
+      this.itemMenu = null;
+    }
   }
 
   logout(): void {
@@ -202,6 +232,7 @@ export class ClassicUi implements UiHost {
     if (this.bagOpen) this.drawBag();
     if (this.stateOpen) this.drawState();
     if (this.settingsOpen) this.drawSettings();
+    if (this.teleportOpen) this.teleport.draw();
     if (this.keyDlg) this.drawKeyDlg();
     if (this.itemMenu) this.drawItemMenu(this.itemMenu);
     else this.drawHover();

@@ -162,6 +162,10 @@ export function bindInput(canvas: HTMLCanvasElement, r: Renderer, ctl: Controlle
         e.preventDefault();
         ui.toggleMiniMap();
         break;
+      case 't':
+        e.preventDefault();
+        ui.toggleTeleport();
+        break;
       case 'escape':
         ui.closeAll();
         break;

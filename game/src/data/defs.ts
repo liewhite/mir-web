@@ -138,6 +138,15 @@ export interface MonsterActionTable {
   ActDeath: ActionInfo;
 }
 
+/** 传送菜单的一个目的地（tools/build_data.py teleports）：group 是分组（城市、各地区）。 */
+export interface TeleportDef {
+  group: string;
+  name: string;
+  map: string;
+  x: number;
+  y: number;
+}
+
 export interface GameData {
   maps: MapDef[];
   routes: RouteDef[];
@@ -152,6 +161,7 @@ export interface GameData {
   skills: SkillDef[];
   exp: Record<string, number>;
   monsterActions: Record<string, MonsterActionTable>;
+  teleports: TeleportDef[];
 }
 
 /** 按名字/编号查的索引。 */

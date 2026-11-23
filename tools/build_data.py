@@ -14,6 +14,64 @@ ROOT = Path(__file__).resolve().parent.parent
 EXP = ROOT / "ref/Mir176/content/level-experience.json"
 
 
+# ---------------- 传送菜单（用户 11-23 #1139：任意地方直接传到城中心、打怪地图入口） ----------------
+
+# 城中心：比奇是出生点（game/src/main.ts START），盟重取城里商店、守卫中间
+TOWNS = [("0", "比奇省", 333, 272), ("3", "盟重省", 350, 340)]
+# 地区名：按「出城后第一张图」起名；没列出的用那张图的标题去掉「一层/入口/大殿」
+REGION_NAMES = {
+    "D001": "骷髅洞", "1": "沃玛", "D401": "废矿", "D601": "地牢", "D701": "香石古墓",
+    "0157": "祖玛寺庙", "D710": "石墓（猪洞）",
+}
+
+
+def teleports(cat: dict, maps: dict[str, str]) -> list[dict]:
+    """传送目的地：城市一组；其余按地区分组，每组是出城后第一张图（入口）和组里有怪的地图。
+    落点 = 从比奇走过去时进这张图的传送点落点（BFS 先到的那条路），同名的只留最近的一张。"""
+    town_ids = {t[0] for t in TOWNS}
+    titles = {m["id"]: m["title"] for m in cat["maps"]}
+    routes: dict[str, list[dict]] = {}
+    for r in cat["routes"]:
+        if r["from"] in maps and r["to"] in maps:
+            routes.setdefault(r["from"], []).append(r)
+    came: dict[str, dict | None] = {"0": None}
+    order = ["0"]
+    for u in order:  # BFS：order 边走边长
+        for r in routes.get(u, []):
+            if r["to"] not in came:
+                came[r["to"]] = r
+                order.append(r["to"])
+    with_monsters = {s["map"] for s in cat["spawns"]}
+
+    def region(m: str) -> str | None:
+        """沿来路往回找，最后一座城之后的第一张图。"""
+        path = [m]
+        while (r := came[path[-1]]) is not None:
+            path.append(r["from"])
+        path.reverse()
+        last_town = max(i for i, x in enumerate(path) if x in town_ids)
+        return path[last_town + 1] if last_town + 1 < len(path) else None
+
+    out = [{"group": "城市", "name": name, "map": m, "x": x, "y": y} for m, name, x, y in TOWNS]
+    groups: dict[str, list[str]] = {}
+    for m in order:
+        root = None if m in town_ids else region(m)
+        if root and (m == root or m in with_monsters):
+            groups.setdefault(root, []).append(m)
+    for root, ms in groups.items():
+        if not any(m in with_monsters for m in ms):
+            continue  # 城里的店铺、房屋
+        group = REGION_NAMES.get(root) or titles[root].removesuffix("一层").removesuffix("入口").removesuffix("大殿")
+        seen: set[str] = set()
+        for m in ms:
+            if titles[m] in seen:
+                continue
+            seen.add(titles[m])
+            r = came[m]
+            out.append({"group": group, "name": titles[m], "map": m, "x": r["tx"], "y": r["ty"]})
+    return out
+
+
 def pair(lo, hi) -> list[int]:
     return [int(lo or 0), int(hi or 0)]
 
@@ -68,6 +126,7 @@ def main() -> None:
         "items": items, "monsters": monsters, "drops": drops, "displayNames": display, "skills": skills,
         "exp": json.loads(EXP.read_text())["experience_to_next_level"],
         "monsterActions": ACT["tables"],
+        "teleports": teleports(cat, maps),
     }
     out = OUT / "data"
     out.mkdir(parents=True, exist_ok=True)
