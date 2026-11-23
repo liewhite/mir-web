@@ -1,0 +1,221 @@
+"""从本机客户端素材生成网页资源（只在本机，不外传）。
+
+用法：uv run --no-project --with numpy --with pillow python build_assets.py [--only maps|libs|ground]
+输出：site/mir176/assets/{img,ground,map}
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import struct
+import sys
+from concurrent.futures import ProcessPoolExecutor
+from pathlib import Path
+
+import numpy as np
+from PIL import Image
+
+from atlas import write_block
+from wemade import MapFile, open_library
+
+ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = ROOT / "raw/m176/Resource/Data"
+MAP_DIR = ROOT / "raw/m176/Map"
+OUT = ROOT.parent / "site/mir176/assets"
+CATALOG = ROOT / "ref/Mir176/content/catalog.json"
+
+UNITX, UNITY = 48, 32
+GROUND_BLOCK = 16  # 每张地面图 16x16 格 = 768x512 像素
+
+
+def block_size(lib: str) -> int:
+    return 600 if lib.rstrip("0123456789") in ("hum", "weapon", "hair") else 200
+
+
+def objects_lib(area: int) -> str:
+    return "objects" if area == 0 else f"objects{area + 1}"
+
+
+# ---------------- 选哪些地图 ----------------
+
+def game_maps(catalog: dict) -> list[str]:
+    """第一版的地图：比奇省、兽人古墓（骷髅洞）三层，以及比奇省里的室内小地图（店铺）。"""
+    base = {"0", "D001", "D002", "D003"}
+    small = {m["id"] for m in catalog["maps"] if m["width"] <= 80 and m["height"] <= 80}
+    inner = {r["to"] for r in catalog["routes"] if r["from"] == "0" and r["to"] in small}
+    inner |= {r["to"] for r in catalog["routes"] if r["from"] in inner and r["to"] in small}
+    have = {p.stem for p in MAP_DIR.iterdir()}
+    maps = sorted((base | inner) & have)
+    return maps
+
+
+# ---------------- 地图格子数据 ----------------
+
+def write_map_bin(name: str, m: MapFile) -> None:
+    """map/<name>.bin：头 'M176' w h，再按 行优先(y*w+x) 存各列：
+    flags(u8: 1=不可走 2=不可飞) front(u16) area(u8) ani(u8) aniTick(u8) doorIdx(u8) doorOff(u8) light(u8)"""
+    out = OUT / "map"
+    out.mkdir(parents=True, exist_ok=True)
+    t = lambda a: np.ascontiguousarray(a.T)  # [w,h] -> [h,w] 行优先
+    flags = ((~m.walkable).astype(np.uint8)) | (((m.front & 0x8000) != 0).astype(np.uint8) << 1)
+    parts = [
+        b"M176", struct.pack("<HH", m.width, m.height),
+        t(flags).tobytes(),
+        t((m.front & 0x7FFF).astype("<u2")).tobytes(),
+        t(m.area).tobytes(), t(m.anim_frame).tobytes(), t(m.anim_tick).tobytes(),
+        t(m.door_index).tobytes(), t(m.door_offset).tobytes(), t(m.light).tobytes(),
+    ]
+    (out / f"{name}.bin").write_bytes(b"".join(parts))
+
+
+def map_object_needs(m: MapFile) -> dict[str, set[int]]:
+    """地图前景层用到的 (图库, 帧号)：含动画帧与开门帧。"""
+    need: dict[str, set[int]] = {}
+    fr = (m.front & 0x7FFF).astype(np.int64)
+    xs, ys = np.nonzero(fr)
+    for x, y in zip(xs, ys):
+        base = int(fr[x, y]) - 1
+        ani = int(m.anim_frame[x, y]) & 0x7F
+        door = int(m.door_offset[x, y]) & 0x7F if int(m.door_index[x, y]) & 0x7F else 0
+        s = need.setdefault(objects_lib(int(m.area[x, y])), set())
+        for k in range(max(ani, 1)):
+            s.add(base + k)
+        if door:
+            s.add(base + door)
+    return need
+
+
+# ---------------- 地面预渲染 ----------------
+
+def _render_ground(args):
+    name, bx, by = args
+    m = MapFile.load(MAP_DIR / f"{name}.map")
+    tiles = _lib_cache("tiles")
+    out = OUT / "ground" / name
+    W, H = GROUND_BLOCK * UNITX, GROUND_BLOCK * UNITY
+    canvas = Image.new("RGB", (W, H), (0, 0, 0))
+    x0, y0 = bx * GROUND_BLOCK, by * GROUND_BLOCK
+    # 大地砖 96x64 画在偶数格上，可能从左/上一格伸进来
+    for x in range(x0 - 2, x0 + GROUND_BLOCK):
+        for y in range(y0 - 2, y0 + GROUND_BLOCK):
+            if x < 0 or y < 0 or x >= m.width or y >= m.height or x % 2 or y % 2:
+                continue
+            b = int(m.back[x, y]) & 0x7FFF
+            if b:
+                f = tiles.frame(b - 1)
+                if not f.empty:
+                    im = Image.fromarray(f.rgba, "RGBA")
+                    canvas.paste(im, ((x - x0) * UNITX, (y - y0) * UNITY), im)
+    for x in range(x0 - 2, x0 + GROUND_BLOCK):
+        for y in range(y0 - 2, y0 + GROUND_BLOCK):
+            if x < 0 or y < 0 or x >= m.width or y >= m.height:
+                continue
+            mid = int(m.middle[x, y])
+            if mid:
+                f = _lib_cache("smtiles").frame(mid - 1)
+                if not f.empty:
+                    im = Image.fromarray(f.rgba, "RGBA")
+                    canvas.paste(im, ((x - x0) * UNITX, (y - y0) * UNITY), im)
+    canvas.save(out / f"{bx}_{by}.webp", quality=82, method=4)
+    return 1
+
+
+_LIBS: dict = {}
+
+
+def _lib_cache(name: str):
+    if name not in _LIBS:
+        _LIBS[name] = open_library(DATA_DIR, name)
+    return _LIBS[name]
+
+
+def build_ground(maps: list[str]) -> None:
+    jobs = []
+    for name in maps:
+        m = MapFile.load(MAP_DIR / f"{name}.map")
+        (OUT / "ground" / name).mkdir(parents=True, exist_ok=True)
+        nbx = (m.width + GROUND_BLOCK - 1) // GROUND_BLOCK
+        nby = (m.height + GROUND_BLOCK - 1) // GROUND_BLOCK
+        for bx in range(nbx):
+            for by in range(nby):
+                x0, y0 = bx * GROUND_BLOCK, by * GROUND_BLOCK
+                sub_b = m.back[x0:x0 + GROUND_BLOCK, y0:y0 + GROUND_BLOCK] & 0x7FFF
+                sub_m = m.middle[x0:x0 + GROUND_BLOCK, y0:y0 + GROUND_BLOCK]
+                if sub_b.any() or sub_m.any():
+                    jobs.append((name, bx, by))
+                else:
+                    (OUT / "ground" / name / f"{bx}_{by}.webp").unlink(missing_ok=True)
+    print(f"ground: {len(jobs)} 块", flush=True)
+    with ProcessPoolExecutor(8) as ex:
+        done = 0
+        for _ in ex.map(_render_ground, jobs, chunksize=16):
+            done += 1
+            if done % 500 == 0:
+                print(f"  {done}/{len(jobs)}", flush=True)
+
+
+# ---------------- 图集块 ----------------
+
+def _write_lib_block(args):
+    lib_name, block = args
+    lib = _lib_cache(lib_name)
+    size = block_size(lib_name)
+    return write_block(lib, lib.palette, OUT / "img" / lib_name, block * size, size)
+
+
+def build_libs(needs: dict[str, set[int]]) -> None:
+    jobs = []
+    for lib_name, frames in sorted(needs.items()):
+        size = block_size(lib_name)
+        for b in sorted({f // size for f in frames}):
+            jobs.append((lib_name, b))
+    print(f"img: {len(jobs)} 块", flush=True)
+    with ProcessPoolExecutor(8) as ex:
+        n = sum(ex.map(_write_lib_block, jobs, chunksize=4))
+    print(f"img: {n} 帧", flush=True)
+
+
+def whole(lib: str) -> set[int]:
+    return set(range(len(_lib_cache(lib))))
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--only", choices=["maps", "libs", "ground"])
+    args = ap.parse_args()
+    catalog = json.loads(CATALOG.read_text())
+    maps = game_maps(catalog)
+    print("maps:", " ".join(maps), flush=True)
+
+    needs: dict[str, set[int]] = {}
+
+    def add(lib: str, frames) -> None:
+        needs.setdefault(lib, set()).update(frames)
+
+    if args.only in (None, "maps", "libs"):
+        for name in maps:
+            m = MapFile.load(MAP_DIR / f"{name}.map")
+            if args.only != "libs":
+                write_map_bin(name, m)
+            for lib, fr in map_object_needs(m).items():
+                add(lib, fr)
+        (OUT / "map").mkdir(parents=True, exist_ok=True)
+        (OUT / "map" / "index.json").write_text(json.dumps(maps))
+
+    if args.only in (None, "libs"):
+        # 角色、怪物、NPC、技能、物品、界面：图库体积不大的整库导出；怪物按需
+        for lib in ["hum", "hair", "weapon", "magic", "magic2", "items", "dnitems", "stateitem",
+                    "prguse", "prguse2", "magicon", "npc", "mmap", "effect"]:
+            add(lib, whole(lib))
+        sys.path.insert(0, str(Path(__file__).parent))
+        from monsters import monster_frames  # noqa: E402
+        for lib, fr in monster_frames(catalog, maps).items():
+            add(lib, fr)
+        build_libs(needs)
+
+    if args.only in (None, "ground"):
+        build_ground(maps)
+
+
+if __name__ == "__main__":
+    main()
