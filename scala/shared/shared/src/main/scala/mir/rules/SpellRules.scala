@@ -275,13 +275,19 @@ object SpellRules:
   /** 召唤骷髅、神兽：血量和攻击 ×(1 + 技能等级×0.35)。 */
   def summonBoost(level: Int): Double = 1 + level * 0.35
 
-  /** 道术加成（#1209，本服加的）：召唤那一刻主人道术上限每点 +2%，最多 +60%。 */
-  val SummonScPctPerPoint = 2
-  val SummonScPctCap      = 60
+  /**
+   * 道术加成（#1209，本服加的）：召唤那一刻主人道术上限每点加千分之几，不封顶。
+   * #1258 用户 11-25 定：从每点 2%、最多 +60% 改成每点 1.8%、取消上限，道术越高宝宝越强。
+   */
+  val SummonScPermillePerPoint = 18
+  /** 技能说明用：每点加的百分数（「1.8」） */
+  def summonScPctText: String = BigDecimal(SummonScPermillePerPoint) / 10 match
+    case p if p.isWhole => p.toInt.toString
+    case p              => p.toString
 
-  /** 道术加成的倍数：1 + min(道术上限×2%, 60%)。 */
+  /** 道术加成的倍数：1 + 道术上限×1.8%（一次除法，显示不出 1.5400000001 这种尾数）。 */
   def summonScBoost(scMax: Int): Double =
-    1 + math.min(math.max(scMax, 0) * SummonScPctPerPoint, SummonScPctCap) / 100.0
+    (1000 + math.max(scMax, 0) * SummonScPermillePerPoint) / 1000.0
 
   /** 召唤出来的宝宝：技能等级加成乘血量和攻击，道术加成乘血量、攻击、防御、魔防。 */
   def summonedBody(base: MonsterDef, level: Int, scMax: Int): PetBody =

@@ -106,7 +106,7 @@ object SkillInfo:
 
     private def petLines(name: String, l: Int): List[String] =
       val scBoost = SpellRules.summonScBoost(sc.hi)
-      val rule = s"道术上限每点 +${SpellRules.SummonScPctPerPoint}% 宝宝血量、攻击、防御、魔防，最多 +${SpellRules.SummonScPctCap}%（召唤时定下，之后换装不变）；你现在道术上限 ${sc.hi}，×$scBoost"
+      val rule = s"道术上限每点 +${SpellRules.summonScPctText}% 宝宝血量、攻击、防御、魔防，不封顶（召唤时定下，之后换装不变）；你现在道术上限 ${sc.hi}，×$scBoost"
       rule :: catalog.monster(MonsterName(name)).fold(List(name)) { md =>
         val b = SpellRules.summonedBody(md, l, sc.hi)
         List(

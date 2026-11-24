@@ -243,26 +243,28 @@ object SpellSpec extends ZIOSpecDefault:
           m.defn.name == SpellRules.ShinsuPet,
           m.body == want,
           ratio < 1.0,
-          math.abs(m.hp.toDouble / m.maxHp - ratio) < 0.03 // 血量比例带过去（允许自然回一跳）
+          math.abs(m.hp.toDouble / m.maxHp - ratio) < 0.05 // 血量比例带过去（允许自然回一跳：小神兽血少，一跳约 3%）
         )
       }
     ),
-    test("道术加成宝宝（#1209）：道术上限每点 +2%，封顶 +60%，乘血、攻、防、魔防；技能等级只乘血和攻") {
+    test("道术加成宝宝（#1209、#1258）：道术上限每点 +1.8%，不封顶，乘血、攻、防、魔防；技能等级只乘血和攻") {
       val md = catalog.monster(SpellRules.SkeletonPet).get
       def body(sc: Int) = SpellRules.summonedBody(md, 3, sc)
       def x(v: Int, k: Double) = math.floor(v * k + 0.5).toInt
       val lv3 = SpellRules.summonBoost(3)
       assertTrue(
         SpellRules.summonScBoost(0) == 1.0,
-        SpellRules.summonScBoost(20) == 1.4,
-        SpellRules.summonScBoost(30) == 1.6,
-        SpellRules.summonScBoost(40) == 1.6,
+        SpellRules.summonScBoost(20) == 1.36,
+        SpellRules.summonScBoost(30) == 1.54,
+        SpellRules.summonScBoost(50) == 1.9,
+        SpellRules.summonScBoost(-5) == 1.0,
+        SpellRules.summonScPctText == "1.8",
         body(0) == PetBody(x(md.hp, lv3), Span(x(md.dc.lo, lv3), x(md.dc.hi, lv3)), md.ac, md.mac),
-        body(20).hp == x(md.hp, lv3 * 1.4),
-        body(20).dc == Span(x(md.dc.lo, lv3 * 1.4), x(md.dc.hi, lv3 * 1.4)),
-        body(20).ac == Span(x(md.ac.lo, 1.4), x(md.ac.hi, 1.4)),
-        body(20).mac == Span(x(md.mac.lo, 1.4), x(md.mac.hi, 1.4)),
-        body(40) == body(30)
+        body(20).hp == x(md.hp, lv3 * 1.36),
+        body(20).dc == Span(x(md.dc.lo, lv3 * 1.36), x(md.dc.hi, lv3 * 1.36)),
+        body(20).ac == Span(x(md.ac.lo, 1.36), x(md.ac.hi, 1.36)),
+        body(20).mac == Span(x(md.mac.lo, 1.36), x(md.mac.hi, 1.36)),
+        body(60).hp > body(40).hp // 不封顶
       )
     },
     test("召唤时按主人道术上限定下宝宝身板，之后道术变了也不变（#1209）") {
