@@ -1,6 +1,7 @@
 package mir.protocol
 
 import mir.core.*
+import mir.data.Span
 import mir.model.*
 import mir.rules.{PkStanding, SafeZone, Side, Stats}
 import zio.json.*
@@ -19,8 +20,8 @@ enum Look:
       dress: Option[ItemName],
       pk: PkStanding = PkStanding.Clean
   )
-  /** 怪物（含守卫、宝宝）：种类、藏身状态；master 是宝宝的主人；mood 是被定住/发狂（名字变色） */
-  case Monster(kind: MonsterName, cover: Cover, master: Option[ActorId], mood: Mood = Mood.Calm)
+  /** 怪物（含守卫、宝宝）：种类、藏身状态；pet 是宝宝的主人和实际攻防（野怪没有）；mood 是被定住/发狂（名字变色） */
+  case Monster(kind: MonsterName, cover: Cover, pet: Option[PetView], mood: Mood = Mood.Calm)
   /** NPC：merchant 是 game.json merchants 里的下标（客户端据此取名字、外观、商品） */
   case Npc(merchant: MerchantRef)
 
@@ -33,10 +34,24 @@ enum Look:
     case _: Monster                         => Some(Side.Wild)
     case _: Npc                             => None
 
+  /** 宝宝的主人（野怪、玩家、NPC 没有）。 */
+  def master: Option[ActorId] = this match
+    case m: Monster => m.pet.map(_.master)
+    case _          => None
+
   /** 露在外面打得到（埋着的、石像打不到）。 */
   def exposed: Boolean = this match
     case m: Monster => m.cover == Cover.Open
     case _          => true
+
+/**
+ * 宝宝（召唤的或诱惑来的）：主人和此刻实际的攻击、防御、魔防（#1232）。召唤时按技能等级和道术放大过，
+ * 和怪物表的原值不同，所以要服务端发；变了（如加了防御类法术）随外观变化一起更新。
+ */
+final case class PetView(master: ActorId, dc: Span, ac: Span, mac: Span)
+
+object PetView:
+  given JsonCodec[PetView] = DeriveJsonCodec.gen
 
 object Look:
   given JsonCodec[Look] = DeriveJsonCodec.gen

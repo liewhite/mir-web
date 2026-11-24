@@ -98,6 +98,7 @@ object ProtocolSpec extends ZIOSpecDefault:
     ServerMsg.FieldAppear(FieldView(FieldId(5), c1, FieldKind.HolyCurtain)),
     ServerMsg.FieldDisappear(FieldId(4)),
     ServerMsg.LookChanged(ActorId(101), Look.Monster(MonsterName("骷髅"), Cover.Open, None, Mood.Seized)),
+    ServerMsg.LookChanged(ActorId(103), Look.Monster(MonsterName("变异骷髅"), Cover.Open, Some(PetView(me, Span(23, 43), Span(11, 11), Span(14, 14))))),
     ServerMsg.Effect(EffectView("magic", 100, 10, 80, Anchor.OnActor(me), from = Some(c1), dir = Some(Dir.Up), dirStride = Some(10), blend = true, startedAt = t0, duration = 800)),
     ServerMsg.Effect(EffectView("magic2", 0, 5, 100, Anchor.OnCell(c1), blend = false, startedAt = t0, duration = 500)),
     ServerMsg.Sound(10, Some(c1)),

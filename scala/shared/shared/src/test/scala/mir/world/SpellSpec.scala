@@ -166,6 +166,22 @@ object SpellSpec extends ZIOSpecDefault:
         want.ac != m.defn.ac
       )
     },
+    test("客户端看到的宝宝带实际攻防（3 级召唤的骷髅攻击比怪物表大，#1232）；野怪不带") {
+      val s = sim()
+      val p = caster(s, Job.Taoist, List(17), charm = true)
+      p.stats = p.stats.copy(sc = Span(5, 20))
+      s.cast(p, 17, None, p.cell); s.run(3000)
+      val m    = p.pets.flatMap(s.w.actor).collectFirst { case m: Monster => m }.get
+      val want = SpellRules.summonedBody(m.defn, 3, 20)
+      val wild = put(s, "蛤蟆", Cell(p.cell.x + 6, p.cell.y))
+      s.run(100)
+      val pet = s.view.actors.get(m.id).map(_.look).collect { case l: Look.Monster => l.pet }.flatten
+      assertTrue(
+        pet.contains(PetView(p.id, want.dc, want.ac, want.mac)),
+        want.dc.hi > m.defn.dc.hi,
+        s.view.actors.get(wild.id).map(_.look).exists { case l: Look.Monster => l.pet.isEmpty; case _ => false }
+      )
+    },
     test("灵魂火符命中炸开用原版 1360 起的帧，不是幽灵盾的 1320（PlayScn.pas mtExploBujauk）") {
       val s = sim()
       val p = caster(s, Job.Taoist, List(13), charm = true)
@@ -297,7 +313,7 @@ object SpellSpec extends ZIOSpecDefault:
         m.master.contains(p.id),
         p.pets.contains(m.id),
         m.spawn.isEmpty,
-        shown.exists { case Look.Monster(_, _, Some(owner), _) => owner == p.id; case _ => false },
+        shown.exists(_.master.contains(p.id)),
         s.notices.exists(_.contains("成了你的宝宝")),
         s.notices.exists(n => n.contains("定住") || n.contains("没有成功") || n.contains("发狂"))
       )

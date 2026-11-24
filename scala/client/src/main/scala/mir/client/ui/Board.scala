@@ -4,7 +4,8 @@ import mir.client.input.{Joystick, Pt}
 import mir.core.*
 import mir.model.{Affliction, BodyTint, ItemInstance, ItemPlace, Job}
 import mir.protocol.{GameCmd, GroupView, Look, SocialCmd}
-import mir.rules.{Rates, Skill}
+import mir.data.Span
+import mir.rules.{Rates, Skill, SpellRules}
 
 /**
  * 常驻的 HUD：原版 800×251 底栏（照 FState.pas DBottom，TS 版 ui/classic/layout.ts），
@@ -186,7 +187,7 @@ final class Board(ui: ClassicUi):
     for
       id   <- ui.client.locked
       a    <- ui.client.actor(id)
-      base <- targetCard(a.look)
+      base <- targetCard(a.look, m.actor.id)
     do
       val side = a.look match
         case _: Look.Human => base.copy(friend = !ui.client.canAttack(a))
@@ -258,20 +259,27 @@ final class Board(ui: ClassicUi):
     case BodyTint.Red   => "#ff7a6a"
     case BodyTint.Gray  => "#d0d0d0"
 
-  private def targetCard(look: Look): Option[TargetCard] = look match
+  /**
+   * 信息卡的标题和文字行；野怪按怪物表显示攻防和经验，宝宝显示服务端发来的实际攻防（#1232，召唤时按技能等级和道术放大过），
+   * 自己召唤的再提醒属性在召唤那一刻定下。
+   */
+  private def targetCard(look: Look, me: ActorId): Option[TargetCard] = look match
     case h: Look.Human => Some(TargetCard(s"${h.name}  ${h.job.label}", friend = true, Describe.pkStandingLine(h.pk).toList))
     case m: Look.Monster =>
       ui.catalog.monster(m.kind).map { d =>
-        val pet = m.master.isDefined
-        val tag = if pet then "（宝宝）" else if d.undead > 0 then "（不死系）" else ""
-        TargetCard(
-          s"${ui.catalog.displayName(d.name).value}  ${d.level} 级$tag",
-          friend = pet,
-          List(
-            s"攻击 ${d.dc.lo}-${d.dc.hi}  防御 ${d.ac.lo}-${d.ac.hi}  魔防 ${d.mac.lo}-${d.mac.hi}",
-            s"经验 ${d.exp.toLong * Rates.exp}"
-          )
-        )
+        def stats(dc: Span, ac: Span, mac: Span) = s"攻击 ${dc.lo}-${dc.hi}  防御 ${ac.lo}-${ac.hi}  魔防 ${mac.lo}-${mac.hi}"
+        val name = s"${ui.catalog.displayName(d.name).value}  ${d.level} 级"
+        m.pet match
+          case Some(pet) =>
+            val resummon = pet.master == me && SpellRules.isSummoned(m.kind)
+            TargetCard(
+              s"$name（宝宝）",
+              friend = true,
+              stats(pet.dc, pet.ac, pet.mac) :: Option.when(resummon)("属性召唤时定下，技能升级后要重召").toList
+            )
+          case None =>
+            val tag = if d.undead > 0 then "（不死系）" else ""
+            TargetCard(s"$name$tag", friend = false, List(stats(d.dc, d.ac, d.mac), s"经验 ${d.exp.toLong * Rates.exp}"))
       }
     case _: Look.Npc => None
 

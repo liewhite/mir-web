@@ -399,9 +399,9 @@ final class Renderer(canvas: dom.HTMLCanvasElement, sprites: SpriteStore, assets
   private def nameOf(a: ActorView, targeted: Boolean, o: ViewOptions): Option[(String, String)] = a.look match
     case h: Look.Human => Some(h.name -> Renderer.pkColor(h.pk))
     case Look.Npc(ref) => catalog.merchant(ref).map(_.name -> "#7fdcff")
-    case Look.Monster(kind, _, master, mood) =>
+    case Look.Monster(kind, _, pet, mood) =>
       // 名字颜色：宝宝绿、发狂红（原版 0xF9）、被定住蓝紫（原版 0x7D，MonsterObject.GetChrColor）
-      val color = (master, mood) match
+      val color = (pet, mood) match
         case (Some(_), _)        => "#9cff8a"
         case (None, Mood.Crazy)  => "#ff4040"
         case (None, Mood.Seized) => "#a8a0ff"

@@ -3,7 +3,7 @@ package mir.world
 import mir.core.*
 import mir.data.{MerchantDef, MonsterDef, MonsterLook, Span}
 import mir.model.*
-import mir.protocol.{ActionView, FieldView, GroundThing, GroundView, Look}
+import mir.protocol.{ActionView, FieldView, GroundThing, GroundView, Look, PetView}
 import mir.rules.{PetBody, Pk, Skill, Stats}
 
 import scala.collection.mutable
@@ -185,7 +185,7 @@ final class Monster(id: ActorId, val defn: MonsterDef, val behavior: Behavior, i
     if statuses.has(StatusKind.Seized) then Mood.Seized
     else if statuses.has(StatusKind.Crazy) && master.isEmpty then Mood.Crazy
     else Mood.Calm
-  def look: Look   = Look.Monster(defn.name, cover, master, mood)
+  def look: Look   = Look.Monster(defn.name, cover, master.map(PetView(_, dc, ac, mac)), mood)
 
 /** 记的仇：谁、最后一次打它的时刻（守卫记打它的人；玩家记打他的玩家，给宝宝护主用）。 */
 final case class Grudge(by: ActorId, at: Millis)
