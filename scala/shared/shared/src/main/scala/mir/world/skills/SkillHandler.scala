@@ -160,9 +160,11 @@ final class SpellCtx(
   def charm: Either[Effect, AmuletAt] =
     findAmulet { case None => () }.map(_._1).toRight(Effect.Fail("身上没有护身符（包裹里或左手镯位都行）"))
 
-  /** 要有灰色或黄色药粉：用哪份、什么毒 */
+  /** 要有灰色或黄色药粉：用哪份、什么毒。身上两种都有时换上次没下的那种（#1202 红绿交替），只有一种就用它 */
   def poisonPowder: Either[Effect, (AmuletAt, PoisonKind)] =
-    findAmulet { case Some(k) => k }.toRight(Effect.Fail("身上没有灰色或黄色药粉（包裹里或左手镯位都行）"))
+    findAmulet { case Some(k) if !p.lastPoison.contains(k) => k }
+      .orElse(findAmulet { case Some(k) => k })
+      .toRight(Effect.Fail("身上没有灰色或黄色药粉（包裹里或左手镯位都行）"))
 
   /** 用掉找到的那份护符的一次；次数用完就没了。 */
   def consume(a: AmuletAt): Unit =

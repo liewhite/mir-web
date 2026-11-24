@@ -75,6 +75,8 @@ final class Player(id: ActorId, val charName: String, val job: Job, val sex: Sex
   private[world] var fireReady     = false
   private[world] var longHitOn     = true
   private[world] var wideHitOn     = false
+  /** 施毒术上次下的毒：下次换另一种（#1202，红绿交替）；不存档 */
+  private[world] var lastPoison: Option[PoisonKind] = None
   /** 技能冷却：技能 → 可再用的时刻 */
   private[world] val cooldown: mutable.Map[SkillId, Millis] = mutable.Map.empty
   /** 宝宝 */

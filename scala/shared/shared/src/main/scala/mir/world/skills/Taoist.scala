@@ -33,7 +33,7 @@ object Taoist:
       c.fx("magic", 1800, 10, 80, Anchor.OnCell(center))
       Effect.Cast
 
-  /** 施毒术：灰色药粉绿毒、黄色药粉红毒。 */
+  /** 施毒术：灰色药粉绿毒、黄色药粉红毒；两种都带着时每次换一种。 */
   object Poisoning extends SkillHandler:
     override val castFx = fx(600)
     def cast(c: SpellCtx)(using Rng): Effect =
@@ -41,6 +41,7 @@ object Taoist:
       run(enemy.flatMap { t =>
         poisonPowder.map { (a, kind) =>
           consume(a)
+          p.lastPoison = Some(kind)
           val secs = SpellRules.poisonSecs(d, lv, sc, green = kind == PoisonKind.Green)
           w.conditions.poison(t, kind, secs * 1000L, SpellRules.poisonTick(sc), p.id)
           t match

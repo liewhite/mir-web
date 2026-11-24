@@ -7,12 +7,20 @@ import scala.collection.mutable
 
 /** 身上限时状态的种类：同一种身上只有一个，再上一次覆盖或续上。 */
 enum StatusKind:
-  case Poison, Shield, Invisible, Paralyzed, ArmorUp, MagicArmorUp, Seized, Crazy
+  /** 绿毒、红毒各算一种，身上可以同时有（原版 POISON_DECHEALTH / POISON_DAMAGEARMOR 两个状态位） */
+  case GreenPoison, RedPoison, Shield, Invisible, Paralyzed, ArmorUp, MagicArmorUp, Seized, Crazy
+
+object StatusKind:
+  def poison(k: PoisonKind): StatusKind = k match
+    case PoisonKind.Green => GreenPoison
+    case PoisonKind.Red   => RedPoison
+
+  val poisons: List[StatusKind] = List(GreenPoison, RedPoison)
 
 /** 身上的限时状态和它带的参数。 */
 enum Status(val kind: StatusKind):
   /** 中毒：绿毒每 2 秒掉 power 血，红毒挨打 ×1.2。by：下毒的对象（经验归属；换图后没有） */
-  case Poisoned(poison: PoisonKind, power: Int, nextTick: Millis, by: Option[ActorId]) extends Status(StatusKind.Poison)
+  case Poisoned(poison: PoisonKind, power: Int, nextTick: Millis, by: Option[ActorId]) extends Status(StatusKind.poison(poison))
   /** 魔法盾：按等级减伤 */
   case Shielded(level: Int) extends Status(StatusKind.Shield)
   /** 隐身：看不穿隐身的怪看不见 */

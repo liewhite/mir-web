@@ -88,7 +88,7 @@ final class Vitals(w: World):
 
   /** 绿毒每 2 秒掉一次血（不算挨打：不 ×1.2、不打断动作）。 */
   private[world] def tickPoison(a: Actor): Unit =
-    a.statuses.find { case p: Status.Poisoned => p }.filter(p => !a.dead && p.poison == PoisonKind.Green && w.now >= p.nextTick).foreach { p =>
+    a.statuses.find { case p: Status.Poisoned if p.poison == PoisonKind.Green => p }.filter(p => !a.dead && w.now >= p.nextTick).foreach { p =>
       a.statuses.revise(p.copy(nextTick = w.now + 2000))
       damage(a, math.max(1, p.power), p.by, interrupt = false, struck = false)
     }
@@ -97,7 +97,7 @@ final class Vitals(w: World):
 
   private def kill(target: Actor, killer: Option[ActorId]): Unit =
     target.dead = true
-    target.statuses.remove(StatusKind.Poison)
+    StatusKind.poisons.foreach(target.statuses.remove)
     w.grid.setAction(target, ActKind.Die, 1200)
     target match
       case m: Monster =>

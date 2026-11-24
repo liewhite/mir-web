@@ -157,6 +157,32 @@ object SpellSpec extends ZIOSpecDefault:
         val red = m.statuses.find { case Status.Poisoned(k, _, _, _) => k }.contains(PoisonKind.Red)
         assertTrue(red, p.bag(slot).isEmpty, s.notices.exists(_.contains("用完了")), s.view.bag(slot).isEmpty)
       },
+      test("灰、黄药粉都带着：施毒术红绿交替，怪身上两种毒同时在，各扣一次") {
+        val s     = sim()
+        val p     = caster(s, Job.Taoist, List(6))
+        val slots = p.bag.indices.filter(p.bag(_).isEmpty).take(2)
+        p.bag(slots(0)) = Some(ItemInstance(ItemUid(81L), ItemName("灰色药粉(少量)"), 1000, 1000))
+        p.bag(slots(1)) = Some(ItemInstance(ItemUid(82L), ItemName("黄色药粉(少量)"), 1000, 1000))
+        val m = put(s, "蛤蟆", Cell(33, 30))
+        pin(m)
+        m.maxHpNow = 100_000
+        m.hp = 100_000
+        def kinds = StatusKind.poisons.filter(m.statuses.has)
+        s.cast(p, 6, Some(m), m.cell)
+        val first = kinds
+        s.run(3000)
+        s.cast(p, 6, Some(m), m.cell)
+        val both = kinds
+        s.run(3000)
+        s.cast(p, 6, Some(m), m.cell)
+        assertTrue(
+          first == List(StatusKind.GreenPoison),
+          both == StatusKind.poisons,
+          p.bag(slots(0)).map(_.dura).contains(800),
+          p.bag(slots(1)).map(_.dura).contains(900),
+          m.hp < 100_000
+        )
+      },
       test("包裹和左手镯都没有：放不了，提示缺什么，不扣蓝") {
         val s  = sim()
         val p  = caster(s, Job.Taoist, List(6, 13))

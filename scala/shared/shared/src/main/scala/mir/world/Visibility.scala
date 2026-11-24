@@ -63,8 +63,10 @@ final class Visibility(w: World):
   /** 自己身上的状态（界面上的图标和倒计时）。 */
   private def selfStatus(p: Player): SelfStatus =
     val s = p.statuses
+    // 界面只显示一种毒：绿毒优先（玩家只会被怪下绿毒）
+    val poison = s.find { case q: Status.Poisoned if q.poison == PoisonKind.Green => q.poison }.orElse(s.find { case q: Status.Poisoned => q.poison })
     SelfStatus(
-      poison = s.find { case q: Status.Poisoned => q.poison }, poisonUntil = s.until(StatusKind.Poison),
+      poison = poison, poisonUntil = poison.flatMap(k => s.until(StatusKind.poison(k))),
       shieldUntil = s.until(StatusKind.Shield),
       invisibleUntil = s.until(StatusKind.Invisible),
       paralyzedUntil = s.until(StatusKind.Paralyzed),
