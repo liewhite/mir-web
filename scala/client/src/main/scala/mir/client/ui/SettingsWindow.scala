@@ -4,10 +4,13 @@ import mir.protocol.GameCmd
 
 /**
  * 便利设置（原版靠外挂的功能内置成开关，画在原版对话框底图 204 上）：玩法类发 UpdateSettings 存角色上，
- * 画面声音类存本机（SettingRow）。底部列出键位（UiAction.Help）。
+ * 画面声音类存本机（SettingRow）。分「通用」和战士、法师、道士自动技能几页（SettingTab）。底部列出键位（UiAction.Help）。
  */
 final class SettingsWindow(ui: ClassicUi) extends ToggleWindow:
   import ui.g
+
+  /** 当前分页（通用 / 战士 / 法师 / 道士） */
+  private var tab: SettingTab = SettingTab.General
 
   def draw(m: Me): Unit =
     val (sw, sh) = g.size(Gfx.Main, 204).getOrElse((608, 327))
@@ -16,9 +19,16 @@ final class SettingsWindow(ui: ClassicUi) extends ToggleWindow:
     g.img(Gfx.Main, 204, o.x, o.y)
     g.rect(o.x + 50, o.y + 6, 70, 20, "#2a2a2a")
     g.text("便利设置", o.x + 56, o.y + 10, "#ffe08a", bold = true)
+    // 分页标签，排在标题右边
+    SettingRow.tabs.map(_._1).zipWithIndex.foreach { (t, i) =>
+      val r = Rect(o.x + 140 + i * 62, o.y + 6, 56, 20)
+      g.rect(r.x, r.y, r.w, r.h, if t == tab then "#6a4a1a" else "#2a2a2a")
+      g.text(t.label, r.x + 14, r.y + 4, if t == tab then "#ffe08a" else "#c0c0c0", bold = t == tab)
+      ui.hit(r) { tab = t }
+    }
     val rowH = 19.0
     val mid  = (rowH - 14) / 2
-    SettingRow.all.zipWithIndex.foreach { (row, i) =>
+    SettingRow.tabs.collectFirst { case (t, rows) if t == tab => rows }.getOrElse(Nil).zipWithIndex.foreach { (row, i) =>
       val ly = o.y + 40 + i * rowH
       /** 画一个勾选框加文字，点整段切换；返回占了多宽。 */
       def checkAt(x: Double, label: String, on: Boolean, width: Double)(flip: => Unit): Double =

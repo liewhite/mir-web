@@ -132,6 +132,32 @@ object SpellSpec extends ZIOSpecDefault:
         count(SpellRules.ShinsuPet) == 2
       )
     },
+    test("道士自动召唤（设置道士页）：勾了骷髅和神兽就各补到 3 只；不勾不召") {
+      val s = sim()
+      val p = caster(s, Job.Taoist, List(17, 30), charm = true)
+      def count(n: MonsterName) = p.pets.flatMap(s.w.actor).count {
+        case m: Monster => SpellRules.summonedAs(m.defn.name).contains(n)
+        case _          => false
+      }
+      s.run(10_000)
+      val before = p.pets.size
+      p.settings = p.settings.copy(autoSummonSkeleton = true, autoSummonShinsu = true)
+      s.run(30_000)
+      assertTrue(
+        before == 0,
+        count(SpellRules.SkeletonPet) == SpellRules.SummonsEach,
+        count(SpellRules.ShinsuPet) == SpellRules.SummonsEach
+      )
+    },
+    test("法师自动魔法盾：勾了、身上没盾就开；不勾不开") {
+      val s = sim()
+      val p = caster(s, Job.Wizard, List(31))
+      s.run(5_000)
+      val before = p.statuses.has(StatusKind.Shield)
+      p.settings = p.settings.copy(autoMagicShield = true)
+      s.run(5_000)
+      assertTrue(!before, p.statuses.has(StatusKind.Shield))
+    },
     suite("神兽照原版变身喷火（#1255）")(
       test("小神兽不打架；附近有怪就原地变成神兽1：同一只、主人和等级不变、身板按神兽1 底数重算、血按比例；变了身也算神兽的名额") {
         val s = sim()

@@ -75,7 +75,13 @@ final case class CharSettings(
     /** 战士：烈火好了就自动开 */
     autoFireSword: Boolean = true,
     /** 战士：自动站到隔一格的位置用刺杀 */
-    autoLongHitPosition: Boolean = false
+    autoLongHitPosition: Boolean = false,
+    /** 法师：魔法盾没开着（或到期了）就自动开 */
+    autoMagicShield: Boolean = false,
+    /** 道士：骷髅不满 SpellRules.SummonsEach 只就自动召唤（要学会召唤骷髅、带护身符） */
+    autoSummonSkeleton: Boolean = false,
+    /** 道士：神兽不满 SpellRules.SummonsEach 只就自动召唤 */
+    autoSummonShinsu: Boolean = false
 )
 
 object CharSettings:

@@ -2,17 +2,19 @@ package mir.world
 
 import mir.core.*
 import mir.model.PickupKind
-import mir.rules.{ItemKind, Skill}
+import mir.rules.{ItemKind, Skill, SpellRules}
 import mir.terrain.Path
 
 /**
- * 玩家的自动功能，按角色设置（CharSettings）在服务端执行：自动喝药、按住攻击（打到死）、被打还手、自动烈火、自动捡物。
+ * 玩家的自动功能，按角色设置（CharSettings）在服务端执行：自动喝药、按住攻击（打到死）、被打还手、自动烈火、自动捡物、法师自动魔法盾、道士自动召唤。
  * 照 TS 版 game/controller.ts 移植。玩家亲手走动后 1 秒内不自动走动，免得和摇杆抢。
  */
 object AutoPlay:
   def run(w: World, p: Player): Unit =
     if !p.dead then
       autoPotion(w, p)
+      if w.now >= p.busyUntil then autoShield(w, p)
+      if w.now >= p.busyUntil then autoSummon(w, p)
       if w.now >= p.busyUntil then
         p.intent match
           case Intent.Hunt(target, once) => hunt(w, p, target, once)
@@ -85,6 +87,39 @@ object AutoPlay:
       case Loot.Coins(_) => wanted(PickupKind.Gold)
       case Loot.Item(it) =>
         w.catalog.item(it.name).exists(d => wanted(ItemKind.pickupKind(d)) && PlayerOps.fits(p, d).isRight)
+
+  /** 自动召唤、自动魔法盾隔多久试一次（放不出来——没符、没蓝——也不刷提示，过会儿再试） */
+  val AutoCastRetryMs = 3000
+
+  /** 法师自动魔法盾（设置「法师」页）：学了、身上没盾就开；蓝不够时不发提示，过会儿再试。 */
+  private def autoShield(w: World, p: Player): Unit =
+    val id = Skill.MagicShield.id
+    if p.settings.autoMagicShield && w.now - p.lastAutoShield >= AutoCastRetryMs && p.skill(id).isDefined &&
+      !p.statuses.has(StatusKind.Shield)
+    then
+      p.lastAutoShield = w.now
+      Combat.cast(w, p, id, SpellTarget(p.cell, None)): Unit
+
+  /**
+   * 道士自动召唤（设置「道士」页勾选）：勾了的种类不满 SpellRules.SummonsEach 只就放一次召唤技能，
+   * 先骷髅后神兽，一次只放一个；技能没学、没符、蓝不够时 Combat.cast 拒绝，不发提示。
+   */
+  private def autoSummon(w: World, p: Player): Unit =
+    if w.now - p.lastAutoSummon >= AutoCastRetryMs then
+      val s = p.settings
+      def short(pet: MonsterName): Boolean =
+        p.pets.flatMap(w.actor).count {
+          case m: Monster => SpellRules.summonedAs(m.defn.name).contains(pet)
+          case _          => false
+        } < SpellRules.SummonsEach
+      val want = List(
+        (s.autoSummonSkeleton, Skill.SummonSkeleton, SpellRules.SkeletonPet),
+        (s.autoSummonShinsu, Skill.SummonShinsu, SpellRules.ShinsuPet)
+      ).collectFirst { case (true, sk, pet) if p.skill(sk.id).isDefined && short(pet) => sk }
+      want.foreach { sk =>
+        p.lastAutoSummon = w.now
+        Combat.cast(w, p, sk.id, SpellTarget(p.cell, None)): Unit
+      }
 
   /** 血蓝低于设定的百分比自动喝药：优先普通药（慢回），太阳水留着；每 1.5 秒最多一次。 */
   private def autoPotion(w: World, p: Player): Unit =
