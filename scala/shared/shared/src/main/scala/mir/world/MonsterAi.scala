@@ -46,8 +46,31 @@ object MonsterAi:
               case s: Strike.Spawn                           => spawnTick(w, m, s)
               case _                                         => hunt(w, m, b)
 
+  /**
+   * 宝宝离主人横或竖超过这么多格就瞬移回主人身后（ObjMon.pas MonsterObject.Run：
+   * abs(dx) > 20 or abs(dy) > 20 时 SpaceMove 到主人 GetBackPosition）。
+   * 主人换图、同图传送时宝宝跟着走在 Roster.transfer 里。
+   */
+  val PetLeash = 20
+
+  /** 离主人太远就瞬移回去，返回是否瞬移了（找不到空格就留原地，下回合再试）。 */
+  private def recall(w: World, m: Monster, master: Actor): Boolean =
+    m.cell.chebyshev(master.cell) > PetLeash && {
+      val to = w.freeCellNear(master.cell.step(master.dir.opposite))
+      to.foreach { c =>
+        w.out.sound(m.cell, Sounds.spaceOut)
+        w.grid.teleportActor(m, c)
+        m.target = None
+        w.out.sound(c, Sounds.spaceIn)
+      }
+      to.isDefined
+    }
+
   private def hunt(w: World, m: Monster, b: Behavior): Unit =
     val master = m.master.flatMap(w.actor)
+    if !master.exists(recall(w, m, _)) then chase(w, m, b, master)
+
+  private def chase(w: World, m: Monster, b: Behavior, master: Option[Actor]): Unit =
     val kept = m.target.flatMap(w.actor).filter { t =>
       !t.dead && w.isEnemy(m, t) && m.cell.chebyshev(t.cell) <= 14 && !t.statuses.has(StatusKind.Invisible)
     }

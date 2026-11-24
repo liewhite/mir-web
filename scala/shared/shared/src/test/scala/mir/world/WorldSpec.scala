@@ -233,6 +233,36 @@ object WorldSpec extends ZIOSpecDefault:
         s.run(10_000)
         assertTrue(m.target.contains(p.id))
       },
+      test("宝宝离主人超过 20 格就瞬移回主人身边，丢下原来的目标（#1210，ObjMon.pas SpaceMove）") {
+        val s   = sim()
+        val p   = join(s.w, "甲", Cell(10, 30))
+        val m   = put(s.w, "洞蛆", Cell(40, 31))
+        val pet = put(s.w, "蛤蟆", Cell(40, 30))
+        pet.master = Some(p.id)
+        p.pets += pet.id
+        pet.target = Some(m.id)
+        s.run(2500) // 刚刷出的怪最多 2 秒后才开始想
+        assertTrue(pet.cell.chebyshev(p.cell) <= 2, !pet.target.contains(m.id))
+      },
+      test("宝宝离主人 20 格以内不瞬移，自己走回去（#1210）") {
+        val s   = sim()
+        val p   = join(s.w, "甲", Cell(10, 30))
+        val pet = put(s.w, "蛤蟆", Cell(30, 30))
+        pet.master = Some(p.id)
+        p.pets += pet.id
+        s.run(2500)
+        assertTrue(pet.cell.chebyshev(p.cell) >= 12, pet.cell.chebyshev(p.cell) <= 20)
+      },
+      test("主人在同一张图里传送，宝宝跟到新位置旁边（#1210）") {
+        val s   = sim()
+        val p   = join(s.w, "甲", Cell(10, 30))
+        val pet = put(s.w, "蛤蟆", Cell(11, 30))
+        pet.master = Some(p.id)
+        p.pets += pet.id
+        s.w.roster.transfer(p, Place(s.w.mapId, Cell(50, 50)))
+        s.flush()
+        assertTrue(p.cell.chebyshev(Cell(50, 50)) <= 1, pet.cell.chebyshev(p.cell) <= 2)
+      },
       test("传送菜单：每个目的地都是游戏里有的地图，传到别的图交给服务端") {
         val s    = sim()
         val p    = join(s.w, "甲", Cell(30, 30))
