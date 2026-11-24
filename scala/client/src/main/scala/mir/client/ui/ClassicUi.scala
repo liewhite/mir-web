@@ -122,7 +122,7 @@ final class ClassicUi(
     screen match
       case Screen.Game => ()
       case _ =>
-        message("欢迎来到玛法大陆。左边摇杆走路（推远了跑）；点怪锁定，右边「攻击」打它；点物品看说明和操作。回车或点聊天框说话。", Tone.Good)
+        message("欢迎来到玛法大陆。左边摇杆走路（推远了跑），电脑上 WASD 跑、按住 Shift 走；点怪锁定，右边「攻击」打它；点物品看说明和操作。回车或点聊天框说话。", Tone.Good)
     screen = Screen.Game
     dead = client.view.self.exists(_.dead)
     closeAll()

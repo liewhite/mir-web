@@ -17,7 +17,8 @@ trait Overlay:
 /**
  * 触屏、鼠标、键盘 → 先给界面，界面不要的再变成 Controller 意图（照 TS 版 game/input.ts 的摇杆布局，用户 #1140 定）：
  * 点中怪锁定、点 NPC 对话、点地上物品去捡，否则在左半屏按下就是摇杆；多指同时操作（一指摇杆、一指按技能）。
- * 键盘：先给界面（窗口快捷键、聊天），剩下 F1–F8 放技能、空格捡脚下的东西。不做电脑鼠标走路（用户 11-23）。
+ * 键盘：先给界面（窗口快捷键、聊天），剩下 F1–F8 放技能、空格捡脚下的东西；WASD 是键盘摇杆（默认跑，按住 Shift 走，#1189），
+ * 和屏幕摇杆并存。不做电脑鼠标走路（用户 11-23）。
  */
 final class Input(
     canvas: dom.HTMLCanvasElement,
@@ -88,19 +89,54 @@ final class Input(
   canvas.addEventListener("pointerup", release)
   canvas.addEventListener("pointercancel", release)
 
+  private val keys = KeyStick()
+
+  private def follow(m: KeyMove): Unit = m match
+    case KeyMove.Go(s)  => ctl.stick(s.dir, s.run)
+    case KeyMove.Stop   => if !joystick.active then ctl.stickReleased()
+    case KeyMove.Settle => dom.window.setTimeout(() => settle(), KeyStick.SettleMs): Unit
+    case KeyMove.Same   => ()
+
+  private def settle(): Unit = keys.current match
+    case Some(s) => ctl.stick(s.dir, s.run)
+    case None    => if !joystick.active then ctl.stickReleased()
+
+  /** 带 Ctrl/Cmd/Alt 的是浏览器快捷键（Cmd+W 关页面等），不当走路 */
+  private def plain(e: dom.KeyboardEvent): Boolean = !(e.ctrlKey || e.metaKey || e.altKey)
+
   dom.window.addEventListener(
     "keydown",
     (e: dom.KeyboardEvent) =>
-      if overlay.key(e.key) then e.preventDefault()
+      if e.key == "Shift" then follow(keys.shift(true))
+      else if overlay.key(e.key) then e.preventDefault()
       else if client.map.isDefined then
-        Input.fKey(e.key) match
-          case Some(n) =>
+        (Input.fKey(e.key), MoveKey.of(e.code).filter(_ => plain(e))) match
+          case (Some(n), _) =>
             e.preventDefault()
             ctl.castKey(n)
-          case None =>
+          case (None, Some(k)) =>
+            e.preventDefault()
+            follow(keys.shift(e.shiftKey))
+            follow(keys.press(k))
+          case (None, None) =>
             if e.key == " " then
               e.preventDefault()
               ctl.pickUpHere()
+  )
+
+  // 松键不看界面和地图：任何时候松开都要算数，免得卡住一直走
+  dom.window.addEventListener(
+    "keyup",
+    (e: dom.KeyboardEvent) =>
+      if e.key == "Shift" then follow(keys.shift(false))
+      else MoveKey.of(e.code).foreach(k => follow(keys.release(k)))
+  )
+
+  // 切走窗口收不到松键：当全部松开
+  dom.window.addEventListener("blur", (_: dom.Event) => follow(keys.clear()))
+  dom.document.addEventListener(
+    "visibilitychange",
+    (_: dom.Event) => if dom.document.visibilityState != "visible" then follow(keys.clear())
   )
 
 object Input:

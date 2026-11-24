@@ -2,7 +2,7 @@ package mir.client
 
 import mir.client.assets.MapData
 import mir.client.game.*
-import mir.client.input.{Joystick, Pt, Stick}
+import mir.client.input.{Joystick, KeyMove, KeyStick, MoveKey, Pt, Stick}
 import mir.client.net.{LinkEvent, ServerClock, Transport}
 import mir.client.render.Frames
 import mir.core.*
@@ -130,6 +130,39 @@ object ClientSpec extends ZIOSpecDefault:
         upFar.contains(Stick(Dir.Up, run = true)),
         knob == Pt(100, 100 - Joystick.Radius),
         diag.map(_.dir).contains(Dir.DownLeft)
+      )
+    },
+    test("键盘摇杆：单键 4 方向、组合斜走、默认跑 Shift 走、斜走松一键先等等、全松开停") {
+      val k     = KeyStick()
+      val w     = k.press(MoveKey.W)
+      val wd    = k.press(MoveKey.D)
+      val again = k.press(MoveKey.D)
+      val slow  = k.shift(true)
+      val fast  = k.shift(false)
+      val wOff  = k.release(MoveKey.W) // 斜走松一个：等一下
+      val left  = k.current
+      val dOff  = k.release(MoveKey.D)
+      val sa    = (k.press(MoveKey.S), k.press(MoveKey.A))._2
+      val ad    = k.press(MoveKey.D) // A+D 抵消只剩 S
+      val lost  = k.clear()
+      val idle  = k.clear()
+      val ws    = (k.press(MoveKey.W), k.press(MoveKey.S))._2 // 相对两键抵消：停
+      assertTrue(
+        w == KeyMove.Go(Stick(Dir.Up, run = true)),
+        wd == KeyMove.Go(Stick(Dir.UpRight, run = true)),
+        again == KeyMove.Same,
+        slow == KeyMove.Go(Stick(Dir.UpRight, run = false)),
+        fast == KeyMove.Go(Stick(Dir.UpRight, run = true)),
+        wOff == KeyMove.Settle,
+        left.contains(Stick(Dir.Right, run = true)),
+        dOff == KeyMove.Stop,
+        sa == KeyMove.Go(Stick(Dir.DownLeft, run = true)),
+        ad == KeyMove.Go(Stick(Dir.Down, run = true)),
+        lost == KeyMove.Stop,
+        idle == KeyMove.Same,
+        ws == KeyMove.Stop,
+        MoveKey.of("KeyW").contains(MoveKey.W),
+        MoveKey.of("KeyQ").isEmpty
       )
     },
     test("对时：按往返的一半校正，往返太慢的不采信") {

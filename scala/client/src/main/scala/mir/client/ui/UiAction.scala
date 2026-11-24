@@ -29,4 +29,4 @@ object UiAction:
       all(CloseAll, "Escape")).toMap
 
   /** 设置窗底部的键位说明 */
-  val Help = "F1-F8 技能  1-6 快捷栏  空格 捡取  回车 说话  T 传送  Esc 关闭"
+  val Help = "WASD 跑(按住Shift走)  F1-F8 技能  1-6 快捷栏  空格 捡取  回车 说话  T 传送  Esc 关闭"
