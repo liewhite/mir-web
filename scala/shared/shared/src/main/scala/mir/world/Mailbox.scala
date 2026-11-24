@@ -10,7 +10,9 @@ final case class Pending(
     personal: Vector[(ActorId, Vector[ServerMsg])],
     /** 发生在哪一格、是什么 */
     local: Vector[(Cell, ServerMsg)],
-    departed: Vector[Departure]
+    departed: Vector[Departure],
+    /** 要立刻存档的玩家（升级、交易成交） */
+    checkpoints: Set[ActorId] = Set.empty
 )
 
 /** 世界要发出去的消息：先攒着，flush 时由 Visibility 按视野分给每个玩家。 */
@@ -18,6 +20,7 @@ final class Mailbox(w: World):
   private val personal = mutable.LinkedHashMap.empty[ActorId, mutable.ArrayBuffer[ServerMsg]]
   private val local    = mutable.ArrayBuffer.empty[(Cell, ServerMsg)]
   private val departed = mutable.ArrayBuffer.empty[Departure]
+  private val saves    = mutable.LinkedHashSet.empty[ActorId]
 
   private[world] def tell(p: Player, msg: ServerMsg): Unit =
     personal.getOrElseUpdate(p.id, mutable.ArrayBuffer.empty) += msg
@@ -45,9 +48,16 @@ final class Mailbox(w: World):
   /** 玩家离开本图去别处（服务端交给目的地图）。 */
   private[world] def depart(d: Departure): Unit = departed += d
 
+  /**
+   * 这个玩家要立刻存档（升级、交易成交）：交易双方在同一步里存，免得服务端中途崩溃时一方的存档是交易前、
+   * 另一方是交易后（东西变成两份或没了）。
+   */
+  private[world] def checkpoint(p: Player): Unit = saves += p.id
+
   /** 取走攒下的全部。 */
   private[world] def drain(): Pending =
-    val out = Pending(personal.toVector.map((id, m) => id -> m.toVector), local.toVector, departed.toVector)
+    val out = Pending(personal.toVector.map((id, m) => id -> m.toVector), local.toVector, departed.toVector, saves.toSet)
+    saves.clear()
     personal.clear()
     local.clear()
     departed.clear()

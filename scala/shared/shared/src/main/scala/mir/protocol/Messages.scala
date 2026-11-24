@@ -87,6 +87,19 @@ enum GameCmd:
   /** 从仓库取；count 同上 */
   case Withdraw(npc: ActorId, uid: ItemUid, count: Option[Int] = None)
 
+  // ---- 交易（#1222，原版 CM_DEALTRY / DEALADDITEM / DEALDELITEM / DEALCHGGOLD / DEALEND / DEALCANCEL） ----
+  /** 请求和相邻的玩家交易；对方 30 秒内也对我点「交易」就打开交易窗口 */
+  case DealTry(partner: ActorId)
+  /** 把包裹或快捷栏里的一件放进交易栏；count 是一叠里放几个，空为整叠 */
+  case DealPut(uid: ItemUid, count: Option[Int] = None)
+  /** 从交易栏拿回一件 */
+  case DealTake(uid: ItemUid)
+  /** 交易栏里放多少金币 */
+  case DealGold(amount: Gold)
+  /** 确认：双方都确认就成交 */
+  case DealConfirm
+  case DealCancel
+
   // ---- 其他 ----
   /** 设技能快捷键：key 1-8 对应 F1-F8，空为取消 */
   case SetSkillKey(skill: SkillId, key: Option[Int])
@@ -208,6 +221,8 @@ enum ServerMsg:
   case Died
   /** 打开 NPC 对话（商店、仓库）：npc 是对象编号，merchant 是 game.json merchants 下标 */
   case NpcOpened(npc: ActorId, merchant: MerchantRef)
+  /** 交易窗口的样子（#1222）：打开、任一边改了、确认了都发整份；关掉（成交、取消）为空 */
+  case Deal(deal: Option[DealView])
 
   // ---- 聊天、社交 ----
   case Chat(from: String, text: String, kind: ChatKind)

@@ -47,6 +47,12 @@ object PlayerOps:
     case GameCmd.Sell(npc, uid, n)      => result(w, p, sell(w, p, npc, uid, n))
     case GameCmd.Deposit(npc, uid, n)   => result(w, p, deposit(w, p, npc, uid, n))
     case GameCmd.Withdraw(npc, uid, n)  => result(w, p, withdraw(w, p, npc, uid, n))
+    case GameCmd.DealTry(partner)       => w.trades.request(p, partner)
+    case GameCmd.DealPut(uid, n)        => w.trades.put(p, uid, n)
+    case GameCmd.DealTake(uid)          => w.trades.take(p, uid)
+    case GameCmd.DealGold(amount)       => w.trades.gold(p, amount)
+    case GameCmd.DealConfirm            => w.trades.confirm(p)
+    case GameCmd.DealCancel             => w.trades.cancel(p)
     case GameCmd.SetSkillKey(skill, key) => result(w, p, setSkillKey(p, skill, key))
     case GameCmd.UpdateSettings(s) =>
       p.settings = s.copy(autoHpPercent = s.autoHpPercent.max(0).min(100), autoMpPercent = s.autoMpPercent.max(0).min(100))

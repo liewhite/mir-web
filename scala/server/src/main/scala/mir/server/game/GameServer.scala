@@ -6,7 +6,7 @@ import mir.protocol.*
 import mir.server.{Account, LinkId}
 import mir.server.store.{Backups, Characters, StoredChar}
 import mir.social.{Directory, Letter, Seen, Social}
-import mir.world.{Carried, CharacterData, Place, UidSource, World}
+import mir.world.{Carried, CharacterData, Place, UidSource}
 
 import java.util.concurrent.ConcurrentLinkedQueue
 import scala.collection.mutable
@@ -35,7 +35,7 @@ enum LinkEvent:
  *
  * 每一步：处理投来的事件（会话指令自己办，游戏指令交给角色所在的世界）→ 推进有人的图 → 取出各图要发的消息
  * 按对象编号发给对应连接 → 把换图的玩家交给目的地图。
- * 存档时机：下线、换图、升级、每 30 秒全部在线角色；数据库每天备份一次。
+ * 存档时机：下线、换图、世界要求的存档点（升级、交易成交，Outbox.checkpoints）、每 30 秒全部在线角色；数据库每天备份一次。
  *
  * 组队、私聊、好友等社交指令（SocialCmd）跨地图，交给 `social`（mir.social.Social，和 Maps 里的世界共用同一个：世界经它查队友分经验）；
  * 上线、下线告诉它，存档时把它那边的社交偏好填进存档。
@@ -96,7 +96,9 @@ final class GameServer(
     val departures = active.flatMap { w =>
       val out = attempt(s"取地图 ${w.mapId} 的消息")(w.flush())
       out.toVector.flatMap { o =>
-        o.messages.foreach((actor, msgs) => byActor.get((w.mapId, actor)).flatMap(online.get).foreach(deliver(w, _, msgs)))
+        o.messages.foreach((actor, msgs) => byActor.get((w.mapId, actor)).flatMap(online.get).foreach(on => msgs.foreach(on.conn.link.send)))
+        // 升级、交易成交的人立刻存档（交易双方在这里一起存；同一步换了图的已不在图上，由下面换图存档）
+        o.checkpoints.foreach(actor => byActor.get((w.mapId, actor)).flatMap(online.get).foreach(on => w.snapshot(on.actor).foreach(save(on.id, _))))
         o.departures.flatMap(d => byActor.remove((w.mapId, d.player)).flatMap(online.get).map(_ -> d))
       }
     }
@@ -113,10 +115,6 @@ final class GameServer(
   def shutdown(): Unit =
     step()
     online.values.toVector.foreach(o => guard(s"停服存档 ${o.id}")(logout(o)))
-
-  private def deliver(w: World, o: Online, msgs: Vector[ServerMsg]): Unit =
-    msgs.foreach(o.conn.link.send)
-    if msgs.exists(_.isInstanceOf[ServerMsg.LevelUp]) then w.snapshot(o.actor).foreach(save(o.id, _))
 
   private def handle(e: LinkEvent, now: Millis): Unit = e match
     case LinkEvent.Opened(link) =>

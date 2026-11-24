@@ -13,7 +13,7 @@ import java.nio.file.{Files, Paths}
 import scala.collection.mutable
 
 /**
- * 游戏主循环（不起网络，假连接 + 假时钟）：掉线超时（#1218）。
+ * 游戏主循环（不起网络，假连接 + 假时钟）：掉线超时（#1218）、交易成交双方立刻存档（#1222）。
  */
 object GameServerSpec extends ZIOSpecDefault:
   private val assets = Paths.get(sys.props.getOrElse("mir.assets", "../public/assets"))
@@ -75,5 +75,29 @@ object GameServerSpec extends ZIOSpecDefault:
         entered, aliveWithPings == (true, true), at30 == (true, true), after == (true, true),
         ignored, lobbyClosed, back == (true, true)
       )
+    },
+    test("交易成交：不等 30 秒定时存档，双方存档里就是交易后的样子") {
+      val f  = Fixture()
+      val c2 = f.store.chars.create(f.acc.id, CharacterData.newbie(catalog, "阿乙", Job.Taoist, Sex.Female, f.store.uids))
+        .fold(e => throw AssertionError(e), identity)
+      val a = f.connect(1)
+      val b = f.connect(2)
+      f.say(a, SessionCmd.EnterGame(f.char.id))
+      f.say(b, SessionCmd.EnterGame(c2.id))
+      def me(l: FakeLink)   = l.got.collect { case ServerMsg.EnterMap(you, _, _, _, _) => you }.last
+      val pot = f.char.data.belt.flatten.head // 新人的 4 瓶小红
+      f.say(a, GameCmd.DealTry(me(b)))
+      f.say(b, GameCmd.DealTry(me(a)))
+      val opened = b.got.exists { case ServerMsg.Deal(Some(_)) => true; case _ => false }
+      f.say(a, GameCmd.DealPut(pot.uid, Some(3)))
+      f.say(a, GameCmd.DealGold(Gold(100)))
+      f.advance(1_100)
+      f.say(a, GameCmd.DealConfirm)
+      f.say(b, GameCmd.DealConfirm)
+      def red(d: CharacterData) = (d.belt.flatten ++ d.bag.flatten).filter(_.name == pot.name).map(_.count).sum
+      val sa = f.store.chars.get(f.char.id).get.data
+      val sb = f.store.chars.get(c2.id).get.data
+      f.store.db.close()
+      assertTrue(opened, red(sa) == 1, red(sb) == 7, sa.gold == Gold(200), sb.gold == Gold(400))
     }
   )

@@ -91,17 +91,19 @@ final class Board(ui: ClassicUi):
     beltRects.zipWithIndex.foreach { (r, i) =>
       val place = ItemPlace.Belt(i)
       val it    = m.view.belt.lift(i).flatten
-      it.filterNot(_ => ui.handFrom(place)).foreach(i => ui.catalog.item(i.name).foreach(d => g.item(d.look, i.count, r)))
+      it.filterNot(_ => ui.handFrom(place)).foreach { i =>
+        ui.catalog.item(i.name).foreach(d => g.item(d.look, i.count, r))
+        if ui.deal.offers(i.uid) then g.rect(r.x, r.y, r.w, r.h, DealWindow.Dim)
+      }
       g.text((i + 1).toString, r.x + 13, r.y + 19, "#fff", bold = true)
       ui.hit(r)(beltClicked(i, r))
     }
-    // 底栏小按钮：小地图、交易、行会（交易、行会还没做，只画样子）、组队、好友、退出
+    // 底栏小按钮：小地图、交易（#1222）、行会（还没做，只画样子）、组队、好友、退出
     ui.button(Button(Rect(bx + 219, by + 104, 28, 13), () => ui.run(UiAction.MiniMap), img = Some(130), always = true))
+    ui.button(Button(Rect(bx + 249, by + 104, 28, 13), () => ui.run(UiAction.Trade), img = Some(132), always = true))
+    ui.button(Button(Rect(bx + 279, by + 104, 28, 13), () => ui.message("还没有这个功能"), img = Some(134), always = true))
     ui.button(Button(Rect(bx + 309, by + 104, 28, 13), () => ui.run(UiAction.Group), img = Some(128), always = true))
     friendsButton(Rect(bx + 339, by + 104, 28, 13))
-    List(132 -> 249, 134 -> 279).foreach { (img, dx) =>
-      ui.button(Button(Rect(bx + dx, by + 104, 28, 13), () => ui.message("还没有这个功能"), img = Some(img), always = true))
-    }
     ui.button(Button(Rect(bx + 530, by + 104, 28, 13), () => ui.logout(), img = Some(136), always = true))
     ui.button(Button(Rect(bx + 560, by + 104, 28, 13), () => ui.logout(), img = Some(138), always = true))
 
@@ -178,7 +180,7 @@ final class Board(ui: ClassicUi):
   /**
    * 锁定对象的信息卡：怪是名字、等级、攻防、经验（倍率后），中了毒或麻痹再加一行；宝宝绿框；别的玩家是名字、职业、灰/黄/红名
    * （#1225；安全区外打得到时红框，提醒攻击键会打他），下面一排键：组队（#1220：没组队「组队」、自己是队长时「加入小组」/「踢出小组」，队员没有）、
-   * 「私聊」（聊天框填好「/名字 」）、「加好友」/「删好友」（#1221）。都有血条，右上角 × 取消锁定。
+   * 「私聊」（聊天框填好「/名字 」）、「加好友」/「删好友」（#1221）、「交易」（#1222）。都有血条，右上角 × 取消锁定。
    */
   private def drawTarget(m: Me, top: Double): Unit =
     for
@@ -210,18 +212,20 @@ final class Board(ui: ClassicUi):
       g.text("×", close.x + 11, close.y + 4, "#f88", bold = true)
       ui.button(Button(close, () => ui.ctl.unlock()))
       a.look match
-        case h: Look.Human if h.name != m.name => drawPlayerKeys(m, h.name, Rect(x, r.y + r.h + 2, TargetW, 24))
+        case h: Look.Human if h.name != m.name => drawPlayerKeys(m, a.id, h.name, Rect(x, r.y + r.h + 2, TargetW, 24))
         case _                                 => ()
 
   /** 锁定别的玩家时信息卡下面的一排键，平分 row 的宽。 */
-  private def drawPlayerKeys(m: Me, other: String, row: Rect): Unit =
+  private def drawPlayerKeys(m: Me, id: ActorId, other: String, row: Rect): Unit =
     val isFriend = m.view.friends.exists(_.name == other)
     val keys =
       groupAction(m.view.group, m.name, other).map((label, cmd) => label -> (() => ui.social(cmd))).toList ++
         List(
           "私聊" -> (() => ui.whisperTo(other)),
           (if isFriend then "删好友" -> (() => ui.social(SocialCmd.RemoveFriend(other)))
-           else "加好友" -> (() => ui.social(SocialCmd.AddFriend(other))))
+           else "加好友" -> (() => ui.social(SocialCmd.AddFriend(other)))),
+          // 交易（#1222）：对方也对我点了就打开交易窗口
+          "交易" -> (() => ui.send(GameCmd.DealTry(id)))
         )
     val gap = 3.0
     val w   = (row.w - gap * (keys.size - 1)) / keys.size

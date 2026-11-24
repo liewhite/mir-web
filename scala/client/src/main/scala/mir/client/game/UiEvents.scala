@@ -19,6 +19,8 @@ trait UiEvents:
   /** 私聊（#1221）：peer 是对方 */
   def whisper(peer: String, text: String, way: WhisperWay): Unit
   def npcOpened(npc: ActorId, merchant: MerchantRef): Unit
+  /** 交易窗口打开了（#1222） */
+  def dealOpened(partner: String): Unit
   def levelUp(level: Int): Unit
   def died(): Unit
   def kicked(reason: String): Unit
@@ -34,6 +36,7 @@ object UiEvents:
     def chat(from: String, text: String, kind: ChatKind): Unit = ()
     def whisper(peer: String, text: String, way: WhisperWay): Unit = ()
     def npcOpened(npc: ActorId, merchant: MerchantRef): Unit   = ()
+    def dealOpened(partner: String): Unit                      = ()
     def levelUp(level: Int): Unit                              = ()
     def died(): Unit                                           = ()
     def kicked(reason: String): Unit                           = ()

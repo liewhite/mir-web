@@ -47,12 +47,11 @@ final class ItemMenuWindow(ui: ClassicUi) extends Window:
       val actions: List[MenuAction] = place match
         case ItemPlace.Worn(slot) => List(MenuAction("脱下", () => ui.send(GameCmd.Unequip(slot))))
         case ItemPlace.Belt(_) =>
-          List(
-            MenuAction("使用", () => ui.send(GameCmd.UseItem(it.uid))),
+          List(MenuAction("使用", () => ui.send(GameCmd.UseItem(it.uid)))) ++ ui.deal.bagActions(it) ++ List(
             MenuAction("放回包裹", () => firstEmpty(m.view.bag).fold(ui.message("包裹满了", Tone.Bad))(i => ui.send(GameCmd.MoveItem(it.uid, ItemPlace.Bag(i)))))
           ) ++ sell
         case ItemPlace.Bag(_) =>
-          ui.merchant.bagActions(it, d) ++
+          ui.merchant.bagActions(it, d) ++ ui.deal.bagActions(it) ++
             useLabel(kind).map(l => MenuAction(l, () => ui.send(GameCmd.UseItem(it.uid)))) ++
             Option.when(beltable(kind))(firstEmpty(m.view.belt)).flatten.map(i => MenuAction("放快捷栏", () => ui.send(GameCmd.MoveItem(it.uid, ItemPlace.Belt(i))))) ++
             List(

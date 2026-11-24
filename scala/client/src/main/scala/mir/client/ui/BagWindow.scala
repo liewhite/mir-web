@@ -24,7 +24,11 @@ final class BagWindow(ui: ClassicUi) extends ToggleWindow:
     m.view.bag.zipWithIndex.foreach { (slot, i) =>
       val r = gridCell(i)
       slot.filterNot(_ => ui.handFrom(ItemPlace.Bag(i)) || ui.merchant.holds(ItemPlace.Bag(i)))
-        .foreach(it => catalog.item(it.name).foreach(d => g.item(d.look, it.count, r.moved(-1, 1))))
+        .foreach { it =>
+          catalog.item(it.name).foreach(d => g.item(d.look, it.count, r.moved(-1, 1)))
+          // 放进交易栏的画暗（#1222）
+          if ui.deal.offers(it.uid) then g.rect(r.x, r.y, r.w, r.h, DealWindow.Dim)
+        }
       ui.hit(r)(ui.clickPlace(ItemPlace.Bag(i), ui.client.view.bag.lift(i).flatten, r))
     }
     g.text(Gfx.gold(m.stats.gold.value), o.x + 64, o.y + 185)

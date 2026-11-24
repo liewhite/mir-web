@@ -183,6 +183,19 @@ final case class FriendView(name: String, online: Boolean)
 object FriendView:
   given JsonCodec[FriendView] = DeriveJsonCodec.gen
 
+/** 交易栏一边（#1222）：放了哪些东西（数量是放进去的个数）、多少金币、确认了没有。 */
+final case class DealOffer(items: List[ItemInstance] = Nil, gold: Gold = Gold.zero, confirmed: Boolean = false):
+  def isEmpty: Boolean = items.isEmpty && gold == Gold.zero
+
+object DealOffer:
+  given JsonCodec[DealOffer] = DeriveJsonCodec.gen
+
+/** 交易窗口：和谁交易、我这边、对方那边。 */
+final case class DealView(partner: String, mine: DealOffer, theirs: DealOffer)
+
+object DealView:
+  given JsonCodec[DealView] = DeriveJsonCodec.gen
+
 /** 一句私聊是别人发给我的，还是我发出去的（服务端确认送到后回给发的人）。 */
 enum WhisperWay:
   case Received, Sent

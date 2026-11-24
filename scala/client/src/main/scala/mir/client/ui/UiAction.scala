@@ -19,6 +19,8 @@ enum UiAction:
   case Group
   /** 好友窗口（#1221） */
   case Friends
+  /** 和锁定或身边的玩家请求交易（#1222，底栏交易键） */
+  case Trade
   /** 私聊：聊天框预填「/最近私聊的人 」（原版按「/」键） */
   case Whisper
   case CloseAll

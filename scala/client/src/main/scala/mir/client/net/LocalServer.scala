@@ -106,6 +106,8 @@ final class LocalServer(catalog: Catalog, assets: Assets, listener: LinkEvent =>
     world(data.place.map).recoverWith(_ => world(CharacterData.start.map)).foreach { w =>
       val place = if w.mapId == data.place.map then data.place else CharacterData.start
       here = Some(w -> w.join(data.copy(place = place), carried))
+      if buddyOn then
+        buddy = Some(w.join(CharacterData.newbie(catalog, BuddyName, mir.model.Job.Taoist, mir.model.Sex.Female, uids).copy(place = Place(w.mapId, place.cell))))
       society.online(data.name, data.social).foreach(l => deliver(l.msg))
       if timer.isEmpty then timer = Some(dom.window.setInterval(() => tick(), TickMs))
     }
@@ -123,10 +125,27 @@ final class LocalServer(catalog: Catalog, assets: Assets, listener: LinkEvent =>
           }
     )
 
+  /**
+   * 地址带 &buddy：进图时身边放一个本地角色「木头人」（本机看交易窗口用）：你对它点交易它就同意，
+   * 打开后它放 2 瓶小红和 10 金币，你确认后它也确认。换图就没了。
+   */
+  private def buddyOn: Boolean = dom.window.location.search.contains("buddy")
+  private var buddy        = Option.empty[ActorId]
+
+  private def actBuddy(w: World, me: ActorId, b: ActorId, msgs: Vector[ServerMsg]): Unit = msgs.foreach {
+    case ServerMsg.Notice(text, _) if text.contains("想和你交易") => w.handle(b, GameCmd.DealTry(me))
+    case ServerMsg.Deal(Some(d)) if d.mine.isEmpty && !d.theirs.confirmed =>
+      w.player(b).flatMap(_ => w.snapshot(b)).flatMap(_.belt.flatten.headOption).foreach(it => w.handle(b, GameCmd.DealPut(it.uid, Some(2))))
+      w.handle(b, GameCmd.DealGold(Gold(10)))
+    case ServerMsg.Deal(Some(d)) if d.theirs.confirmed && !d.mine.confirmed => w.handle(b, GameCmd.DealConfirm)
+    case _ => ()
+  }
+
   private def tick(): Unit = here.foreach { (w, me) =>
     w.tick(clock)
     val out = w.flush()
     out.messages.get(me).foreach(_.foreach(deliver))
+    buddy.filter(b => w.player(b).isDefined).foreach(b => out.messages.get(b).foreach(actBuddy(w, me, b, _)))
     out.departures.find(_.player == me).foreach { d =>
       here = None
       enter(d.data, d.carried)
@@ -136,3 +155,4 @@ final class LocalServer(catalog: Catalog, assets: Assets, listener: LinkEvent =>
 object LocalServer:
   /** 本地世界多久推进一次 */
   val TickMs = 50
+  val BuddyName = "木头人"

@@ -97,12 +97,13 @@ final class ClassicUi(
   val itemMenu = ItemMenuWindow(this)
   val group    = GroupWindow(this)
   val friends  = FriendWindow(this)
+  val deal     = DealWindow(this)
 
   /**
    * 全部窗口，从下到上：绘制顺序、点击叠放（后画的盖住先画的）、悬停说明、全部关闭都按它。
    * 新加窗口只要写一个 Window 实现、在这里排好位置。
    */
-  val windows: List[Window] = List(worldMap, merchant, bag, state, settings, teleport, group, friends, keyDlg, quantity, itemMenu)
+  val windows: List[Window] = List(worldMap, merchant, bag, state, settings, teleport, group, friends, deal, keyDlg, quantity, itemMenu)
 
   def options: ViewOptions = client.options
 
@@ -156,6 +157,10 @@ final class ClassicUi(
     bag.show()
     itemMenu.close()
   }
+  /** 交易窗口打开（#1222）：包裹一起打开（原版 OpenDealDlg） */
+  def dealOpened(partner: String): Unit =
+    itemMenu.close()
+    bag.show()
   /** 升级的提示服务端已经发了（Notice），这里不再重复 */
   def levelUp(level: Int): Unit = ()
   /** 死了：关掉窗口、弹「回城复活」（提示文字服务端发） */
@@ -195,12 +200,22 @@ final class ClassicUi(
     case UiAction.Teleport       => itemMenu.close(); teleport.toggle()
     case UiAction.Group          => itemMenu.close(); group.toggle()
     case UiAction.Friends        => itemMenu.close(); friends.toggle()
+    case UiAction.Trade          => tryTrade()
     case UiAction.Whisper        => lastWhisper.fold(openChat(Speech.WhisperPrefix))(whisperTo)
     case UiAction.MiniMap        => miniMap.cycle()
     case UiAction.WorldMap       => itemMenu.close(); worldMap.toggle()
     case UiAction.CloseAll       => closeAll()
 
   def logout(): Unit = env.logout()
+
+  /** 底栏交易键：和锁定的玩家（没有就身边最近的玩家）请求交易。 */
+  def tryTrade(): Unit = me.foreach { m =>
+    if deal.isOpen then message("正在交易", Tone.Bad)
+    else
+      DealWindow.partner(this, m) match
+        case Some(id) => send(GameCmd.DealTry(id))
+        case None     => message("先点一下要交易的玩家锁定他，站到他旁边再点「交易」。", Tone.Bad)
+  }
 
   /** 打开聊天框（可预填），回车按开头的符号发成说话、喊话、队伍聊天或私聊。 */
   def openChat(prefill: String = ""): Unit = ask(ChatInput.ChatHint, prefill)(text => client.send(Speech.command(text)))

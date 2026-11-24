@@ -109,6 +109,7 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
       case ServerMsg.LevelUp(lv)            => ui.levelUp(lv)
       case ServerMsg.Died                   => ui.died()
       case ServerMsg.NpcOpened(npc, ref)    => ui.npcOpened(npc, ref)
+      case ServerMsg.Deal(Some(d)) if before.deal.isEmpty => ui.dealOpened(d.partner)
       case ServerMsg.Kicked(why)            =>
         playing = None
         ui.kicked(why)

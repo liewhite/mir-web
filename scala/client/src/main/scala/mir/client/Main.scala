@@ -177,7 +177,12 @@ object DebugHandle:
       gold = () => client.view.stats.fold(0L)(_.gold.value),
       sent = () => js.Array(client.recent.filterNot(_.isInstanceOf[mir.protocol.SessionCmd]).map(_.toString)*),
       group = () => ui.run(mir.client.ui.UiAction.Group),
-      friends = () => ui.run(mir.client.ui.UiAction.Friends)
+      friends = () => ui.run(mir.client.ui.UiAction.Friends),
+      trade = () => ui.run(mir.client.ui.UiAction.Trade),
+      deal = () => client.view.deal.fold("")(_.toString),
+      /** 直接发一条指令（协议 JSON，如 {"DealConfirm":{}}）：测试用，照样由服务端判定 */
+      cmd = (json: String) =>
+        mir.protocol.SessionCmd.clientCmd.decoder.decodeJson(json).fold(e => s"解不开：$e", c => { client.send(c); "ok" })
     )
     dom.window.asInstanceOf[js.Dynamic].__mir = handle
 

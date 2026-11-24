@@ -30,6 +30,8 @@ final case class ViewState(
     group: GroupView = GroupView(),
     /** 好友名单（#1221） */
     friends: List[FriendView] = Nil,
+    /** 交易窗口（#1222；换图时清掉：人一走服务端就取消了） */
+    deal: Option[DealView] = None,
     /** 服务端时钟与本地时钟之差（EnterMap / Pong 时更新由客户端算，这里只记服务端给的时刻） */
     serverNow: Option[Millis] = None
 ):
@@ -37,7 +39,7 @@ final case class ViewState(
 
   def apply(msg: ServerMsg): ViewState = msg match
     case ServerMsg.EnterMap(you, map, _, _, now) =>
-      copy(me = Some(you), map = Some(map), actors = Map.empty, ground = Map.empty, fields = Map.empty, serverNow = Some(now))
+      copy(me = Some(you), map = Some(map), actors = Map.empty, ground = Map.empty, fields = Map.empty, deal = None, serverNow = Some(now))
     case ServerMsg.Appear(a)       => copy(actors = actors.updated(a.id, a))
     case ServerMsg.Disappear(id)   => copy(actors = actors - id)
     case ServerMsg.Act(id, cell, dir, action) =>
@@ -60,6 +62,7 @@ final case class ViewState(
     case ServerMsg.Settings(s)              => copy(settings = s)
     case ServerMsg.Group(g)                 => copy(group = g)
     case ServerMsg.Friends(f)               => copy(friends = f)
+    case ServerMsg.Deal(d)                  => copy(deal = d)
     case ServerMsg.Pong(_, server)          => copy(serverNow = Some(server))
     // 一次性的事、会话消息：不改状态
     case ServerMsg.LoggedIn(_) | ServerMsg.CharList(_) | ServerMsg.Kicked(_) | ServerMsg.Effect(_) | ServerMsg.Sound(_, _) |

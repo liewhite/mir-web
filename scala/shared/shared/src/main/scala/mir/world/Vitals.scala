@@ -185,6 +185,7 @@ final class Vitals(w: World):
         recalc(p)
         p.hp = p.stats.maxHp
         p.mp = p.stats.maxMp
+        w.out.checkpoint(p)
         (before + 1 to after.level).foreach { lv =>
           w.out.tell(p, ServerMsg.LevelUp(lv))
           w.out.notice(p, s"升级了！现在 $lv 级", Tone.Good)

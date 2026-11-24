@@ -14,7 +14,9 @@ final case class Outbox(
     /** 每个玩家（按本世界里的对象编号）要收的消息，按顺序 */
     messages: Map[ActorId, Vector[ServerMsg]],
     /** 离开本图去别的图的玩家：服务端把他交给目的地图的世界 */
-    departures: Vector[Departure]
+    departures: Vector[Departure],
+    /** 要立刻存档的玩家（升级、交易成交；交易双方一起存） */
+    checkpoints: Set[ActorId] = Set.empty
 )
 
 /** 一个玩家换图：存档（位置已是目的地）、跟着走的不进存档的东西。 */
@@ -57,7 +59,7 @@ object World:
  * - 单线程使用：服务端每张图一个，自己排队调用 handle / tick / flush。内部状态可变，对外只有「指令进、消息出」。
  * - 随机数和时钟从外面传入（测试可固定）；没人的图 tick 什么也不做。
  * - 这里只放对象表、时钟、定时器和每次推进的顺序；各管一摊的部分在各自的类里，只对 world 包开放：
- *   Mailbox（要发的消息）、Placement（占位与移动：格子、朝向、动作只由它改）、Vitals（血蓝与生死：血量蓝量只由它改）、
+ *   Mailbox（要发的消息）、Trades（玩家交易）、Placement（占位与移动：格子、朝向、动作只由它改）、Vitals（血蓝与生死：血量蓝量只由它改）、
  *   Conditions（身上状态、地上法术）、Hostility（敌我）、Justice（PK：灰名、PK 值、红名掉东西）、Roster（进出图）、Spawner（开图放 NPC 守卫、刷怪）、
  *   Visibility（按视野算出每个玩家要收的消息）。
  */
@@ -93,6 +95,7 @@ final class World(
   private[world] val roster: Roster             = Roster(this)
   private[world] val spawner: Spawner           = Spawner(this, start)
   private[world] val visibility: Visibility     = Visibility(this)
+  private[world] val trades: Trades             = Trades(this)
 
   // 对外（服务端、测试）开放的查询和进出图
   export grid.{occupant, canEnter, freeCellNear, randomSpot}
@@ -181,6 +184,7 @@ final class World(
         case _                                           => ()
       }
       ground.values.toVector.foreach(g => if clock - g.droppedAt > ItemKeepMs then ground.remove(g.id): Unit)
+      trades.settle()
 
   // ---------------- 地上的东西 ----------------
 
@@ -209,7 +213,9 @@ final class World(
   // ---------------- 指令进、消息出 ----------------
 
   /** 执行一个玩家的游戏指令；不合法的回 Refused（或移动回 MoveDenied）。 */
-  def handle(id: ActorId, cmd: GameCmd): Unit = player(id).foreach(PlayerOps.handle(this, _, cmd))
+  def handle(id: ActorId, cmd: GameCmd): Unit =
+    player(id).foreach(PlayerOps.handle(this, _, cmd))
+    trades.settle() // 指令可能动了交易栏里的东西（用掉、扔掉）或把人传走
 
   /** 取走到目前为止要发的全部消息。 */
   def flush(): Outbox = visibility.flush(out.drain())
