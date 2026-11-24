@@ -20,6 +20,9 @@ final case class PotionCourse(hpPerTick: Int, mpPerTick: Int, ticksLeft: Int, ne
   def advanced: Option[PotionCourse] =
     Option.when(ticksLeft > 1)(copy(ticksLeft = ticksLeft - 1, next = next + mir.rules.PotionRules.TickMs.toLong))
 
+/** 治愈术、群体治疗术还没回完的血（SpellRules.HealingPoolCap 封顶）和下一拍的时刻。 */
+final case class Mending(left: Int, next: Millis)
+
 /** 加防御上限的法术效果（神圣战甲术、幽灵盾）加到一个范围上。 */
 private def raised(span: Span, amount: Option[Int]): Span =
   amount.fold(span)(n => Span(span.lo, math.min(255, span.hi + n)))
@@ -36,6 +39,8 @@ sealed abstract class Actor(val id: ActorId, initCell: Cell, initDir: Dir, now: 
   private[world] val statuses: Statuses   = Statuses()
   /** 最近打过我的对象（还手、经验归属） */
   private[world] var lastHitBy: Option[ActorId] = None
+  /** 治愈术还没回完的血（Vitals.mend / tickMending） */
+  private[world] var mending: Option[Mending] = None
 
   def maxHp: Int
   def look: Look

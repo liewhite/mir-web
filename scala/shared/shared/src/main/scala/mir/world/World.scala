@@ -140,6 +140,7 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
             case m: Monster => MonsterAi.think(this, m)
             case _          => ()
           vitals.tickPoison(a)
+          vitals.tickMending(a)
       }
       conditions.tickFields()
       players.toVector.foreach { p =>

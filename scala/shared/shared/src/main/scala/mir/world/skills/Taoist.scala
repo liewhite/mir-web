@@ -12,15 +12,17 @@ import mir.world.Sounds.SpellPhase
 object Taoist:
   private def fx(start: Int): Option[CastFx] = Some(CastFx("magic", start, 10, 60))
 
-  /** 治愈术：选中的是自己人就治它，否则治自己。 */
+  /** 放出去的治疗有没有人收到（都满血就不加熟练度） */
+  private def healed(any: Boolean): Effect = if any then Effect.Cast else Effect.Spent
+
+  /** 治愈术：选中的是自己人就治它，否则治自己；血慢慢回（SpellCtx.mend）。 */
   object Healing extends SkillHandler:
     override val castFx = fx(200)
     def cast(c: SpellCtx)(using Rng): Effect =
       import c.*
       val who = friendOrSelf
-      healOne(who, SpellRules.heal(d, lv, sc))
       c.fx("magic", 200, 10, 60, Anchor.OnActor(who.id))
-      Effect.Cast
+      healed(mend(who, SpellRules.heal(d, lv, sc)))
 
   /** 群体治疗术：中心周围 1 格的自己人（MagBigHealing）。 */
   object GroupHealing extends SkillHandler:
@@ -29,9 +31,9 @@ object Taoist:
       import c.*
       val heal   = SpellRules.heal(d, lv, sc)
       val center = friendCenter
-      friendsAround(center, SpellRules.GroupRadius).foreach(healOne(_, heal))
+      val any    = friendsAround(center, SpellRules.GroupRadius).map(mend(_, heal)).foldLeft(false)(_ || _)
       c.fx("magic", 1800, 10, 80, Anchor.OnCell(center))
-      Effect.Cast
+      healed(any)
 
   /** 施毒术：灰色药粉绿毒、黄色药粉红毒；两种都带着时每次换一种。 */
   object Poisoning extends SkillHandler:

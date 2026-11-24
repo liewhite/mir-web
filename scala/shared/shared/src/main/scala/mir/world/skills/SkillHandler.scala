@@ -3,7 +3,7 @@ package mir.world.skills
 import mir.core.*
 import mir.data.SkillDef
 import mir.model.*
-import mir.protocol.{Anchor, ServerMsg, Tone}
+import mir.protocol.{Anchor, Tone}
 import mir.rules.{Durability, ItemKind, Rng, Skill, SpellRules}
 import mir.world.*
 
@@ -11,6 +11,8 @@ import mir.world.*
 enum Effect:
   /** 放出去了，人物进施法动作 */
   case Cast
+  /** 放出去了（扣蓝、施法动作照常）但没起作用，不加熟练度（治愈术只给了满血的） */
+  case Spent
   /** 放了但不进施法动作（开关、蓄力） */
   case Instant
   /** 人物自己做了别的动作（野蛮冲撞）；trained 时加熟练度 */
@@ -181,9 +183,14 @@ final class SpellCtx(
     case q: Player  => q.charName
     case _          => ""
 
-  def healOne(who: Actor, heal: Int): Unit =
-    val v = w.vitals.heal(who, heal)
-    w.out.nearby(who.cell, ServerMsg.Heal(who.id, v))
+  /**
+   * 治愈术给一个自己人：血没满才起作用，SpellRules.HealingDelayMs 后落到身上、进待回治疗量慢慢回（Magic.pas SKILL_HEALLING）。
+   * 返回起没起作用（满血的不加熟练度）。
+   */
+  def mend(who: Actor, heal: Int): Boolean =
+    val hurt = who.hp < who.maxHp
+    if hurt then w.afterOn(who, SpellRules.HealingDelayMs.toLong)(w.vitals.mend(_, heal))
+    hurt
 
   /** 盯上放技能的人（怪还没目标时） */
   def provoke(m: Monster): Unit = if m.target.isEmpty then m.target = Some(p.id)

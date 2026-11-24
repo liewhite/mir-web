@@ -57,6 +57,21 @@ object SpellRules:
   def heal(d: SkillDef, level: Int, sc: Span)(using Rng): Int =
     Rules.attackPower(Rules.skillPower(Rules.magicBase(d.power), level, d.defPower) + sc.lo * 2, (sc.hi - sc.lo) * 2 + 1)
 
+  /**
+   * 治愈术、群体治疗术不是一下回满，而是进目标的「待回治疗量」慢慢回（ObjBase.pas RM_MAGHEALING 与回复节拍）：
+   * 放出后 HealingDelayMs 落到目标身上，累计不超过 HealingPoolCap；每拍回 HealingPerTick 点，
+   * 一拍的间隔看目标等级（healingTickMs）；目标血满或死了，没回完的作废。
+   */
+  val HealingDelayMs = 800
+  val HealingPoolCap = 300
+  val HealingPerTick = 5
+
+  /** 回复节拍：600 − min(400, 等级×10) 毫秒（20 级以上 200 毫秒）。 */
+  def healingTickMs(level: Int): Int = 600 - math.min(400, level * 10)
+
+  /** 待回治疗量再加一份：加完不到上限就累加，到了就是上限。 */
+  def addHealing(pool: Int, amount: Int): Int = if pool + amount < HealingPoolCap then pool + amount else HealingPoolCap
+
   /** 雷电术、疾光电影打不死系 ×1.5。 */
   def vsUndead(power: Int): Int = round(power * 1.5)
 

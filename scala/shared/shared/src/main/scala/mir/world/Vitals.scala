@@ -97,6 +97,7 @@ final class Vitals(w: World):
 
   private def kill(target: Actor, killer: Option[ActorId]): Unit =
     target.dead = true
+    target.mending = None
     StatusKind.poisons.foreach(target.statuses.remove)
     w.grid.setAction(target, ActKind.Die, 1200)
     target match
@@ -217,6 +218,29 @@ final class Vitals(w: World):
           case Some(rest) => run(rest)
           case None       => None
     if !p.dead then p.potions = p.potions.flatMap(run)
+
+  /** 治愈术落到身上：加进待回治疗量（封顶见 SpellRules.addHealing）；本来没有的从现在起过一拍开始回。 */
+  private[world] def mend(a: Actor, amount: Int): Unit =
+    if !a.dead then
+      a.mending = Some(a.mending match
+        case Some(m) => m.copy(left = SpellRules.addHealing(m.left, amount))
+        case None    => Mending(SpellRules.addHealing(0, amount), w.now + SpellRules.healingTickMs(levelOf(a)).toLong))
+
+  /** 治愈术慢慢回：到点的拍都补上，每拍 SpellRules.HealingPerTick 点；回完、血满或死了就作废。 */
+  private[world] def tickMending(a: Actor): Unit =
+    @scala.annotation.tailrec def run(m: Mending): Option[Mending] =
+      if m.next > w.now then Some(m)
+      else
+        val step = math.min(SpellRules.HealingPerTick, m.left)
+        heal(a, step): Unit
+        if m.left <= step || a.hp >= a.maxHp then None
+        else run(Mending(m.left - step, m.next + SpellRules.healingTickMs(levelOf(a)).toLong))
+    a.mending = if a.dead then None else a.mending.flatMap(run)
+
+  private def levelOf(a: Actor): Int = a match
+    case p: Player  => p.level
+    case m: Monster => m.defn.level
+    case _: Npc     => 0
 
   /** 自然回复（规则见 Recovery）。 */
   private[world] def regen(p: Player): Unit =

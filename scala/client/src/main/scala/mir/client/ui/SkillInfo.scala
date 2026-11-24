@@ -74,6 +74,11 @@ object SkillInfo:
     private def scDmg(l: Int)          = span(r => SpellRules.scDamage(d, l, sc)(using r))
     private def heal(l: Int)           = span(r => SpellRules.heal(d, l, sc)(using r))
     private val armor                  = "，再减目标魔防"
+    /** 治愈术、群体治疗术怎么回（SpellRules 的回血池规则） */
+    private val healingNotes = List(
+      s"不是一下回满：目标 20 级以上每 ${SpellRules.healingTickMs(20) / 1000.0} 秒回 ${SpellRules.HealingPerTick} 点，等级越低越慢（1 级 ${SpellRules.healingTickMs(1) / 1000.0} 秒）",
+      s"连放几次会累加，最多攒 ${SpellRules.HealingPoolCap} 点；血满了没回完的作废，满血的目标放了不涨熟练度"
+    )
     private def melee(f: Int => Int)   = if s.dc.lo == s.dc.hi then s"${f(s.dc.lo)}" else s"${f(s.dc.lo)}-${f(s.dc.hi)}"
 
     /** 诱惑一次各结果的概率：先按 tameChance 收服，没收服再走原版流程（流程里的收服算没反应）。 */
@@ -113,7 +118,7 @@ object SkillInfo:
       case Skill.SpaceMove => Some(l => s"成功 ${chance(r => SpellRules.spaceMoveWorks(l)(using r))}")
       case Skill.MagicShield => Some(l => s"挡 ${pct(SpellRules.shieldAbsorb(l))}，${span(r => SpellRules.shieldSecs(d, l, mc)(using r))} 秒")
       case Skill.Tame => Some(l => s"收服 ${tamePct(l, "收服")}")
-      case Skill.Healing | Skill.GroupHealing => Some(l => s"回血 ${heal(l)}")
+      case Skill.Healing | Skill.GroupHealing => Some(l => s"持续回血共 ${heal(l)}")
       case Skill.SoulFireBall => Some(l => s"威力 ${scDmg(l)}")
       case Skill.Poisoning  => Some(l => s"绿毒 ${span(r => SpellRules.poisonSecs(d, l, sc, green = true)(using r))} 秒、红毒 ${span(r => SpellRules.poisonSecs(d, l, sc, green = false)(using r))} 秒")
       case Skill.SoulShield | Skill.HolyArmor => Some(l => s"${span(r => SpellRules.defenceUpSecs(d, l, sc)(using r))} 秒")
@@ -177,10 +182,11 @@ object SkillInfo:
             s"血 1000 收服 ${pct(SpellRules.tameChance(L, l, SpellRules.TameTarget(L, 1000, false)))}；比你低 10 级、血 300 以下 " +
             pct(SpellRules.tameChance(L, l, SpellRules.TameTarget(L - 10, 200, false)))
         )
-      case Skill.Healing => List(s"给选中的自己人（没选就是自己）回血 ${heal(l)}", s"= 技能基础 + 道术 ${sc.lo}-${sc.hi} ×2")
+      case Skill.Healing =>
+        List(s"给选中的自己人（没选就是自己）持续回血共 ${heal(l)}", s"= 技能基础 + 道术 ${sc.lo}-${sc.hi} ×2") ++ healingNotes
       case Skill.GroupHealing =>
         val w = SpellRules.GroupRadius * 2 + 1
-        List(s"选中的自己人（没选就是自己）周围 ${w}×$w 格的自己人每人回血 ${heal(l)}")
+        s"选中的自己人（没选就是自己）周围 ${w}×$w 格的自己人每人持续回血共 ${heal(l)}" :: healingNotes
       case Skill.Poisoning =>
         List(
           "用灰色药粉（绿毒）或黄色药粉（红毒），放包裹里就行，每次用 1 份；两种都带着时红绿交替下",

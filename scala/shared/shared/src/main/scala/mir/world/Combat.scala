@@ -142,13 +142,13 @@ object Combat:
                   if skill.costsMana then w.vitals.spendMp(p, cost)
                   skill.cooldownMs(d).foreach(ms => p.cooldown(skillId) = w.now + ms)
                 handler.cast(SpellCtx(w, p, skill, s, d, t, tgt.cell)) match
-                  case Effect.Cast =>
+                  case e @ (Effect.Cast | Effect.Spent) =>
                     paid()
                     w.out.sound(p.cell, Sounds.magic(skillId, SpellPhase.Start))
                     handler.castFx.foreach(f => w.out.effect(f.lib, f.start, f.frames, f.frameTime, Anchor.OnActor(p.id)))
                     w.grid.setAction(p, ActKind.Spell, Pace.SpellAnimMs, spellEffect = Some(d.effect))
                     p.busyUntil = w.now + Pace.SpellIntervalMs
-                    train(w, p, skillId, 1 + rng.random(3))
+                    if e == Effect.Cast then train(w, p, skillId, 1 + rng.random(3))
                     if !handler.keepsInvisible then p.statuses.remove(StatusKind.Invisible)
                     Outcome.Done
                   case Effect.Acted(trained) =>

@@ -61,6 +61,12 @@ object SpellSpec extends ZIOSpecDefault:
   private def put(s: Sim, name: String, at: Cell): Monster =
     s.w.spawner.spawnMonster(catalog.monster(MonsterName(name)).getOrElse(throw new AssertionError(name)), None, at, 0).get
 
+  /** 关掉自然回血、拿走药（测试治疗量用：血上限 10 万时自然回血一跳上千，血少了还会自动喝药） */
+  private def noRegen(p: Player): Unit =
+    p.lastRegen = Millis(Long.MaxValue / 2)
+    p.bag.indices.foreach(p.bag(_) = None)
+    p.belt.indices.foreach(p.belt(_) = None)
+
   /** 把怪钉住不动（测试用：远远地定住，免得乱跑） */
   private def pin(m: Monster): Unit = m.statuses.put(Status.Seized, Millis(Long.MaxValue / 2))
 
@@ -303,20 +309,25 @@ object SpellSpec extends ZIOSpecDefault:
       s.run(500)
       assertTrue(a.dead, b.dead)
     },
-    test("群体治疗术：中心周围 1 格的自己人（含宝宝）回血") {
+    test("群体治疗术：中心周围 1 格的自己人（含宝宝）慢慢回血") {
       val s   = sim()
       val p   = caster(s, Job.Taoist, List(29))
+      noRegen(p)
       val pet = put(s, "蛤蟆", Cell(31, 30))
+      pin(pet)
       pet.master = Some(p.id)
       p.pets += pet.id
       p.hp = 10
       pet.hp = 1
       s.cast(p, 29, None, p.cell)
-      assertTrue(p.hp > 10, pet.hp > 1)
+      val (selfNow, petNow) = (p.hp, pet.hp)
+      s.run(3000)
+      assertTrue(selfNow == 10, petNow == 1, p.hp > 10, pet.hp > 1)
     },
     test("治愈术：选中 8 格内的宝宝就治宝宝、不治自己；选中的是怪就治自己") {
       val s   = sim()
       val p   = caster(s, Job.Taoist, List(2))
+      noRegen(p)
       val pet = put(s, "蛤蟆", Cell(35, 30))
       val foe = put(s, "鸡", Cell(31, 30))
       pin(pet)
@@ -326,10 +337,67 @@ object SpellSpec extends ZIOSpecDefault:
       p.hp = 10
       pet.hp = 1
       s.cast(p, 2, Some(pet), pet.cell)
-      val (selfAfterPet, petAfter) = (p.hp, pet.hp)
       s.run(3000)
+      val (selfAfterPet, petAfter) = (p.hp, pet.hp)
       s.cast(p, 2, Some(foe), foe.cell)
+      s.run(3000)
       assertTrue(petAfter > 1, selfAfterPet == 10, p.hp > 10)
+    },
+    test("治愈术不是一下回满：800 毫秒后落到身上，每 200 毫秒（40 级）回 5 点，回完正好是治疗量") {
+      val s     = sim()
+      val p     = caster(s, Job.Taoist, List(2))
+      noRegen(p)
+      p.stats = p.stats.copy(sc = Span(40, 40))
+      val total = SpellRules.heal(catalog.skill(SkillId(2)).get, 3, Span(40, 40))(using Rng.seeded(1))
+      p.hp = 10
+      s.cast(p, 2, None, p.cell)
+      val atCast = p.hp
+      s.run(750)
+      val beforeLand = p.hp
+      s.run(300) // 落到身上 + 一拍
+      val firstTick = p.hp
+      s.run(400) // 再两拍
+      val twoMore = p.hp
+      s.run(30_000)
+      assertTrue(
+        total < SpellRules.HealingPoolCap,
+        atCast == 10, beforeLand == 10,
+        firstTick == 15, twoMore == 25,
+        p.hp == 10 + total, p.mending.isEmpty
+      )
+    },
+    test("待回治疗量最多攒 300；血满了没回完的作废；死了也作废") {
+      val s = sim()
+      val p = caster(s, Job.Taoist, Nil)
+      noRegen(p)
+      p.hp = 10
+      s.w.vitals.mend(p, 250)
+      s.w.vitals.mend(p, 100)
+      val capped = p.mending.map(_.left)
+      p.hp = p.maxHp - 7
+      s.run(1000)
+      val fullHp = (p.hp, p.mending)
+      s.w.vitals.mend(p, 100)
+      s.w.vitals.damage(p, p.maxHp * 2, None)
+      assertTrue(
+        SpellRules.addHealing(100, 100) == 200, SpellRules.addHealing(250, 100) == 300,
+        capped.contains(300), fullHp == (p.maxHp, None), p.dead, p.mending.isEmpty
+      )
+    },
+    test("治愈术给满血的：照常扣蓝、施法，但不回血、不涨熟练度；没满血的才涨") {
+      val s = sim()
+      val p = caster(s, Job.Taoist, Nil)
+      noRegen(p)
+      p.skills += LearnedSkill(SkillId(2), 0, 0, None)
+      s.cast(p, 2, None, p.cell)
+      val (mpAfter, skillAfter, pending) = (p.mp, p.skill(SkillId(2)), p.mending)
+      s.run(1000)
+      p.hp = 10
+      s.cast(p, 2, None, p.cell)
+      assertTrue(
+        mpAfter < 100_000, skillAfter.contains(LearnedSkill(SkillId(2), 0, 0, None)), pending.isEmpty,
+        !p.skill(SkillId(2)).contains(LearnedSkill(SkillId(2), 0, 0, None))
+      )
     },
     test("红毒：中毒期间挨打伤害 ×1.2") {
       val s = sim()
