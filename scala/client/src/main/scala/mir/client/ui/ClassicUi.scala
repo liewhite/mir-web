@@ -31,8 +31,10 @@ final case class UiEnv(
     sound: Int => Unit,
     /** 本机画面、声音设置变了：存起来并应用 */
     saveOptions: ViewOptions => Unit,
-    /** 退出：回选人画面 */
+    /** 游戏里退出：回选人画面 */
     logout: () => Unit,
+    /** 选人画面退出：退出账号，回登录画面（原版是关客户端，下次打开从登录开始） */
+    signOut: () => Unit,
     /** 界面像素 → CSS 像素（放网页输入框用） */
     uiScale: () => Double
 )

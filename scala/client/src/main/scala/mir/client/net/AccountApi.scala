@@ -7,7 +7,7 @@ import scala.concurrent.Future
 import scala.scalajs.js
 
 /**
- * 账号的 HTTP 接口（服务端 HttpServer）：查登录没有、登录、注册。登录和注册成功都由服务端设会话 cookie。
+ * 账号的 HTTP 接口（服务端 HttpServer）：查登录没有、登录、注册、退出。登录和注册成功都由服务端设会话 cookie。
  * 失败给 Left(给玩家看的话)。
  */
 object AccountApi:
@@ -18,6 +18,10 @@ object AccountApi:
 
   def loggedIn(): Future[Boolean] =
     dom.fetch("api/me", init(dom.HttpMethod.GET, None)).toFuture.map(_.ok)
+
+  /** 退出账号：服务端清会话 cookie。 */
+  def logout(): Future[Unit] =
+    dom.fetch("api/logout", init(dom.HttpMethod.POST, None)).toFuture.map(_ => ())
 
   def login(account: String, password: String): Future[Either[String, Unit]] =
     post("api/login", account, password) {

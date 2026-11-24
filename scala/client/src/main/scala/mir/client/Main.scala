@@ -4,7 +4,7 @@ import mir.client.assets.{Assets, SpriteStore}
 import mir.client.audio.Audio
 import mir.client.game.{ClientEnv, Controller, GameClient}
 import mir.client.input.{Input, Joystick}
-import mir.client.net.{LocalServer, WsTransport}
+import mir.client.net.{AccountApi, LocalServer, WsTransport}
 import mir.client.render.{Renderer, ViewOptions}
 import mir.client.ui.{ClassicUi, Gfx, Insets, Lobby, UiEnv, Viewport}
 import mir.core.*
@@ -83,6 +83,8 @@ object Main:
         applyOptions(o),
       // 退出：重新打开页面回到选人（服务端在断线时存档）
       logout = () => dom.window.location.reload(),
+      // 清掉会话 cookie 再重开页面，就从登录画面开始（清没清成都重开：本地模式没有账号接口）
+      signOut = () => AccountApi.logout().onComplete(_ => dom.window.location.reload()),
       uiScale = () => view.uiScale
     )
     val touch = dom.window.matchMedia("(pointer: coarse)").matches

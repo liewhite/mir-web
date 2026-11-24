@@ -191,7 +191,7 @@ final class CharSelect(ui: ClassicUi, initial: List[CharSummary]):
       case Btn.NewChr  => startCreate()
       case Btn.Erase   => erase()
       case Btn.Credits => ()
-      case Btn.Exit    => ui.logout()
+      case Btn.Exit    => ui.env.signOut()
 
   private def choose(i: Int): Unit = if i != selected && chars.isDefinedAt(i) then
     selected = i
