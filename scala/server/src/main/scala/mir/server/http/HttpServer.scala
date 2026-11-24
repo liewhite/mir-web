@@ -26,7 +26,14 @@ import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
  *   浏览器缓存一周（version.json 除外）；其余路径是客户端页面（WEB_DIR），不用登录。
  * - 都带 ETag（304），文本类大于 1KB 的 gzip。
  */
-final class HttpServer(accounts: Accounts, tokens: SessionTokens, game: GameServer, assetsDir: Path, webDir: Path):
+final class HttpServer(
+    accounts: Accounts,
+    tokens: SessionTokens,
+    game: GameServer,
+    assetsDir: Path,
+    webDir: Path,
+    pingEveryMs: Long
+):
   private val loginLimiter    = RateLimiter.login()
   private val registerLimiter = RateLimiter.register()
   private val reportByAccount = RateLimiter.clientErrorsPerAccount()
@@ -157,6 +164,8 @@ final class HttpServer(accounts: Accounts, tokens: SessionTokens, game: GameServ
       ZIO.scoped {
         for
           _ <- link.pump(channel).ignore.forkScoped
+          // 协议层 ping（#1238）：浏览器自动回 pong，后台标签页也照回；pong 交给游戏线程刷新「最后听到」的时刻
+          _ <- ZIO.succeed(link.ping()).repeat(Schedule.spaced(pingEveryMs.millis)).delay(pingEveryMs.millis).forkScoped
           _ <- channel.receiveAll {
                  case ChannelEvent.UserEventTriggered(ChannelEvent.UserEvent.HandshakeComplete) =>
                    ZIO.succeed(game.post(LinkEvent.Opened(link)))
@@ -164,12 +173,14 @@ final class HttpServer(accounts: Accounts, tokens: SessionTokens, game: GameServ
                    text.fromJson[ClientCmd] match
                      case Right(cmd) => ZIO.succeed(game.post(LinkEvent.Received(link, cmd)))
                      case Left(e)    => ZIO.succeed(badCommand(link, e, text))
+                 case ChannelEvent.Read(WebSocketFrame.Pong) =>
+                   ZIO.succeed(game.post(LinkEvent.Alive(link)))
                  case ChannelEvent.Unregistered => close
                  case _                         => ZIO.unit
                }.ensuring(close)
         yield ()
       }
-    }.toResponse
+    }.withConfig(WebSocketConfig.default.forwardPongFrames(true)).toResponse
 
   /** 解不开的指令：回给客户端，并记日志（限频，版本不一致时客户端每走一步都会来一条）。 */
   private def badCommand(link: WsLink, error: String, text: String): Unit =

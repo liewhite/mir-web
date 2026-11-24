@@ -33,9 +33,10 @@ object Boot:
       clock    = () => Millis(java.lang.System.currentTimeMillis())
       social   = mir.social.Social()
       maps     = Maps(catalog, cfg.assetsDir, store.uids, clock, social)
-      game     = GameServer(catalog, maps, store.chars, store.uids, Some(Backups(store.db, cfg.backupDir)), clock, social = social)
+      game     = GameServer(catalog, maps, store.chars, store.uids, Some(Backups(store.db, cfg.backupDir)), clock,
+                   idleTimeoutMs = cfg.liveness.idleTimeoutMs, social = social)
       _       <- ZIO.acquireRelease(ZIO.succeed(GameServer.run(game)))(stop => ZIO.attemptBlocking(stop()).orDie)
-      http     = HttpServer(store.accounts, tokens, game, cfg.assetsDir, cfg.webDir)
+      http     = HttpServer(store.accounts, tokens, game, cfg.assetsDir, cfg.webDir, cfg.liveness.pingEveryMs)
       env     <- (ZLayer.succeed(Server.Config.default.binding(cfg.host, cfg.port)) >>> Server.live).build
       server   = env.get[Server]
       // 环境里只有 Scope 时 zio 2.1.27 的 ZEnvironment.prune 会误报缺 Any（测试里环境不空所以不出错），给它空环境

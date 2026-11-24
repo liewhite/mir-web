@@ -44,7 +44,7 @@ object GameServerSpec extends ZIOSpecDefault:
     def say(l: Link, cmd: ClientCmd): Unit = { game.post(LinkEvent.Received(l, cmd)); game.step() }
 
   def spec = suite("游戏主循环")(
-    test("掉线超时：30 秒内有 Ping 不断；超过 30 秒没消息就关连接、存档下线；之后再来的事件忽略、能重新进游戏") {
+    test("掉线超时：30 秒内有 Ping 或协议层 pong 不断；超过 30 秒没消息就关连接、存档下线；之后再来的事件忽略、能重新进游戏") {
       val f = Fixture()
       val a = f.connect(1)
       f.say(a, SessionCmd.EnterGame(f.char.id))
@@ -52,6 +52,9 @@ object GameServerSpec extends ZIOSpecDefault:
       // 每 10 秒一次 Ping，一分钟都不断
       (1 to 6).foreach { _ => f.advance(10_000); f.say(a, SessionCmd.Ping(0)) }
       val aliveWithPings = (!a.closed, f.game.onlineCount == 1)
+      // 后台标签页：页面不发 Ping，只有网络层自动回的 pong（Alive），一分钟都不断（#1238）
+      (1 to 6).foreach { _ => f.advance(10_000); f.game.post(LinkEvent.Alive(a)); f.game.step() }
+      val aliveWithPongs = (!a.closed, f.game.onlineCount == 1)
       // 断网：30 秒内还在，超过 30 秒下线
       f.advance(30_000)
       val at30 = (!a.closed, f.game.onlineCount == 1)
@@ -72,7 +75,7 @@ object GameServerSpec extends ZIOSpecDefault:
       val back = (b.got.exists(_.isInstanceOf[ServerMsg.EnterMap]), f.game.onlineCount == 1)
       f.store.db.close()
       assertTrue(
-        entered, aliveWithPings == (true, true), at30 == (true, true), after == (true, true),
+        entered, aliveWithPings == (true, true), aliveWithPongs == (true, true), at30 == (true, true), after == (true, true),
         ignored, lobbyClosed, back == (true, true)
       )
     },

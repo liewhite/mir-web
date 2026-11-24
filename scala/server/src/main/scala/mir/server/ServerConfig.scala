@@ -10,10 +10,25 @@ import java.nio.file.{Path, Paths}
  *   DATA_DIR    数据库和备份（mir.db、backup/）
  *   MIR_SESSION_SECRET  会话 cookie 的签名密钥（至少 16 字符）
  */
-final case class ServerConfig(host: String, port: Int, assetsDir: Path, webDir: Path, dataDir: Path, sessionSecret: String):
+final case class ServerConfig(
+    host: String,
+    port: Int,
+    assetsDir: Path,
+    webDir: Path,
+    dataDir: Path,
+    sessionSecret: String,
+    liveness: Liveness = Liveness()
+):
   def dbFile: Path    = dataDir.resolve("mir.db")
   def backupDir: Path = dataDir.resolve("backup")
   def gameJson: Path  = assetsDir.resolve("data").resolve("game.json")
+
+/**
+ * 判掉线（#1218、#1238）：服务端每 `pingEveryMs` 向每个连接发一个 WebSocket 协议层 ping 帧，浏览器在网络层自动回 pong，
+ * 不受页面定时器节流影响（后台标签页的 setInterval 会被压到每分钟一次）；一个连接超过 `idleTimeoutMs` 既没发来消息也没回 pong
+ * 就当它断了。不从环境变量读，测试里调小。
+ */
+final case class Liveness(pingEveryMs: Long = 10_000L, idleTimeoutMs: Long = 30_000L)
 
 object ServerConfig:
   /** 没设的用默认值（相对 sbt 的工作目录 scala/）；命令行开号、迁移只用到 DATA_DIR。 */

@@ -105,6 +105,19 @@ object ServerSpec extends ZIOSpecDefault:
         )
       }
     },
+    test("掉线判定（#1238）：客户端不发指令、只靠协议层 pong 回应服务端的 ping，超过掉线时限也不被踢") {
+      val cfg = tempConfig().copy(liveness = Liveness(pingEveryMs = 200, idleTimeoutMs = 1000))
+      cli(cfg, "account", "add", "alice")("secret1"): Unit
+      withServer(cfg) { http =>
+        val a = Bot(http, http.login("alice", "secret1").get)
+        enter(a, "阿狸", Job.Warrior)
+        Thread.sleep(3000) // 三倍于掉线时限，期间一条指令都不发（像后台标签页的定时器被压住）
+        val open = !a.closed
+        a.send(SessionCmd.ListChars)
+        val still = a.await("还在线") { case ServerMsg.CharList(cs) => cs.size }
+        (open, still)
+      }.map((open, still) => assertTrue(open, still == 1))
+    },
     test("两个机器人：建角色规则、同图互相看见、走和打对方看得到、断线重连状态不丢、重复登录踢旧连接") {
       val cfg = tempConfig()
       cli(cfg, "account", "add", "alice")("secret1"): Unit

@@ -27,6 +27,8 @@ trait Link:
 enum LinkEvent:
   case Opened(link: Link)
   case Received(link: Link, cmd: ClientCmd)
+  /** 连接还活着但没有指令：收到了协议层 pong（#1238） */
+  case Alive(link: Link)
   case Closed(link: Link)
 
 /**
@@ -41,8 +43,8 @@ enum LinkEvent:
  * 上线、下线告诉它，存档时把它那边的社交偏好填进存档。
  *
  * 掉线超时（#1218）：手机锁屏、切后台、断网时浏览器不发关闭帧，服务端收不到 Closed，角色会一直挂着。
- * 客户端每 10 秒发一次 Ping，所以一个连接超过 `idleTimeoutMs`（默认 30 秒）什么都没收到就当它断了：
- * 关连接、存档下线。连接其实还活着（如后台页面的定时器被浏览器放慢）也没关系，客户端会自动重连并回到游戏。
+ * 网络层每 10 秒发一个协议层 ping，浏览器自动回 pong（`Alive`，后台标签页也照回，#1238），所以一个连接超过 `idleTimeoutMs`
+ * （默认 30 秒）既没指令也没 pong 就当它断了：关连接、存档下线。误判了也没关系，客户端会自动重连并回到游戏。
  */
 final class GameServer(
     catalog: Catalog,
@@ -122,6 +124,8 @@ final class GameServer(
       link.send(ServerMsg.LoggedIn(link.account.name))
     case LinkEvent.Closed(link) =>
       conns.get(link.id).foreach(disconnect)
+    case LinkEvent.Alive(link) =>
+      conns.get(link.id).foreach(_.heardAt = now)
     case LinkEvent.Received(link, cmd) =>
       conns.get(link.id).foreach { c =>
         c.heardAt = now

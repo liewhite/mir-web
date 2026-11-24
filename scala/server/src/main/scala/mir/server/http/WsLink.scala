@@ -19,15 +19,19 @@ final class WsLink(val id: LinkId, val account: Account) extends Link:
 
   def send(msg: ServerMsg): Unit = queue.add(Out.Msg(msg)): Unit
   def close(): Unit              = queue.add(Out.Close): Unit
+  /** 发一个协议层 ping 帧（判掉线用，见 Liveness）；和消息走同一个队列，一个 fiber 写 */
+  def ping(): Unit               = queue.add(Out.Ping): Unit
 
   /** 发送循环：遇到 Close 或连接断了就结束。 */
   def pump(channel: WebSocketChannel): Task[Unit] =
     ZIO.attemptBlockingInterrupt(queue.take()).flatMap {
       case Out.Msg(m) => channel.send(ChannelEvent.Read(WebSocketFrame.text(m.toJson))).as(true)
+      case Out.Ping   => channel.send(ChannelEvent.Read(WebSocketFrame.Ping)).as(true)
       case Out.Close  => channel.shutdown.as(false)
     }.repeatWhile(identity).unit
 
 object WsLink:
   private enum Out:
     case Msg(msg: ServerMsg)
+    case Ping
     case Close
