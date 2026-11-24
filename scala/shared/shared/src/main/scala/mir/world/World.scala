@@ -24,6 +24,17 @@ final case class Departure(player: ActorId, data: CharacterData, carried: Carrie
 /** 换图时跟着人走、但不进存档的东西：宝宝、身上的限时状态、还没回完的药（时刻都是服务端统一的时钟）。 */
 final case class Carried(pets: List[PetData] = Nil, statuses: List[Timed] = Nil, potions: List[PotionCourse] = Nil)
 
+/**
+ * 组队（#1220）在世界这边的样子：队伍本身跨地图、归服务端（mir.social.Groups），世界只问「这个人和谁一队」来分打怪经验。
+ */
+trait Company:
+  /** 和这个角色同队的全部人名（含他自己）；没组队为空 */
+  def mates(name: String): Seq[String]
+
+object Company:
+  /** 没有组队这回事（测试、本机单人） */
+  val Alone: Company = _ => Nil
+
 object World:
   /** 视野：玩家能看到身边多少格以内（切比雪夫距离） */
   val ViewRange = 14
@@ -42,7 +53,15 @@ object World:
  *   Conditions（身上状态、地上法术）、Hostility（敌我）、Roster（进出图）、Spawner（开图放 NPC 守卫、刷怪）、
  *   Visibility（按视野算出每个玩家要收的消息）。
  */
-final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain, rng: Rng, uids: UidSource, start: Millis):
+final class World(
+    val catalog: Catalog,
+    val mapDef: MapDef,
+    val terrain: Terrain,
+    rng: Rng,
+    uids: UidSource,
+    start: Millis,
+    private[world] val company: Company = Company.Alone
+):
   import World.*
   private[world] given Rng = rng
 

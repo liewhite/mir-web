@@ -82,6 +82,18 @@ object CharSettings:
   given JsonCodec[CharSettings] = DeriveJsonCodec.gen
 
 /**
+ * 角色的社交偏好（#1220 起）：归服务端的 mir.social 管（跨地图），进存档但世界不碰它——
+ * 服务端存档时把社交那边的当前值填进 CharacterData。存档里没有这个字段时按默认。
+ */
+final case class SocialPrefs(
+    /** 允许别人拉我进组（原版 m_boAllowGroup，默认关） */
+    allowGroup: Boolean = false
+)
+
+object SocialPrefs:
+  given JsonCodec[SocialPrefs] = DeriveJsonCodec.gen
+
+/**
  * 自动捡物的分类（#1178，设置里逐类勾选）。物品归哪类由 mir.rules.ItemKind.pickupKind 按 StdMode 定。
  * 名字进存档（CharSettings.pickupKinds），改名要兼顾旧存档。
  */

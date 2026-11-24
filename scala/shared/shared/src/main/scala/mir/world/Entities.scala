@@ -78,6 +78,8 @@ final class Player(id: ActorId, val charName: String, val job: Job, val sex: Sex
   private[world] val storage: mutable.ArrayBuffer[ItemInstance] = mutable.ArrayBuffer.empty
   private[world] val skills: mutable.ArrayBuffer[LearnedSkill]  = mutable.ArrayBuffer.empty
   private[world] var settings: CharSettings = CharSettings()
+  /** 社交偏好：世界不用，只原样从存档带到存档（当前值归服务端 mir.social，#1220） */
+  private[world] var social: SocialPrefs = SocialPrefs()
   private[world] var stats: Stats = scala.compiletime.uninitialized
   private[world] var home: Place  = Place(MapId("0"), cell)
   // 战士剑术：攻杀计数、烈火是否蓄好、刺杀/半月开关

@@ -169,7 +169,8 @@ object DebugHandle:
       bag = () => js.Array(client.view.bag.flatten.map(_.name.value)*),
       worn = () => js.Array(client.view.worn.toSeq.map((s, i) => s"${s.key}=${i.name.value}")*),
       gold = () => client.view.stats.fold(0L)(_.gold.value),
-      sent = () => js.Array(client.recent.filter(_.isInstanceOf[mir.protocol.GameCmd]).map(_.toString)*)
+      sent = () => js.Array(client.recent.filterNot(_.isInstanceOf[mir.protocol.SessionCmd]).map(_.toString)*),
+      group = () => ui.run(mir.client.ui.UiAction.Group)
     )
     dom.window.asInstanceOf[js.Dynamic].__mir = handle
 

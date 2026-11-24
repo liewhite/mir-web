@@ -28,6 +28,7 @@ final class Roster(w: World):
     p.settings = data.settings
     p.longHitOn = data.longHitOn
     p.wideHitOn = data.wideHitOn
+    p.social = data.social
     carried.statuses.foreach(t => p.statuses.put(t.status, t.until))
     p.statuses.until(StatusKind.Paralyzed).foreach(p.busyUntil = _)
     p.potions = carried.potions
@@ -62,7 +63,8 @@ final class Roster(w: World):
       name = p.charName, job = p.job, sex = p.sex, hair = p.hair, level = p.level, exp = p.exp, gold = p.gold,
       hp = Hp(p.hp), mp = Mp(p.mp), place = Place(w.mapId, p.cell), dir = p.dir, home = p.home,
       bag = p.bag.toVector, belt = p.belt.toVector, worn = p.worn.toMap, storage = p.storage.toList,
-      skills = p.skills.toList, settings = p.settings, longHitOn = p.longHitOn, wideHitOn = p.wideHitOn
+      skills = p.skills.toList, settings = p.settings, longHitOn = p.longHitOn, wideHitOn = p.wideHitOn,
+      social = p.social
     )
 
   /** 把玩家送到某处：同图直接挪过去（像重新进图），别的图交给服务端。 */

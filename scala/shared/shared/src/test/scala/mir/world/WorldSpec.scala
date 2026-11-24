@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.*
 import mir.model.*
 import mir.protocol.*
-import mir.rules.Rng
+import mir.rules.{Rates, Rng}
 import mir.terrain.Terrain
 import mir.testkit.TestFiles
 import mir.view.ViewState
@@ -346,6 +346,43 @@ object WorldSpec extends ZIOSpecDefault:
       }
     ),
     suite("多人")(
+      test("组队分经验（#1220，照原版 GainExp）：同图 12 格内活着的队友按人数加成后按等级分，远的、死的、不在队里的不分") {
+        val team = Set("甲", "乙", "丙", "丁")
+        val w    = World(catalog, testMap, Terrain.open(60, 60), Rng.seeded(1), UidSource.counter(1_000_000), Millis(0), n => if team(n) then team.toSeq else Nil)
+        val s    = Sim(w)
+        val a    = join(w, "甲", Cell(20, 30))
+        val b    = join(w, "乙", Cell(28, 38)) // 横竖都在 12 格内
+        val far  = join(w, "丙", Cell(20, 43)) // 纵向 13 格：不分
+        val dead = join(w, "丁", Cell(21, 30))
+        val out  = join(w, "戊", Cell(22, 30)) // 不在队里
+        b.level = 3
+        w.vitals.damage(dead, 1_000_000, None)
+        val chick = put(w, "鸡", Cell(21, 31))
+        s.flush()
+        def gained(p: Player, got: Map[ActorId, Vector[ServerMsg]]): Long =
+          got.getOrElse(p.id, Vector.empty).collect { case ServerMsg.Notice(t, _) if t.startsWith("获得经验 ") => t.drop(5).toLong }.sum
+        w.vitals.damage(chick, 1_000_000, Some(a.id))
+        val got   = s.flush()
+        val exp   = Rates.killExp(chick.defn.exp, 1.0)
+        val total = math.round(exp.value * 1.3)
+        assertTrue(
+          exp.value > 0,
+          gained(a, got) == math.round(total / 4.0 * 1),
+          gained(b, got) == math.round(total / 4.0 * 3),
+          gained(far, got) == 0L, gained(dead, got) == 0L, gained(out, got) == 0L
+        )
+      },
+      test("组队但附近没有活着的队友：打死怪的人照常全拿") {
+        val w = World(catalog, testMap, Terrain.open(60, 60), Rng.seeded(1), UidSource.counter(1_000_000), Millis(0), _ => Seq("甲", "乙"))
+        val s = Sim(w)
+        val a = join(w, "甲", Cell(20, 30))
+        join(w, "乙", Cell(50, 50))
+        val chick = put(w, "鸡", Cell(21, 30))
+        s.flush()
+        w.vitals.damage(chick, 1_000_000, Some(a.id))
+        val got = s.flush().getOrElse(a.id, Vector.empty)
+        assertTrue(got.contains(ServerMsg.Notice(s"获得经验 ${Rates.killExp(chick.defn.exp, 1.0).value}", Tone.Good)))
+      },
       test("两人同图互相看见，视野副本与世界一致") {
         val s = sim()
         val a = join(s.w, "甲", Cell(30, 30))

@@ -3,7 +3,7 @@ package mir.client.ui
 import mir.client.input.{Joystick, Pt}
 import mir.core.*
 import mir.model.{Affliction, BodyTint, ItemInstance, ItemPlace, Job}
-import mir.protocol.{GameCmd, Look}
+import mir.protocol.{GameCmd, GroupView, Look, SocialCmd}
 import mir.rules.{Rates, Skill}
 
 /**
@@ -32,7 +32,7 @@ final class Board(ui: ClassicUi):
     // 叠在底栏上方：左边摇杆、右边攻击键（底栏上沿 40 像素是透明的装饰，往上再让 16 像素）
     val top = ui.H - Height - 16
     val s   = ui.ctlScale
-    drawTarget(ui.safe.top + 6)
+    drawTarget(m, ui.safe.top + 6)
     drawStick(Pt(ui.safe.left + Joystick.Radius * s + 30, top - Joystick.Radius * s))
     val attack = Pt(ui.W - ui.safe.right - AttackR * s - 30, top - AttackR * s)
     drawAttack(attack)
@@ -94,9 +94,10 @@ final class Board(ui: ClassicUi):
       g.text((i + 1).toString, r.x + 13, r.y + 19, "#fff", bold = true)
       ui.hit(r)(beltClicked(i, r))
     }
-    // 底栏小按钮：小地图、交易、行会、组队（还没做，只画样子）、退出
+    // 底栏小按钮：小地图、交易、行会（交易、行会还没做，只画样子）、组队、退出
     ui.button(Button(Rect(bx + 219, by + 104, 28, 13), () => ui.run(UiAction.MiniMap), img = Some(130), always = true))
-    List(132 -> 249, 134 -> 279, 128 -> 309).foreach { (img, dx) =>
+    ui.button(Button(Rect(bx + 309, by + 104, 28, 13), () => ui.run(UiAction.Group), img = Some(128), always = true))
+    List(132 -> 249, 134 -> 279).foreach { (img, dx) =>
       ui.button(Button(Rect(bx + dx, by + 104, 28, 13), () => ui.message("还没有这个功能"), img = Some(img), always = true))
     }
     ui.button(Button(Rect(bx + 530, by + 104, 28, 13), () => ui.logout(), img = Some(136), always = true))
@@ -162,8 +163,11 @@ final class Board(ui: ClassicUi):
 
   // ---------------- 触屏操作件（用户 #1140） ----------------
 
-  /** 锁定对象的信息卡：怪是名字、等级、攻防、经验（倍率后），中了毒或麻痹再加一行；宝宝绿框；别的玩家只有名字、职业。都有血条，右上角 × 取消锁定。 */
-  private def drawTarget(top: Double): Unit =
+  /**
+   * 锁定对象的信息卡：怪是名字、等级、攻防、经验（倍率后），中了毒或麻痹再加一行；宝宝绿框；别的玩家只有名字、职业，
+   * 下面一个组队键（#1220：没组队「组队」、自己是队长时「加入小组」/「踢出小组」）。都有血条，右上角 × 取消锁定。
+   */
+  private def drawTarget(m: Me, top: Double): Unit =
     for
       id   <- ui.client.locked
       a    <- ui.client.actor(id)
@@ -189,6 +193,23 @@ final class Board(ui: ClassicUi):
       val close = Rect(x + TargetW - 30, top, 30, 22)
       g.text("×", close.x + 11, close.y + 4, "#f88", bold = true)
       ui.button(Button(close, () => ui.ctl.unlock()))
+      a.look match
+        case h: Look.Human if h.name != m.name =>
+          groupAction(m.view.group, m.name, h.name).foreach((label, cmd) => drawGroupKey(Rect(x, r.y + r.h + 2, TargetW, 24), label, cmd))
+        case _ => ()
+
+  /** 锁定玩家时信息卡下面的组队键：能做什么由自己的组队状态决定（队员不能拉人踢人，没有键）。 */
+  private def groupAction(group: GroupView, me: String, other: String): Option[(String, SocialCmd)] =
+    if group.members.isEmpty then Some("组队" -> SocialCmd.CreateGroup(other))
+    else if !group.isLeader(me) then None
+    else if group.has(other) then Some("踢出小组" -> SocialCmd.RemoveMember(other))
+    else Some("加入小组" -> SocialCmd.AddMember(other))
+
+  private def drawGroupKey(r: Rect, label: String, cmd: SocialCmd): Unit =
+    ui.area(r)
+    g.frame(r, if ui.isPressed(r) then "rgba(90,70,30,.9)" else "rgba(10,7,3,.8)", "#c9a060")
+    g.text(label, r.x + (r.w - g.width(label)) / 2, r.y + 6, "#ffe08a", bold = true)
+    ui.button(Button(r, () => ui.social(cmd)))
 
   /** 锁定卡上中毒、麻痹那一行（没有就不加） */
   private def afflictionLine(as: Set[Affliction]): List[String] =

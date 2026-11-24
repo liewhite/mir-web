@@ -136,12 +136,24 @@ enum Tone:
 object Tone:
   given JsonCodec[Tone] = EnumCodec.byName(values, _.toString)
 
-/** 聊天：普通说话（附近的人看到）、喊话（全图，原版「!」开头）。 */
+/** 聊天：普通说话（附近的人看到）、喊话（全图，原版「!」开头）、组队（全队不管在哪张图，原版「!!」开头，#1220）。 */
 enum ChatKind:
-  case Say, Shout
+  case Say, Shout, Group
 
 object ChatKind:
   given JsonCodec[ChatKind] = EnumCodec.byName(values, _.toString)
+
+/**
+ * 自己的组队状态（#1220，原版 SM_GROUPMODECHANGED + SM_GROUPMEMBERS）：允许别人拉我进组的开关、
+ * 所在小组的成员名字（第一个是队长，按入队先后；没组队为空）。
+ */
+final case class GroupView(allowGroup: Boolean = false, members: List[String] = Nil):
+  def leader: Option[String]          = members.headOption
+  def isLeader(me: String): Boolean   = leader.contains(me)
+  def has(name: String): Boolean      = members.contains(name)
+
+object GroupView:
+  given JsonCodec[GroupView] = DeriveJsonCodec.gen
 
 /** 选人界面的一个角色。 */
 final case class CharSummary(id: CharId, name: String, job: Job, sex: Sex, level: Int)

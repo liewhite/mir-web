@@ -15,6 +15,8 @@ enum UiAction:
   /** 全景地图 */
   case WorldMap
   case Teleport
+  /** 组队窗口（#1220） */
+  case Group
   case CloseAll
 
 object UiAction:
@@ -29,7 +31,8 @@ object UiAction:
       all(MiniMap, "Tab") ++
       all(WorldMap, "m", "M") ++
       all(Teleport, "t", "T") ++
+      all(Group, "p", "P") ++
       all(CloseAll, "Escape")).toMap
 
   /** 设置窗底部的键位说明 */
-  val Help = "WASD 跑(按住Shift走)  F1-F8 技能  1-6 快捷栏  空格 捡取  回车 说话  T 传送  M 全景地图  Esc 关闭"
+  val Help = "WASD 跑(按住Shift走)  F1-F8 技能  1-6 快捷栏  空格 捡取  回车 说话  T 传送  M 全景地图  P 组队  Esc 关闭"

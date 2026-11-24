@@ -7,10 +7,11 @@ import zio.json.*
 /**
  * 客户端 → 服务端的指令。客户端只表达意图，一切结果由服务端判定（服务端权威）。
  * 清单见 #1148 21:19 评论；参考原版 Grobal2.pas 的 CM_* 消息。
- * 分两类：会话指令（登录、选人、对时）由服务端连接处理；游戏指令交给角色所在地图的世界（mir.world.World）。
- * JSON 里两类一样是「分支名作外层键」，分支名不重复。
+ * 分三类：会话指令（登录、选人、对时）由服务端连接处理；游戏指令交给角色所在地图的世界（mir.world.World）；
+ * 社交指令（组队等跨地图的事）交给服务端的 mir.social。
+ * JSON 里三类一样是「分支名作外层键」，分支名不重复。
  */
-type ClientCmd = SessionCmd | GameCmd
+type ClientCmd = SessionCmd | GameCmd | SocialCmd
 
 /** 会话指令：还没进游戏也能发。 */
 enum SessionCmd:
@@ -26,14 +27,17 @@ object SessionCmd:
   given JsonCodec[SessionCmd] = DeriveJsonCodec.gen
 
   /**
-   * ClientCmd（两类的并）的编解码。放在这里是因为并类型的隐式作用域是两边的伴生对象，用的地方不用额外 import。
+   * ClientCmd（三类的并）的编解码。放在这里是因为并类型的隐式作用域是各边的伴生对象，用的地方不用额外 import。
    */
   given clientCmd: JsonCodec[ClientCmd] =
     val encoder = new JsonEncoder[ClientCmd]:
       def unsafeEncode(a: ClientCmd, indent: Option[Int], out: zio.json.internal.Write): Unit = a match
         case s: SessionCmd => JsonEncoder[SessionCmd].unsafeEncode(s, indent, out)
         case g: GameCmd    => JsonEncoder[GameCmd].unsafeEncode(g, indent, out)
-    val decoder = JsonDecoder[SessionCmd].widen[ClientCmd].orElse(JsonDecoder[GameCmd].widen[ClientCmd])
+        case s: SocialCmd  => JsonEncoder[SocialCmd].unsafeEncode(s, indent, out)
+    val decoder = JsonDecoder[SessionCmd].widen[ClientCmd]
+      .orElse(JsonDecoder[GameCmd].widen[ClientCmd])
+      .orElse(JsonDecoder[SocialCmd].widen[ClientCmd])
     JsonCodec(encoder, decoder)
 
 /** 游戏指令：进了游戏后对世界的操作。 */
@@ -93,6 +97,33 @@ enum GameCmd:
 
 object GameCmd:
   given JsonCodec[GameCmd] = DeriveJsonCodec.gen
+
+/**
+ * 社交指令：牵涉别的在线玩家、不管在哪张图的事，由服务端的 mir.social 处理（不进某张图的世界）。
+ * 人按角色名字指（全服唯一）。组队照原版 CM_GROUPMODE / CM_CREATEGROUP / CM_ADDGROUPMEMBER / CM_DELGROUPMEMBER（#1220）。
+ */
+enum SocialCmd:
+  /** 允许别人拉我进组；队员关掉就是退出小组（队长关不掉，要「删除」自己解散全队） */
+  case AllowGroup(on: Boolean)
+  /** 和另一个人建一个小组（自己当队长） */
+  case CreateGroup(name: String)
+  /** 队长拉人进组 */
+  case AddMember(name: String)
+  /** 队长把人踢出组；删的是自己就解散全队 */
+  case RemoveMember(name: String)
+  /** 队伍聊天（原版「!!」开头）：发给全队 */
+  case GroupSay(text: String)
+
+object SocialCmd:
+  given JsonCodec[SocialCmd] = DeriveJsonCodec.gen
+
+/** 聊天框里打的一行字发成什么指令：「!!」开头是队伍聊天，其余交给世界（「!」开头全图喊话由世界认）。 */
+object Speech:
+  val GroupPrefix = "!!"
+
+  def command(text: String): ClientCmd =
+    if text.startsWith(GroupPrefix) then SocialCmd.GroupSay(text.drop(GroupPrefix.length).trim)
+    else GameCmd.Say(text)
 
 /**
  * 服务端 → 客户端的事件。视野类消息只发给看得见的人；「自己」类消息变了才发。
@@ -163,8 +194,10 @@ enum ServerMsg:
   /** 打开 NPC 对话（商店、仓库）：npc 是对象编号，merchant 是 game.json merchants 下标 */
   case NpcOpened(npc: ActorId, merchant: MerchantRef)
 
-  // ---- 聊天 ----
+  // ---- 聊天、社交 ----
   case Chat(from: String, text: String, kind: ChatKind)
+  /** 自己的组队状态变了（进游戏时也发一次，换图不变） */
+  case Group(group: GroupView)
 
   /** 对时回应：带回客户端的 clientMs 和服务器此刻的时钟 */
   case Pong(clientMs: Long, server: Millis)

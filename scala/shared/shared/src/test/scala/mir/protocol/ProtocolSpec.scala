@@ -57,6 +57,11 @@ object ProtocolSpec extends ZIOSpecDefault:
     GameCmd.UpdateSettings(CharSettings(autoHpPercent = 55, autoPickup = false)),
     GameCmd.UpdateSettings(CharSettings(pickupKinds = Set(PickupKind.Gold, PickupKind.Equip))),
     GameCmd.Say("!大家好"),
+    SocialCmd.AllowGroup(true),
+    SocialCmd.CreateGroup("小红"),
+    SocialCmd.AddMember("小刚"),
+    SocialCmd.RemoveMember("小刚"),
+    SocialCmd.GroupSay("集合"),
     SessionCmd.Ping(1700000000000L)
   )
 
@@ -108,6 +113,9 @@ object ProtocolSpec extends ZIOSpecDefault:
     ServerMsg.Died,
     ServerMsg.NpcOpened(ActorId(5), MerchantRef(12)),
     ServerMsg.Chat("小明", "你好", ChatKind.Shout),
+    ServerMsg.Chat("小明", "集合", ChatKind.Group),
+    ServerMsg.Group(GroupView(allowGroup = true, members = List("小明", "小红"))),
+    ServerMsg.Group(GroupView()),
     ServerMsg.Pong(1700000000000L, t0)
   )
 
@@ -125,9 +133,10 @@ object ProtocolSpec extends ZIOSpecDefault:
       val c = clientSamples.map(_.asInstanceOf[Product].productPrefix).toSet
       val s = serverSamples.map(_.asInstanceOf[Product].productPrefix).toSet
       assertTrue(
-        (caseNames[SessionCmd] ++ caseNames[GameCmd]) -- c == Set.empty[String],
+        (caseNames[SessionCmd] ++ caseNames[GameCmd] ++ caseNames[SocialCmd]) -- c == Set.empty[String],
         caseNames[ServerMsg] -- s == Set.empty[String],
-        (caseNames[SessionCmd] intersect caseNames[GameCmd]) == Set.empty[String]
+        (caseNames[SessionCmd] intersect caseNames[GameCmd]) == Set.empty[String],
+        ((caseNames[SessionCmd] ++ caseNames[GameCmd]) intersect caseNames[SocialCmd]) == Set.empty[String]
       )
     },
     test("JSON 形状：分支名作外层键，编号是裸数字，枚举是名字") {
@@ -141,6 +150,16 @@ object ProtocolSpec extends ZIOSpecDefault:
     test("旧存档的设置（#1178 前，带已删掉的 pickupValuableOnly、没有 pickupKinds）照常读出，自动捡物全捡") {
       val old = """{"autoPickup":true,"pickupValuableOnly":true,"autoHpPercent":55}""".fromJson[CharSettings]
       assertTrue(old == Right(CharSettings(autoHpPercent = 55)), old.exists(_.pickupKinds == PickupKind.values.toSet))
+    },
+    test("聊天框：「!!」开头是队伍聊天，「!」开头仍交给世界喊话（#1220）") {
+      assertTrue(
+        Speech.command("!!  集合") == SocialCmd.GroupSay("集合"),
+        Speech.command("!大家好") == GameCmd.Say("!大家好"),
+        Speech.command("你好") == GameCmd.Say("你好")
+      )
+    },
+    test("旧存档没有社交偏好时按默认（不允许组队）") {
+      assertTrue("{}".fromJson[SocialPrefs] == Right(SocialPrefs()), !SocialPrefs().allowGroup)
     },
     test("坏消息解码失败而不是抛异常") {
       assertTrue(

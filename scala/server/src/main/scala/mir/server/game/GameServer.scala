@@ -5,6 +5,7 @@ import mir.data.Catalog
 import mir.protocol.*
 import mir.server.{Account, LinkId}
 import mir.server.store.{Backups, Characters, StoredChar}
+import mir.social.{Groups, Letter, Seen}
 import mir.world.{Carried, CharacterData, Place, UidSource, World}
 
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -36,6 +37,9 @@ enum LinkEvent:
  * 按对象编号发给对应连接 → 把换图的玩家交给目的地图。
  * 存档时机：下线、换图、升级、每 30 秒全部在线角色；数据库每天备份一次。
  *
+ * 组队等社交指令（SocialCmd）跨地图，交给 `groups`（mir.social.Groups，和 Maps 里的世界共用同一个：世界经它查队友分经验）；
+ * 上线、下线告诉它，存档时把它那边的社交偏好填进存档。
+ *
  * 掉线超时（#1218）：手机锁屏、切后台、断网时浏览器不发关闭帧，服务端收不到 Closed，角色会一直挂着。
  * 客户端每 10 秒发一次 Ping，所以一个连接超过 `idleTimeoutMs`（默认 30 秒）什么都没收到就当它断了：
  * 关连接、存档下线。连接其实还活着（如后台页面的定时器被浏览器放慢）也没关系，客户端会自动重连并回到游戏。
@@ -48,7 +52,8 @@ final class GameServer(
     backups: Option[Backups],
     clock: () => Millis,
     saveEveryMs: Long = 30_000L,
-    idleTimeoutMs: Long = 30_000L
+    idleTimeoutMs: Long = 30_000L,
+    groups: Groups = Groups()
 ):
   import GameServer.*
 
@@ -130,6 +135,10 @@ final class GameServer(
                 touched += o.map // 指令可能让最后一个人离开这张图（传送），这一步也要 flush 才拿得到换图的人
                 maps.get(o.map).foreach(_.handle(o.actor, g))
               case None    => c.link.send(ServerMsg.Refused("还没进入游戏"))
+          case s: SocialCmd =>
+            c.playing.flatMap(online.get) match
+              case Some(o) => post(groups.handle(o.name, s, seen))
+              case None    => c.link.send(ServerMsg.Refused("还没进入游戏"))
       }
 
   private def session(c: Conn, cmd: SessionCmd): Unit =
@@ -167,6 +176,7 @@ final class GameServer(
     online(sc.id) = o
     System.err.println(s"上线 ${o.name}（${c.link.account.name}），在线 ${online.size} 人")
     enter(o, data)
+    if online.contains(sc.id) then post(groups.online(o.name, data.social))
 
   /** 把角色放进存档里那张图；那张图开不了（数据表或素材缺了）就送回城，再不行送新手村。 */
   private def enter(o: Online, data: CharacterData, carried: Carried = Carried()): Unit =
@@ -195,7 +205,8 @@ final class GameServer(
     data
 
   private def logout(o: Online): Unit =
-    takeOut(o): Unit
+    takeOut(o): Unit // 先存档（存档里的社交偏好要从 groups 取），再从 groups 下线
+    post(groups.offline(o.name))
     o.conn.playing = None
     System.err.println(s"下线 ${o.name}，在线 ${online.size} 人")
 
@@ -206,7 +217,20 @@ final class GameServer(
 
   private def snapshot(o: Online): Option[CharacterData] = maps.get(o.map).toOption.flatMap(_.snapshot(o.actor))
 
-  private def save(id: CharId, data: CharacterData): Unit = guard(s"存档 $id")(chars.save(id, data))
+  /** 存档：社交偏好以 groups 里在线时的当前值为准（世界只带着进图时的值）。 */
+  private def save(id: CharId, data: CharacterData): Unit =
+    val withSocial = groups.prefsOf(data.name).fold(data)(p => data.copy(social = p))
+    guard(s"存档 $id")(chars.save(id, withSocial))
+
+  /** 社交那边要发的消息送到在线角色的连接（不在线的丢掉）。 */
+  private def post(letters: Vector[Letter]): Unit =
+    letters.foreach(l => online.values.find(_.name == l.to).foreach(_.conn.link.send(l.msg)))
+
+  /** 按名字（不分大小写，原版 GetPlayObject）找在线角色，看活着没有。 */
+  private def seen(name: String): Option[Seen] =
+    online.values.find(_.name.equalsIgnoreCase(name)).map { o =>
+      Seen(o.name, maps.get(o.map).toOption.flatMap(_.player(o.actor)).exists(!_.isDead))
+    }
 
   /** 一件事出错只打日志，不让游戏线程停下。 */
   private def guard(what: String)(f: => Unit): Unit = attempt(what)(f).getOrElse(())

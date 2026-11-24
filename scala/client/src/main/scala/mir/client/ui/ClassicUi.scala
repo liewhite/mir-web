@@ -81,7 +81,7 @@ final class ClassicUi(
   // 常驻 HUD
   val board    = Board(this)
   val miniMap  = MiniMap(this)
-  val chatBox  = ChatInput(text => client.send(GameCmd.Say(text)))
+  val chatBox  = ChatInput(text => client.send(Speech.command(text)))
 
   // 窗口
   val merchant = MerchantPanel(this)
@@ -93,12 +93,13 @@ final class ClassicUi(
   val keyDlg   = KeyDialog(this)
   val quantity = QuantityPanel(this)
   val itemMenu = ItemMenuWindow(this)
+  val group    = GroupWindow(this)
 
   /**
    * 全部窗口，从下到上：绘制顺序、点击叠放（后画的盖住先画的）、悬停说明、全部关闭都按它。
    * 新加窗口只要写一个 Window 实现、在这里排好位置。
    */
-  val windows: List[Window] = List(worldMap, merchant, bag, state, settings, teleport, keyDlg, quantity, itemMenu)
+  val windows: List[Window] = List(worldMap, merchant, bag, state, settings, teleport, group, keyDlg, quantity, itemMenu)
 
   def options: ViewOptions = client.options
 
@@ -136,6 +137,8 @@ final class ClassicUi(
   def chat(from: String, text: String, kind: ChatKind): Unit = kind match
     case ChatKind.Say   => push(ChatLine(s"$from：$text", "#fff", "transparent"))
     case ChatKind.Shout => push(ChatLine(s"(!)$from：$text", "#ff0", "#00007b"))
+    // 原版组队消息：前缀〖组队〗，字色 $C4、底色 $FF（调色板 196 号暗橄榄、255 号白）
+    case ChatKind.Group => push(ChatLine(s"〖组队〗$from：$text", "#424a00", "#fff"))
   def npcOpened(npc: ActorId, ref: MerchantRef): Unit = catalog.merchant(ref).foreach { d =>
     merchant.open(npc, d)
     bag.show()
@@ -178,16 +181,20 @@ final class ClassicUi(
     case UiAction.State(page)    => itemMenu.close(); state.toggle(page)
     case UiAction.Settings       => itemMenu.close(); settings.toggle()
     case UiAction.Teleport       => itemMenu.close(); teleport.toggle()
+    case UiAction.Group          => itemMenu.close(); group.toggle()
     case UiAction.MiniMap        => miniMap.cycle()
     case UiAction.WorldMap       => itemMenu.close(); worldMap.toggle()
     case UiAction.CloseAll       => closeAll()
 
   def logout(): Unit = env.logout()
 
-  def openChat(): Unit =
+  def openChat(): Unit = ask(ChatInput.ChatHint, "")(text => client.send(Speech.command(text)))
+
+  /** 在聊天框位置弹输入框问一行字（说话、组队输名字）；回车且不空才调 done。 */
+  def ask(hint: String, prefill: String)(done: String => Unit): Unit =
     val s = env.uiScale()
     val r = board.chatRect
-    chatBox.open(r.x * s, (r.y + r.h - 18) * s, r.w * s, 18 * s)
+    chatBox.open(r.x * s, (r.y + r.h - 18) * s, r.w * s, 18 * s, hint, prefill, done)
 
   // ======================= 登记 =======================
 
@@ -215,6 +222,9 @@ final class ClassicUi(
   // ======================= 物品操作（全部发给服务端） =======================
 
   def send(cmd: GameCmd): Unit = client.send(cmd)
+
+  /** 组队等社交指令（服务端跨地图处理） */
+  def social(cmd: SocialCmd): Unit = client.send(cmd)
 
   /** 点身上一格（包裹、快捷栏、装备位）。 */
   def clickPlace(place: ItemPlace, there: Option[ItemInstance], anchor: Rect): Unit =

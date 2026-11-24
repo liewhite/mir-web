@@ -99,7 +99,8 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
       case ServerMsg.Miss(t)                => fx = fx.float(Floater(t, "MISS", FloatTone.Miss, local))
       case ServerMsg.Heal(t, n)             => if n > 0 then fx = fx.float(Floater(t, s"+$n", FloatTone.Heal, local))
       case ServerMsg.Chat(from, text, kind) =>
-        speaker(from).foreach(id => fx = fx.say(Bubble(id, text, local)))
+        // 队伍聊天照原版只进聊天框（系统消息），不在头上冒字
+        if kind != ChatKind.Group then speaker(from).foreach(id => fx = fx.say(Bubble(id, text, local)))
         ui.chat(from, text, kind)
       case ServerMsg.Notice(text, tone)     => ui.notice(text, tone)
       case ServerMsg.Refused(why)           => ui.notice(why, Tone.Bad)

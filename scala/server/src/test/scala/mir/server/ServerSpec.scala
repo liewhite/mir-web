@@ -185,6 +185,47 @@ object ServerSpec extends ZIOSpecDefault:
         )
       }
     },
+    test("组队（#1220）：要对方允许、跨地图建组、队伍聊天、下线解散、允许组队存档") {
+      val cfg = tempConfig()
+      cli(cfg, "account", "add", "carol")("secret1"): Unit
+      cli(cfg, "account", "add", "dave")("secret1"): Unit
+      withServer(cfg) { http =>
+        val cc = http.login("carol", "secret1").get
+        val cd = http.login("dave", "secret1").get
+        val c  = Bot(http, cc)
+        val d  = Bot(http, cd)
+        enter(c, "阿甲", Job.Warrior)
+        val (dChar, _, _) = enter(d, "阿乙", Job.Wizard)
+        val start = d.await("进游戏时的组队状态") { case ServerMsg.Group(g) => g }
+        c.send(SocialCmd.CreateGroup("阿乙"))
+        val notAllowed = c.await("对方没允许") { case ServerMsg.Refused(r) => r }
+        d.send(SocialCmd.AllowGroup(true))
+        d.await("打开允许组队") { case ServerMsg.Group(g) if g.allowGroup => () }
+        // 阿甲去盟重，隔着地图建组
+        c.send(GameCmd.Teleport(TeleportRef(1)))
+        c.await("进盟重") { case ServerMsg.EnterMap(_, m, _, _, _) if m != MapId("0") => () }
+        c.send(SocialCmd.CreateGroup("阿乙"))
+        val cg = c.await("阿甲的小组") { case ServerMsg.Group(g) if g.members.nonEmpty => g.members }
+        val dg = d.await("阿乙的小组") { case ServerMsg.Group(g) if g.members.nonEmpty => g.members }
+        d.send(SocialCmd.GroupSay("集合"))
+        val heard = c.await("队伍聊天") { case ServerMsg.Chat(from, text, ChatKind.Group) => s"$from:$text" }
+        // 阿乙掉线：只剩一人，小组解散；阿乙再上线时允许组队还开着（存档了）
+        d.drop()
+        c.await("小组解散") { case ServerMsg.Group(g) if g.members.isEmpty => () }
+        Thread.sleep(300)
+        val d2 = Bot(http, cd)
+        d2.await("LoggedIn") { case ServerMsg.LoggedIn(_) => () }
+        d2.send(SessionCmd.EnterGame(dChar))
+        val back = d2.await("重新上线的组队状态") { case ServerMsg.Group(g) => g }
+        (start, notAllowed, cg, dg, heard, back)
+      }.map { case (start, notAllowed, cg, dg, heard, back) =>
+        assertTrue(
+          start == GroupView(), notAllowed.contains("没有允许组队"),
+          cg == List("阿甲", "阿乙"), dg == cg, heard == "阿乙:集合",
+          back == GroupView(allowGroup = true)
+        )
+      }
+    },
     test("迁移旧单机存档") {
       val cfg  = tempConfig()
       val save = Files.createTempFile("save", ".json")

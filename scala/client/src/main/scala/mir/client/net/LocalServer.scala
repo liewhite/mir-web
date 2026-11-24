@@ -49,6 +49,7 @@ final class LocalServer(catalog: Catalog, assets: Assets, listener: LinkEvent =>
       case Left(err)            => dom.console.error("指令编码有误", err, json)
       case Right(s: SessionCmd) => session(s)
       case Right(g: GameCmd)    => here.foreach((w, id) => w.handle(id, g))
+      case Right(s: SocialCmd)  => social(s)
 
   def close(): Unit = timer.foreach(dom.window.clearInterval)
 
@@ -78,6 +79,16 @@ final class LocalServer(catalog: Catalog, assets: Assets, listener: LinkEvent =>
           enter(chars.find(_._1.id == id).fold(data)(_._2), Carried())
     case SessionCmd.Ping(ms) => deliver(ServerMsg.Pong(ms, clock))
 
+  /** 本机只有一个角色：组队照同一套规则跑（拉别人进组总是「不在线」），换图不变。 */
+  private val groups = mir.social.Groups()
+
+  private def social(s: SocialCmd): Unit = for
+    (w, id) <- here
+    p       <- w.player(id)
+  do
+    val find = (n: String) => Option.when(n.equalsIgnoreCase(p.charName))(mir.social.Seen(p.charName, !p.isDead))
+    groups.handle(p.charName, s, find).filter(_.to == p.charName).foreach(l => deliver(l.msg))
+
   /** 地址带 &hero：新建的角色 40 级、学会本职业全部技能（3 级，前 8 个按 F1–F8）、左手镯戴护身符、包裹里放灰黄药粉（本机看技能效果用）。 */
   private def hero: Boolean = dom.window.location.search.contains("hero")
 
@@ -95,6 +106,7 @@ final class LocalServer(catalog: Catalog, assets: Assets, listener: LinkEvent =>
     world(data.place.map).recoverWith(_ => world(CharacterData.start.map)).foreach { w =>
       val place = if w.mapId == data.place.map then data.place else CharacterData.start
       here = Some(w -> w.join(data.copy(place = place), carried))
+      groups.online(data.name, data.social).foreach(l => deliver(l.msg))
       if timer.isEmpty then timer = Some(dom.window.setInterval(() => tick(), TickMs))
     }
 

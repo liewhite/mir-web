@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.DropDef
 import mir.model.*
 import mir.protocol.*
-import mir.rules.{Charges, ItemEffects, ItemKind, Leveling, PassiveSkills, PetBody, Progress, RandomUpgrade, Rates, Recovery, Rng, Rules, Skill, SpellRules}
+import mir.rules.{Charges, GroupRules, ItemEffects, ItemKind, Leveling, PassiveSkills, PetBody, Progress, RandomUpgrade, Rates, Recovery, Rng, Rules, Skill, SpellRules}
 
 /**
  * 血、蓝与生死：一下攻击的结算、扣血、死亡（经验、掉落）、复活、回血回蓝、属性重算。
@@ -125,7 +125,7 @@ final class Vitals(w: World):
           case _: Npc     => None
         }
         owner.filter(_ => m.master.isEmpty).foreach { o =>
-          gainExp(o, Rates.killExp(m.defn.exp, m.expScale))
+          killExp(o, Rates.killExp(m.defn.exp, m.expScale))
           dropLoot(m)
         }
         m.master.flatMap(w.player).foreach(_.pets -= m.id)
@@ -159,6 +159,18 @@ final class Vitals(w: World):
     w.roster.transfer(p, p.home)
 
   // ---------------- 经验与掉落 ----------------
+
+  /**
+   * 打死怪的经验（照原版 TPlayObject.GainExp，#1220）：同图、活着、离打死怪的人横竖不超过 GroupRules.ShareRange 格的队友
+   * （含他自己）不止一人时，经验按人数加成后按等级分；否则他一人全拿。
+   * （原版这里把横坐标判了两次、漏判纵坐标，这里横竖都判。）
+   */
+  private def killExp(killer: Player, exp: Exp): Unit =
+    val mates = w.company.mates(killer.charName).toSet
+    val near  = w.players.filter(p => mates(p.charName) && !p.dead && p.cell.chebyshev(killer.cell) <= GroupRules.ShareRange).toVector
+    GroupRules.share(exp, near.map(_.level)) match
+      case Some(parts) => near.zip(parts).foreach(gainExp)
+      case None        => gainExp(killer, exp)
 
   private[world] def gainExp(p: Player, exp: Exp): Unit =
     if exp.value > 0 then
