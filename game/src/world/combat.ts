@@ -343,7 +343,9 @@ export function castSpell(w: World, p: Player, skillId: number, tgt: SpellTarget
         const boost = 1 + s.level * 0.35;
         m.maxHp = Math.round(mdef.hp * boost);
         m.hp = m.maxHp;
-        m.dc = [Math.round(mdef.dc[0] * boost), Math.round(mdef.dc[1] * boost)];
+        // 神兽技能等级只加血、不加攻击（#1258）
+        const dcBoost = name === '神兽' ? 1 : boost;
+        m.dc = [Math.round(mdef.dc[0] * dcBoost), Math.round(mdef.dc[1] * dcBoost)];
         p.pets.push(m.id);
         fx(w, { lib: 'magic', start: 1500, frames: 10, frameTime: 60, at: { actor: m.id } });
       }
