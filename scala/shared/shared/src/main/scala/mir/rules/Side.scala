@@ -5,6 +5,14 @@ enum Side:
   case Players, Wild, Guards, Crazy
 
 object Side:
-  /** 两个阵营互为敌人：不同阵营，但守卫和玩家不互打（不做 PK）。 */
-  def hostile(a: Side, b: Side): Boolean =
-    a != b && !Set(a, b).subsetOf(Set(Players, Guards))
+  /**
+   * a 阵营会不会把 b 阵营当目标（有方向）：
+   *  - 同阵营不打；守卫和玩家（含宝宝）平时不互打（不做 PK；守卫和宝宝另见 Hostility.guardVsPet）；
+   *  - 野怪不打守卫（#1217，原版 ObjBase.IsAttackTarget：没主人的怪只认玩家、宝宝），守卫照样打野怪；
+   *  - 发狂的怪谁都打。
+   */
+  def attacks(a: Side, b: Side): Boolean = (a, b) match
+    case _ if a == b                           => false
+    case (Players, Guards) | (Guards, Players) => false
+    case (Wild, Guards)                        => false
+    case _                                     => true

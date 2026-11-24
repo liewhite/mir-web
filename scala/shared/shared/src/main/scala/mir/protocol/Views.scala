@@ -34,12 +34,12 @@ object Look:
   given JsonCodec[Look] = DeriveJsonCodec.gen
 
   /**
-   * 长这样的 a 能不能打长这样的 b：阵营敌对、b 露在外面。服务端结算和客户端选目标共用；
-   * 死活、是不是同一个由调用方看（外观里没有）。
+   * 长这样的 a 会不会把长这样的 b 当目标：a 的阵营打 b 的阵营（有方向，Side.attacks）、b 露在外面。
+   * 服务端结算和客户端选目标共用；死活、是不是同一个由调用方看（外观里没有）。
    */
   def hostile(a: Look, b: Look, isGuard: MonsterName => Boolean): Boolean =
     b.exposed && ((a.side(isGuard), b.side(isGuard)) match
-      case (Some(x), Some(y)) => Side.hostile(x, y)
+      case (Some(x), Some(y)) => Side.attacks(x, y)
       case _                  => false)
 
   /**

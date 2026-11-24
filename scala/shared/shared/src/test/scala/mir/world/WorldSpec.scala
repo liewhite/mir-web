@@ -204,7 +204,7 @@ object WorldSpec extends ZIOSpecDefault:
         val hurt = s.run(10_000, Some(p))
         assertTrue(pet.dead, hurt == 0, !s.w.isEnemy(g, p))
       },
-      test("卫士不主动打 Race 80 以下的：诱惑来的鸡、野狼（#1216，原版 SuperGuard 只认 Race ≥ 80）") {
+      test("卫士不主动打 Race 80 以下的宝宝：诱惑来的鸡（#1216，原版 SuperGuard 只认 Race ≥ 80；野狼见下一项）") {
         val s     = sim()
         val p     = join(s.w, "甲", Cell(40, 40))
         put(s.w, "卫士", Cell(30, 30))
@@ -212,10 +212,18 @@ object WorldSpec extends ZIOSpecDefault:
         hen.master = Some(p.id)
         p.pets += hen.id
         hen.statuses.put(Status.Seized, Millis(Long.MaxValue / 2)) // 鸡站着不走回主人身边
-        val wolf  = put(s.w, "狼", Cell(30, 33))
-        wolf.statuses.put(Status.Seized, Millis(Long.MaxValue / 2)) // 狼不先动手（野怪现在会去打守卫，另见 #1217）
         s.run(10_000)
-        assertTrue(hen.hp == hen.maxHp, wolf.hp == wolf.maxHp)
+        assertTrue(hen.hp == hen.maxHp)
+      },
+      test("野狼和卫士相安无事：野怪不主动打守卫，挨了守卫的打也不还手；守卫仍把野怪当敌人（#1217，原版 IsAttackTarget 野怪只认玩家和宝宝）") {
+        val s    = sim()
+        val g    = put(s.w, "卫士", Cell(30, 30))
+        val wolf = put(s.w, "狼", Cell(31, 30))
+        s.run(5000) // 卫士不找 Race 80 以下的狼（#1216），狼也不找卫士：两边相安无事
+        val ignored = g.hp == g.maxHp && wolf.hp == wolf.maxHp && !wolf.target.contains(g.id)
+        g.target = Some(wolf.id)
+        s.w.vitals.strike(Some(g), wolf, Blow(Defence.Pierce, 1)): Unit
+        assertTrue(ignored, !wolf.target.contains(g.id), !s.w.isEnemy(wolf, g), s.w.isEnemy(g, wolf))
       },
       test("弓箭守卫不打宝宝（#1216，原版 ArcherGuard 只打打它的、红名）") {
         val s   = sim()

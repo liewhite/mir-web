@@ -7,19 +7,20 @@ import mir.rules.Side
 /** 敌我：谁能打谁（按外观判断，规则和客户端共用 Look.hostile），以及给怪找最近的敌人。 */
 final class Hostility(w: World):
   /**
-   * 本次 tick 开始时不是野怪的对象（玩家、宝宝、守卫）。野怪只会把它们当敌人，找敌人时只看这些，
+   * 本次 tick 开始时玩家一边的对象（玩家、宝宝）。野怪只会把它们当敌人（Side.attacks），找敌人时只看这些，
    * 不用每只怪都把全图上千只怪扫一遍。发狂的怪不算：野怪不会主动去找它，只在挨了它的打时还手。
    */
-  private var fighters: Vector[Actor] = Vector.empty
+  private var prey: Vector[Actor] = Vector.empty
 
   private def side(a: Actor): Option[Side] = a.look.side(w.catalog.isGuard)
 
-  /** 每次 tick 开头重新收一遍 fighters。 */
+  /** 每次 tick 开头重新收一遍 prey。 */
   private[world] def refresh(): Unit =
-    fighters = w.eachActor.filter(a => side(a).exists(s => s != Side.Wild && s != Side.Crazy)).toVector
+    prey = w.eachActor.filter(a => side(a).contains(Side.Players)).toVector
 
   /**
-   * a 能不能打 b（自动找目标、范围攻击都按它）：都活着、不是同一个、外观上敌对（不同阵营，埋着的、石像打不到）；
+   * a 会不会打 b（自动找目标、范围攻击、挨打还手都按它，有方向）：都活着、不是同一个、a 的阵营打 b 的阵营
+   * （Side.attacks：野怪不打守卫，所以挨了守卫的打也不还手，同原版 AnimalObject.Struck → IsProperTarget），埋着的、石像打不到；
    * 守卫和玩家平时不互打，但守卫被谁打了，Grudge.Ms 内把他当敌人（原版 GuardUnit.IsProperTarget 认 LastHiter）；
    * 守卫和宝宝之间另看 guardVsPet（#1216）。
    */
@@ -42,7 +43,7 @@ final class Hostility(w: World):
     val seesInvisible = m match
       case mon: Monster => mon.defn.coolEye > 0
       case _            => true
-    val candidates = if side(m).contains(Side.Wild) then fighters.iterator.filter(w.present) else w.eachActor
+    val candidates = if side(m).contains(Side.Wild) then prey.iterator.filter(w.present) else w.eachActor
     candidates
       .filter(a => isEnemy(m, a) && (seesInvisible || !a.statuses.has(StatusKind.Invisible)) && !ignoredByGuard(m, a))
       .filter(a => m.cell.chebyshev(a.cell) <= range)
