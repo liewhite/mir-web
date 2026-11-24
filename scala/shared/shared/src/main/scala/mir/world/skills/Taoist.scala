@@ -1,7 +1,6 @@
 package mir.world.skills
 
 import mir.core.*
-import mir.model.PoisonKind
 import mir.protocol.{Anchor, Tone}
 import mir.rules.SpellRules
 import mir.rules.Rng
@@ -44,8 +43,8 @@ object Taoist:
         poisonPowder.map { (a, kind) =>
           consume(a)
           p.lastPoison = Some(kind)
-          val secs = SpellRules.poisonSecs(d, lv, sc, green = kind == PoisonKind.Green)
-          w.conditions.poison(t, kind, secs * 1000L, SpellRules.poisonTick(sc), p.id)
+          val dose = SpellRules.poisonDose(d, lv, sc, kind)
+          w.conditions.poison(t, kind, dose.secs * 1000L, dose.power, p.id)
           t match
             case m: Monster => provoke(m)
             case _          => ()

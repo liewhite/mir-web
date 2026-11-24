@@ -2,7 +2,7 @@ package mir.client.ui
 
 import mir.core.{MonsterName, SkillId}
 import mir.data.{Catalog, SkillDef}
-import mir.model.LearnedSkill
+import mir.model.{LearnedSkill, PoisonKind}
 import mir.protocol.SelfStats
 import mir.rules.{Odds, Rates, Rng, Skill, SkillUse, SpellRules, SwordRules}
 
@@ -73,6 +73,8 @@ object SkillInfo:
     private def mcVsUndead(l: Int)     = span(r => SpellRules.vsUndead(SpellRules.mcDamage(d, l, mc)(using r)))
     private def scDmg(l: Int)          = span(r => SpellRules.scDamage(d, l, sc)(using r))
     private def heal(l: Int)           = span(r => SpellRules.heal(d, l, sc)(using r))
+    private def poisonSecs(l: Int, k: PoisonKind)  = span(r => SpellRules.poisonDose(d, l, sc, k)(using r).secs)
+    private def poisonPower(l: Int, k: PoisonKind) = span(r => SpellRules.poisonDose(d, l, sc, k)(using r).power)
     private val armor                  = "，再减目标魔防"
     /** 治愈术、群体治疗术怎么回（SpellRules 的回血池规则） */
     private val healingNotes = List(
@@ -124,7 +126,7 @@ object SkillInfo:
       case Skill.Tame => Some(l => s"收服 ${tamePct(l, "收服")}")
       case Skill.Healing | Skill.GroupHealing => Some(l => s"持续回血共 ${heal(l)}")
       case Skill.SoulFireBall => Some(l => s"威力 ${scDmg(l)}")
-      case Skill.Poisoning  => Some(l => s"绿毒 ${span(r => SpellRules.poisonSecs(d, l, sc, green = true)(using r))} 秒、红毒 ${span(r => SpellRules.poisonSecs(d, l, sc, green = false)(using r))} 秒")
+      case Skill.Poisoning  => Some(l => s"绿毒 ${poisonSecs(l, PoisonKind.Green)} 秒、红毒 ${poisonSecs(l, PoisonKind.Red)} 秒")
       case Skill.SoulShield | Skill.HolyArmor => Some(l => s"${span(r => SpellRules.defenceUpSecs(d, l, sc)(using r))} 秒")
       case Skill.HolyCurtain => Some(l => s"${span(r => SpellRules.holyCurtainSecs(d, l, sc)(using r))} 秒")
       case Skill.SummonSkeleton | Skill.SummonShinsu => Some(l => s"×${SpellRules.summonBoost(l)}（血、攻）")
@@ -194,8 +196,9 @@ object SkillInfo:
       case Skill.Poisoning =>
         List(
           "用灰色药粉（绿毒）或黄色药粉（红毒），放包裹里就行，每次用 1 份；两种都带着时红绿交替下",
-          s"绿毒：持续 ${span(r => SpellRules.poisonSecs(d, l, sc, green = true)(using r))} 秒，每 2 秒掉 ${span(r => SpellRules.poisonTick(sc)(using r))} 血",
-          s"红毒：持续 ${span(r => SpellRules.poisonSecs(d, l, sc, green = false)(using r))} 秒，期间挨打伤害 ×${SpellRules.redPoisonDamage(100) / 100.0}"
+          s"绿毒：持续 ${poisonSecs(l, PoisonKind.Green)} 秒，每 ${SpellRules.PoisonTickMs / 1000} 秒掉 ${poisonPower(l, PoisonKind.Green)} 血",
+          s"红毒：持续 ${poisonSecs(l, PoisonKind.Red)} 秒，期间挨打伤害加深 ${poisonPower(l, PoisonKind.Red)}%",
+          s"= 道术 ${sc.lo}-${sc.hi} 随机取一个值，和技能等级一起定下时长与强度；已中同种毒再下，强度取较大的、时长重新算"
         )
       case Skill.SoulFireBall => List(s"用 1 张护身符打一个目标（最远 $R 格），威力 ${scDmg(l)}$armor", s"= 技能基础 + 道术 ${sc.lo}-${sc.hi}")
       case Skill.SoulShield | Skill.HolyArmor =>

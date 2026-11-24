@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.*
 import mir.model.*
 import mir.protocol.*
-import mir.rules.{PetBody, Rng, SpellRules}
+import mir.rules.{PetBody, PoisonDose, Rng, SpellRules}
 import mir.terrain.Terrain
 import mir.rules.SpellRules.{TameOutcome, TameTarget}
 import mir.testkit.TestFiles
@@ -454,7 +454,7 @@ object SpellSpec extends ZIOSpecDefault:
         !p.skill(SkillId(2)).contains(LearnedSkill(SkillId(2), 0, 0, None))
       )
     },
-    test("红毒：中毒期间挨打伤害 ×1.2") {
+    test("红毒：中毒期间挨打伤害按强度加深") {
       val s = sim()
       val p = caster(s, Job.Taoist, Nil)
       val m = put(s, "蛤蟆", Cell(31, 30))
@@ -463,9 +463,35 @@ object SpellSpec extends ZIOSpecDefault:
       m.hp = 10_000
       s.w.vitals.damage(m, 100, Some(p.id))
       val plain = 10_000 - m.hp
-      s.w.conditions.poison(m, PoisonKind.Red, 60_000, 0, p.id)
+      s.w.conditions.poison(m, PoisonKind.Red, 60_000, 25, p.id)
       s.w.vitals.damage(m, 100, Some(p.id))
-      assertTrue(plain == 100, 10_000 - plain - m.hp == 120)
+      assertTrue(plain == 100, 10_000 - plain - m.hp == 125)
+    },
+    test("已中同种毒再下：强度取较大的，持续时间从现在重新算，下一跳不推迟") {
+      val s = sim()
+      val p = caster(s, Job.Taoist, Nil)
+      val m = put(s, "蛤蟆", Cell(31, 30))
+      pin(m)
+      s.w.conditions.poison(m, PoisonKind.Green, 60_000, 9, p.id)
+      val firstTick = m.statuses.find { case q: Status.Poisoned => q.nextTick }
+      s.run(1000)
+      s.w.conditions.poison(m, PoisonKind.Green, 10_000, 3, p.id)
+      val after = m.statuses.find { case q: Status.Poisoned => q }
+      assertTrue(
+        after.map(_.power).contains(9),
+        after.map(_.nextTick) == firstTick,
+        m.statuses.until(StatusKind.GreenPoison).contains(s.w.now + 10_000)
+      )
+    },
+    test("施毒术：道术和技能等级确定持续时间与强度（3 级、道术 10 → 绿毒 60 秒每跳 9 血，红毒 50 秒加深 30%）") {
+      val d = catalog.skill(SkillId(6)).get
+      given Rng = Rng.seeded(1)
+      val sc    = Span(10, 10)
+      assertTrue(
+        SpellRules.poisonDose(d, 3, sc, PoisonKind.Green) == PoisonDose(60, 9),
+        SpellRules.poisonDose(d, 3, sc, PoisonKind.Red) == PoisonDose(50, 30),
+        SpellRules.poisonDose(d, 0, Span(0, 0), PoisonKind.Green) == PoisonDose(20, 1)
+      )
     },
     test("地狱雷光、爆裂火焰打到范围里的怪") {
       val s = sim()

@@ -2,6 +2,10 @@ package mir.rules
 
 import mir.core.MonsterName
 import mir.data.{MonsterDef, SkillDef, Span}
+import mir.model.PoisonKind
+
+/** 一次下的毒：持续秒数和强度（绿毒是每跳掉的血，红毒是挨打加深的百分比）。 */
+final case class PoisonDose(secs: Int, power: Int)
 
 /** 宝宝的身板：血上限、攻击、防御、魔防（召唤加成或收服时定下，跟着主人换图带走）。 */
 final case class PetBody(hp: Int, dc: Span, ac: Span, mac: Span)
@@ -106,15 +110,23 @@ object SpellRules:
   def holyCurtainSecs(d: SkillDef, level: Int, sc: Span)(using Rng): Int =
     Rules.skillPower13(40, level, d.defPower) + Rules.rpow(sc) * 3
 
-  /** 施毒术：持续秒数（绿毒 GetPower13(40)、红毒 GetPower13(30)，+ 道术随机值×2）。 */
-  def poisonSecs(d: SkillDef, level: Int, sc: Span, green: Boolean)(using Rng): Int =
-    Rules.skillPower13(if green then 40 else 30, level, d.defPower) + Rules.rpow(sc) * 2
+  /** 绿毒每隔多久掉一次血（毫秒） */
+  val PoisonTickMs = 2000
 
-  /** 红毒（黄色药粉）：中毒期间挨打的伤害 ×1.2（StruckDamage，PosionDamagarmor = 12）。 */
-  def redPoisonDamage(damage: Int): Int = round(damage * 1.2)
+  /**
+   * 施毒术下一次毒（用户 11-24 在 #1212 定）：只掷一次道术随机值，持续时间和强度都由它和技能等级确定地算出，技能本身不随机。
+   * - 持续秒数：绿毒 GetPower13(40)、红毒 GetPower13(30)（施毒术没有默认威力，按等级是定数），+ 道术随机值×2
+   * - 绿毒每跳掉血：道术随机值÷2 + 技能等级 + 1
+   * - 红毒挨打加深百分比：10 + 技能等级×5 + 道术随机值÷2
+   */
+  def poisonDose(d: SkillDef, level: Int, sc: Span, kind: PoisonKind)(using Rng): PoisonDose =
+    val roll = Rules.rpow(sc)
+    kind match
+      case PoisonKind.Green => PoisonDose(Rules.skillPower13(40, level, d.defPower) + roll * 2, roll / 2 + level + 1)
+      case PoisonKind.Red   => PoisonDose(Rules.skillPower13(30, level, d.defPower) + roll * 2, 10 + level * 5 + roll / 2)
 
-  /** 施毒术绿毒每 2 秒掉的血。 */
-  def poisonTick(sc: Span)(using Rng): Int = math.max(1, round(Rules.rpow(sc) / 2.0) + 1)
+  /** 中红毒挨打的伤害：加深 pct%（四舍五入）。 */
+  def redPoisonDamage(damage: Int, pct: Int): Int = round(damage * (100 + pct) / 100.0)
 
   /** 心灵启示看穿多久：GetPower13(道术随机值×2 + 30)。 */
   def showHpSecs(d: SkillDef, level: Int, sc: Span)(using Rng): Int =

@@ -27,9 +27,15 @@ final class Conditions(w: World):
   /** 给对象上一个持续 ms 毫秒的状态（同种覆盖）。 */
   private[world] def addStatus(a: Actor, s: Status, ms: Long): Unit = a.statuses.put(s, w.now + ms)
 
-  /** 中毒（同种覆盖）：绿毒 2 秒后掉第一次血。 */
+  /**
+   * 中毒：绿毒 PoisonTickMs 后掉第一次血。已中同种毒再下（#1212）：强度取新旧较大的，持续时间从现在重新算，
+   * 下一跳的时刻不变（再下毒不推迟掉血），经验归新下毒的人。
+   */
   private[world] def poison(a: Actor, kind: PoisonKind, ms: Long, power: Int, by: ActorId): Unit =
-    addStatus(a, Status.Poisoned(kind, power, w.now + 2000, Some(by)), ms)
+    val old = a.statuses.find { case p: Status.Poisoned if p.poison == kind => p }
+    val fresh = old.fold(Status.Poisoned(kind, power, w.now + SpellRules.PoisonTickMs, Some(by)))(o =>
+      o.copy(power = math.max(o.power, power), by = Some(by)))
+    addStatus(a, fresh, ms)
 
   /** 麻痹（原版 STONE 状态）：这段时间不能动；不会把还没到期的缩短。 */
   private[world] def paralyze(a: Actor, ms: Long): Unit =

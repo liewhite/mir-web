@@ -3,7 +3,7 @@ package mir.client.ui
 import mir.data.{Catalog, ItemDef, SkillDef, Span}
 import mir.model.{EquipSlot, ItemBonus, ItemInstance, Job, LearnedSkill, PoisonKind}
 import mir.protocol.SelfStats
-import mir.rules.{Upgrade, SpellRules, Durability, Rates, ItemEffects, ItemKind, PotionRules, Pricing, Recovery, Requirement, Rules, ScrollEffect, dressSex}
+import mir.rules.{Upgrade, Durability, Rates, ItemEffects, ItemKind, PotionRules, Pricing, Recovery, Requirement, Rules, ScrollEffect, dressSex}
 
 /**
  * 把物品、属性、技能讲成可量化的说明（用户 #1165：所有效果给精确数值）。纯函数，只出文字。
@@ -67,7 +67,7 @@ object Describe:
       Some(Line(poison match
         case None                   => "道士灵魂火符、召唤骷髅、召唤神兽、隐身术每次用 1 张"
         case Some(PoisonKind.Green) => "施毒术用：绿毒，中毒期间持续掉血（数值见施毒术说明）"
-        case Some(PoisonKind.Red)   => s"施毒术用：红毒，中毒期间挨打伤害 ×${SpellRules.redPoisonDamage(100) / 100.0}（持续时间见施毒术说明）"
+        case Some(PoisonKind.Red)   => "施毒术用：红毒，中毒期间挨打伤害加深（数值见施毒术说明）"
       )),
       Some(Line("放包裹里就能用（左手镯位戴着的先用）", Tint.Dim)),
       inst.map(i => Line(s"剩余 ${Durability.usesLeft(i.dura)} 次", Tint.Dim))

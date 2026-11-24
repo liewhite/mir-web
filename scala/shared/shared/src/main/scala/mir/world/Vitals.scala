@@ -48,9 +48,9 @@ final class Vitals(w: World):
       case _: Npc => ()
       case _ if target.dead => ()
       case _ =>
-        // 中红毒的挨打 ×1.2（绿毒自己掉的血不算挨打）
-        val redPoison = target.statuses.find { case p: Status.Poisoned if p.poison == PoisonKind.Red => p }.isDefined
-        val poisoned  = if struck && redPoison then SpellRules.redPoisonDamage(amount) else amount
+        // 中红毒的挨打按它的强度加深（绿毒自己掉的血不算挨打）
+        val redPct   = target.statuses.find { case p: Status.Poisoned if p.poison == PoisonKind.Red => p.power }
+        val poisoned = redPct.filter(_ => struck).fold(amount)(SpellRules.redPoisonDamage(amount, _))
         val shield    = target match
           case _: Player => target.statuses.find { case s: Status.Shielded => s.level }
           case _         => None
@@ -100,10 +100,10 @@ final class Vitals(w: World):
   private[world] def weaponShape(p: Player): Option[Int] =
     p.worn.get(EquipSlot.Weapon).flatMap(it => w.catalog.item(it.name)).map(_.shape)
 
-  /** 绿毒每 2 秒掉一次血（不算挨打：不 ×1.2、不打断动作）。 */
+  /** 绿毒每 PoisonTickMs 掉一次血（不算挨打：红毒不加深、不打断动作）。 */
   private[world] def tickPoison(a: Actor): Unit =
     a.statuses.find { case p: Status.Poisoned if p.poison == PoisonKind.Green => p }.filter(p => !a.dead && w.now >= p.nextTick).foreach { p =>
-      a.statuses.revise(p.copy(nextTick = w.now + 2000))
+      a.statuses.revise(p.copy(nextTick = w.now + SpellRules.PoisonTickMs))
       damage(a, math.max(1, p.power), p.by, interrupt = false, struck = false)
     }
 

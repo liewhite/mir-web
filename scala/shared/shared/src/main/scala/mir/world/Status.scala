@@ -19,7 +19,7 @@ object StatusKind:
 
 /** 身上的限时状态和它带的参数。 */
 enum Status(val kind: StatusKind):
-  /** 中毒：绿毒每 2 秒掉 power 血，红毒挨打 ×1.2。by：下毒的对象（经验归属；换图后没有） */
+  /** 中毒：绿毒每跳掉 power 血，红毒挨打伤害加深 power%。by：下毒的对象（经验归属；换图后没有） */
   case Poisoned(poison: PoisonKind, power: Int, nextTick: Millis, by: Option[ActorId]) extends Status(StatusKind.poison(poison))
   /** 魔法盾：按等级减伤 */
   case Shielded(level: Int) extends Status(StatusKind.Shield)
