@@ -239,6 +239,23 @@ object SpellSpec extends ZIOSpecDefault:
       s.cast(p, 29, None, p.cell)
       assertTrue(p.hp > 10, pet.hp > 1)
     },
+    test("治愈术：选中 8 格内的宝宝就治宝宝、不治自己；选中的是怪就治自己") {
+      val s   = sim()
+      val p   = caster(s, Job.Taoist, List(2))
+      val pet = put(s, "蛤蟆", Cell(35, 30))
+      val foe = put(s, "鸡", Cell(31, 30))
+      pin(pet)
+      pin(foe)
+      pet.master = Some(p.id)
+      p.pets += pet.id
+      p.hp = 10
+      pet.hp = 1
+      s.cast(p, 2, Some(pet), pet.cell)
+      val (selfAfterPet, petAfter) = (p.hp, pet.hp)
+      s.run(3000)
+      s.cast(p, 2, Some(foe), foe.cell)
+      assertTrue(petAfter > 1, selfAfterPet == 10, p.hp > 10)
+    },
     test("红毒：中毒期间挨打伤害 ×1.2") {
       val s = sim()
       val p = caster(s, Job.Taoist, Nil)

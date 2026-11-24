@@ -164,6 +164,10 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
   def isEnemy(a: ActorView): Boolean =
     !a.dead && self.exists(me => me.id != a.id && Look.hostile(me.look, a.look, catalog.isGuard))
 
+  /** 自己人：活着的别的玩家和宝宝（不做组队和 PK，所有玩家都算；和服务端 SpellCtx.isFriend 同一口径）。 */
+  def isFriend(a: ActorView): Boolean =
+    !a.dead && self.exists(_.id != a.id) && a.look.side(catalog.isGuard).contains(mir.rules.Side.Players)
+
   /**
    * 此刻哪些格子能走进去：地形能走、没有活着的对象站着（按看得到的算，服务端最终判定）。
    * 先把站人的格子收成集合，寻路时反复查也不慢。

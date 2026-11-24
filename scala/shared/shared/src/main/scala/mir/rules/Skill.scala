@@ -16,13 +16,20 @@ enum SkillUse:
   /** 进施法动作的魔法，冷却按技能表 */
   case Spell
 
+/** 技能对谁放：客户端据此决定把哪个锁定对象当目标发出（服务端按各技能处理器再判）。 */
+enum SkillAim:
+  /** 打敌人：锁定的敌人，没锁就最近的怪 */
+  case Enemy
+  /** 给自己人：锁定的自己人（玩家、宝宝），没锁就是自己（原版 MagicTarget 取点中的任意对象） */
+  case Friend
+
 /**
  * 做好了的技能（名字代替数据表里的编号）。每个技能的数值（威力、耗蓝、熟练度）仍在数据表 SkillDef，
  * 施放效果在 mir.world.skills 里按技能注册（加一个技能：这里加一项，再写它的处理器并在 SkillHandlers 注册）。
  */
-enum Skill(val code: Int, val use: SkillUse):
+enum Skill(val code: Int, val use: SkillUse, val aim: SkillAim = SkillAim.Enemy):
   case FireBall       extends Skill(1, SkillUse.Spell)   // 火球术
-  case Healing        extends Skill(2, SkillUse.Spell)   // 治愈术
+  case Healing        extends Skill(2, SkillUse.Spell, SkillAim.Friend)   // 治愈术
   case OneSword       extends Skill(3, SkillUse.Passive) // 基本剑术
   case SpiritSword    extends Skill(4, SkillUse.Passive) // 精神力战法
   case GreatFireBall  extends Skill(5, SkillUse.Spell)   // 大火球
@@ -34,8 +41,8 @@ enum Skill(val code: Int, val use: SkillUse):
   case Thunder        extends Skill(11, SkillUse.Spell)  // 雷电术
   case LongHit        extends Skill(12, SkillUse.Passive) // 刺杀剑术
   case SoulFireBall   extends Skill(13, SkillUse.Spell)  // 灵魂火符
-  case SoulShield     extends Skill(14, SkillUse.Spell)  // 幽灵盾
-  case HolyArmor      extends Skill(15, SkillUse.Spell)  // 神圣战甲术
+  case SoulShield     extends Skill(14, SkillUse.Spell, SkillAim.Friend)  // 幽灵盾
+  case HolyArmor      extends Skill(15, SkillUse.Spell, SkillAim.Friend)  // 神圣战甲术
   case HolyCurtain    extends Skill(16, SkillUse.Spell)  // 困魔咒
   case SummonSkeleton extends Skill(17, SkillUse.Spell)  // 召唤骷髅
   case Invisible      extends Skill(18, SkillUse.Spell)  // 隐身术
@@ -49,7 +56,7 @@ enum Skill(val code: Int, val use: SkillUse):
   case FireSword      extends Skill(26, SkillUse.Charge(SwordRules.FireCooldownMs)) // 烈火剑法
   case Rush           extends Skill(27, SkillUse.Act(SpellRules.RushCooldownMs))    // 野蛮冲撞
   case ShowHp         extends Skill(28, SkillUse.Spell)  // 心灵启示
-  case GroupHealing   extends Skill(29, SkillUse.Spell)  // 群体治疗术
+  case GroupHealing   extends Skill(29, SkillUse.Spell, SkillAim.Friend)  // 群体治疗术
   case SummonShinsu   extends Skill(30, SkillUse.Spell)  // 召唤神兽
   case MagicShield    extends Skill(31, SkillUse.Spell)  // 魔法盾
   case TurnUndead     extends Skill(32, SkillUse.Spell)  // 圣言术

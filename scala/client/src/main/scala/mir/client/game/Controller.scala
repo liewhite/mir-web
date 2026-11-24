@@ -1,9 +1,9 @@
 package mir.client.game
 
 import mir.core.*
-import mir.protocol.{GameCmd, GroundView, Look, Tone}
+import mir.protocol.{ActorView, GameCmd, GroundView, Look, Tone}
 import mir.model.LearnedSkill
-import mir.rules.{Pace, Skill}
+import mir.rules.{Pace, Skill, SkillAim}
 import mir.terrain.Path
 
 /** 玩家想做的事：输入只改意图，每帧在自己空闲时推进一步。 */
@@ -39,16 +39,18 @@ final class Controller(client: GameClient):
     case Intent.Stick(_, _) => intent = Intent.Idle
     case _                  => ()
 
-  /** 点中一个对象：NPC 走过去对话，怪锁定（正在打别的就改打它），别的玩家不理。 */
+  /**
+   * 点中一个对象：NPC 走过去对话；怪、宝宝、别的玩家都锁定（正在打怪时点了别的敌人就改打它）。
+   * 锁定自己人是为了给它放治愈、加防（SkillAim.Friend），攻击键和攻击技能不会打它。
+   */
   def tapActor(id: ActorId): Unit = client.actor(id).foreach { a =>
     a.look match
       case Look.Npc(_) => intent = Intent.Talk(id)
-      case _: Look.Monster =>
+      case _: Look.Monster | _: Look.Human =>
         client.locked = Some(id)
         intent match
           case Intent.Fight(_) if client.isEnemy(a) => intent = Intent.Fight(id)
           case _                                    => ()
-      case Look.Human(_, _, _, _, _, _) => ()
   }
 
   def tapGround(item: GroundView): Unit = intent = Intent.Fetch(item.id)
@@ -70,10 +72,17 @@ final class Controller(client: GameClient):
   def castKey(key: Int): Unit =
     client.view.skills.find(_.key.contains(key)).foreach(s => castSkill(s.id))
 
-  /** 放技能：打锁定的怪，没有就打最近的，再没有就对着自己脚下（治愈、召唤、魔法盾）。 */
+  /**
+   * 放技能。打敌人的：打锁定的怪，没有就打最近的（并锁定它），再没有就对着自己脚下（召唤、魔法盾）；
+   * 给自己人的：锁定的自己人就放给它，否则放给自己，不改锁定。
+   */
   def castSkill(id: SkillId): Unit =
-    val target = autoTarget()
-    target.foreach(t => client.locked = Some(t))
+    val target = Skill.of(id).fold(SkillAim.Enemy)(_.aim) match
+      case SkillAim.Enemy =>
+        val t = autoTarget()
+        t.foreach(t => client.locked = Some(t))
+        t
+      case SkillAim.Friend => lockedInReach(client.isFriend).map(_.id)
     val cell = target.flatMap(client.actor).orElse(client.self).map(_.cell)
     cell.foreach(c => client.send(GameCmd.Cast(id, target, c)))
 
@@ -92,13 +101,18 @@ final class Controller(client: GameClient):
 
   /** 锁定的目标还能打且在技能范围内就是它，否则范围内最近的怪（范围 = 原版魔法锁定范围 8 格，服务端同样判）。 */
   private def autoTarget(): Option[ActorId] =
-    client.self.flatMap { me =>
-      val range  = mir.rules.SpellRules.CastRange
-      val locked = client.locked.flatMap(client.actor).filter(a => client.isEnemy(a) && a.cell.chebyshev(me.cell) <= range)
-      locked.orElse(
-        client.actors.filter(a => client.isEnemy(a) && a.cell.chebyshev(me.cell) <= range).minByOption(_.cell.chebyshev(me.cell))
-      ).map(_.id)
-    }
+    lockedInReach(client.isEnemy).orElse(nearest(client.isEnemy)).map(_.id)
+
+  /** 锁定的对象，要是符合 kind 且在技能范围内 */
+  private def lockedInReach(kind: ActorView => Boolean): Option[ActorView] =
+    client.locked.flatMap(client.actor).filter(a => kind(a) && inReach(a))
+
+  /** 技能范围内符合 kind 的最近对象 */
+  private def nearest(kind: ActorView => Boolean): Option[ActorView] =
+    client.self.flatMap(me => client.actors.filter(a => kind(a) && inReach(a)).minByOption(_.cell.chebyshev(me.cell)))
+
+  private def inReach(a: ActorView): Boolean =
+    client.self.exists(me => a.cell.chebyshev(me.cell) <= mir.rules.SpellRules.CastRange)
 
   // ---------------- 每帧 ----------------
 

@@ -226,6 +226,27 @@ object ClientSpec extends ZIOSpecDefault:
         r.client.view.stats.exists(_.exp.value > 0)
       )
     },
+    test("点宝宝锁定后放治愈术：目标是宝宝（不是旁边的怪）；攻击键不打宝宝、改打怪；没锁自己人就治自己") {
+      val r = Rig()
+      r.join(Cell(10, 10))
+      val chick = WorldAccess.spawn(r.world, catalog.monster(MonsterName("鸡")).get, Cell(11, 10)).get
+      val pet   = WorldAccess.spawn(r.world, catalog.monster(MonsterName("蛤蟆")).get, Cell(14, 10)).get
+      WorldAccess.adopt(r.world, pet, r.me)
+      r.deliver()
+      def lastCast = r.sent.collect { case c: GameCmd.Cast => c }.lastOption
+      r.ctl.tapActor(pet.id)
+      r.ctl.castSkill(mir.rules.Skill.Healing.id)
+      val onPet = lastCast
+      r.ctl.attack()
+      val afterAttack = r.client.locked
+      r.ctl.castSkill(mir.rules.Skill.Healing.id)
+      val onSelf = lastCast
+      assertTrue(
+        onPet.exists(c => c.target.contains(pet.id) && r.client.actor(pet.id).exists(_.cell == c.cell)),
+        afterAttack.contains(chick.id),
+        onSelf.exists(c => c.target.isEmpty && c.cell == Cell(10, 10))
+      )
+    },
     test("点全景地图走过去：寻路走到那一格停下") {
       val r = Rig(blocked = (8 to 14).map(y => Cell(12, y)).toSet)
       r.join(Cell(10, 10))

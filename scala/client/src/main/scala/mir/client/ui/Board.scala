@@ -151,33 +151,44 @@ final class Board(ui: ClassicUi):
 
   // ---------------- 触屏操作件（用户 #1140） ----------------
 
-  /** 锁定的怪：名字、等级、血条、攻防、经验（倍率后）。右上角 × 取消锁定。 */
+  /** 锁定对象的信息卡：怪是名字、等级、攻防、经验（倍率后）；宝宝绿框；别的玩家只有名字、职业。都有血条，右上角 × 取消锁定。 */
   private def drawTarget(top: Double): Unit =
     for
-      id  <- ui.client.locked
-      a   <- ui.client.actor(id)
-      mon <- a.look match
-        case m: Look.Monster => Some(m)
-        case _               => None
-      d <- ui.catalog.monster(mon.kind)
+      id   <- ui.client.locked
+      a    <- ui.client.actor(id)
+      card <- targetCard(a.look)
     do
-      val pet = mon.master.isDefined
-      val x   = math.round((ui.W - TargetW) / 2).toDouble
-      val r   = Rect(x, top, TargetW, 70)
+      val x = math.round((ui.W - TargetW) / 2).toDouble
+      val r = Rect(x, top, TargetW, 37 + 15 * card.lines.size)
       ui.area(r)
-      g.frame(r, "rgba(10,7,3,.8)", if pet then "#5a8a5a" else "#8a3a2a")
-      val tag = if pet then "（宝宝）" else if d.undead > 0 then "（不死系）" else ""
-      g.text(s"${ui.catalog.displayName(d.name).value}  ${d.level} 级$tag", x + 6, top + 5, if pet then "#9cff8a" else "#ffe08a", bold = true)
+      g.frame(r, "rgba(10,7,3,.8)", if card.friend then "#5a8a5a" else "#8a3a2a")
+      g.text(card.title, x + 6, top + 5, if card.friend then "#9cff8a" else "#ffe08a", bold = true)
       val ratio = math.max(0, math.min(1, a.hp.value.toDouble / math.max(1, a.maxHp.value)))
       g.rect(x + 6, top + 22, TargetW - 12, 10, "#300")
-      g.rect(x + 6, top + 22, math.round((TargetW - 12) * ratio).toDouble, 10, if pet then "#2ecc71" else "#d33")
+      g.rect(x + 6, top + 22, math.round((TargetW - 12) * ratio).toDouble, 10, if card.friend then "#2ecc71" else "#d33")
       val hp = s"${a.hp.value}/${a.maxHp.value}"
       g.text(hp, x + (TargetW - g.width(hp)) / 2, top + 21, "#fff", bold = true)
-      g.text(s"攻击 ${d.dc.lo}-${d.dc.hi}  防御 ${d.ac.lo}-${d.ac.hi}  魔防 ${d.mac.lo}-${d.mac.hi}", x + 6, top + 37, "#ddd")
-      g.text(s"经验 ${d.exp.toLong * Rates.exp}", x + 6, top + 52, "#c0c0c0")
+      card.lines.zipWithIndex.foreach((line, i) => g.text(line, x + 6, top + 37 + 15 * i, if i == 0 then "#ddd" else "#c0c0c0"))
       val close = Rect(x + TargetW - 30, top, 30, 22)
       g.text("×", close.x + 11, close.y + 4, "#f88", bold = true)
       ui.button(Button(close, () => ui.ctl.unlock()))
+
+  private def targetCard(look: Look): Option[TargetCard] = look match
+    case h: Look.Human => Some(TargetCard(s"${h.name}  ${h.job.label}", friend = true, Nil))
+    case m: Look.Monster =>
+      ui.catalog.monster(m.kind).map { d =>
+        val pet = m.master.isDefined
+        val tag = if pet then "（宝宝）" else if d.undead > 0 then "（不死系）" else ""
+        TargetCard(
+          s"${ui.catalog.displayName(d.name).value}  ${d.level} 级$tag",
+          friend = pet,
+          List(
+            s"攻击 ${d.dc.lo}-${d.dc.hi}  防御 ${d.ac.lo}-${d.ac.hi}  魔防 ${d.mac.lo}-${d.mac.hi}",
+            s"经验 ${d.exp.toLong * Rates.exp}"
+          )
+        )
+      }
+    case _: Look.Npc => None
 
   private def drawStick(home: Pt): Unit =
     val js = ui.joystick
@@ -239,3 +250,6 @@ object Board:
   val Rings  = Vector(92.0, 152.0)
   val Angles = Vector(180.0, 210.0, 240.0, 270.0)
   val TargetW = 210.0
+
+  /** 锁定信息卡的内容：friend 是自己人（绿框绿血条），lines 是血条下面的几行 */
+  final case class TargetCard(title: String, friend: Boolean, lines: List[String])
