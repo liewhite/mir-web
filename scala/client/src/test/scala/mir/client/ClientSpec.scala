@@ -304,7 +304,7 @@ object ClientSpec extends ZIOSpecDefault:
         placed.map(_._1.text) == List("甲门", "乙", "丙"), placed(1)._2.x == 100 - 6 - 12, placed(2)._2.x == 395 - 6 - 12
       )
     },
-    test("高级物品提醒：换下身上同部位那件后主属性净提升才算，戒指和较弱那只比、空位算 0、穿不上不算（#1200）") {
+    test("高级物品提醒：换下身上同部位那件后主属性净提升就算，不看等级/属性要求（#1215），性别不符不算，戒指和较弱那只比、空位算 0（#1200）") {
       import mir.rules.{Stats, Upgrade}
       import mir.client.ui.{Describe, Line, Tint}
       def item(n: String)                      = catalog.item(ItemName(n)).get
@@ -313,32 +313,41 @@ object ClientSpec extends ZIOSpecDefault:
         uid += 1
         ItemInstance(ItemUid(uid), ItemName(n), dura, 9000, 1, bonus)
       val stats = Stats(100, 100, Span.zero, Span.zero, Span(0, 30), Span(0, 30), Span(0, 30), 5, 5, 1000, 0, 0, 0, 0, 0)
-      def who(job: Job, level: Int, worn: (EquipSlot, ItemInstance)*) = Upgrade.Wearer(job, Sex.Male, level, stats, worn.toMap)
+      def who(job: Job, worn: (EquipSlot, ItemInstance)*) = Upgrade.Wearer(job, Sex.Male, worn.toMap)
       def gain(w: Upgrade.Wearer, n: String, bonus: Option[ItemBonus] = None) = Upgrade.gain(w, item(n), bonus, catalog.item)
-      val warrior = who(Job.Warrior, 10, EquipSlot.Weapon -> inst("木剑"))
+      val warrior = who(Job.Warrior, EquipSlot.Weapon -> inst("木剑"))
       // 道士：左戒指天尊（道术 2-7）、右戒指玻璃（0-1）；左手镯戴护身符、右手镯道士手镯（0-1）
-      val taoist = who(Job.Taoist, 30,
+      val taoist = who(Job.Taoist,
         EquipSlot.RingL -> inst("天尊戒指"), EquipSlot.RingR -> inst("玻璃戒指"),
         EquipSlot.BraceletL -> inst("护身符"), EquipSlot.BraceletR -> inst("道士手镯"))
-      val bothStrong = who(Job.Taoist, 30, EquipSlot.RingL -> inst("天尊戒指"), EquipSlot.RingR -> inst("天尊戒指"))
+      val bothStrong = who(Job.Taoist, EquipSlot.RingL -> inst("天尊戒指"), EquipSlot.RingR -> inst("天尊戒指"))
       val me   = SelfStats(30, Exp(0), None, Hp(1), Mp(1), Gold(0), stats)
       val up   = gain(warrior, "青铜剑")
       val desc = Describe.itemLines(catalog, item("青铜剑"), Some(inst("青铜剑")), Job.Warrior, me, Some(item("木剑") -> None), up)
+      val taoUp   = gain(who(Job.Taoist, EquipSlot.Weapon -> inst("降魔")), "无极棍")
+      val weakTao = me.copy(level = 26, stats = stats.copy(sc = Span(0, 16)))
+      val taoDesc = Describe.itemLines(catalog, item("无极棍"), Some(inst("无极棍")), Job.Taoist, weakTao, Some(item("降魔") -> None), taoUp)
       assertTrue(
         // 战士比攻击：青铜剑 3-7 比木剑 2-5，下限+上限多 3
         up.contains(Upgrade.Gain("攻击", Some(ItemName("木剑")), 3)),
         gain(warrior, "匕首").map(_.amount).contains(2),
-        // 等级不够穿（青铜剑要 5 级）、道士不看攻击
-        gain(who(Job.Warrior, 3, EquipSlot.Weapon -> inst("木剑")), "青铜剑").isEmpty,
-        gain(who(Job.Taoist, 10, EquipSlot.Weapon -> inst("木剑")), "青铜剑").isEmpty,
+        // 道士不看攻击
+        gain(who(Job.Taoist, EquipSlot.Weapon -> inst("木剑")), "青铜剑").isEmpty,
+        // 穿不上（无极棍要道术 25）也提示：道术 3-5 比降魔 1-2 多 5（#1215）
+        taoUp.contains(Upgrade.Gain("道术", Some(ItemName("降魔")), 5)),
+        taoDesc(1) == Line("比身上的降魔道术高 5　下限+上限合计", Tint.Upgrade),
+        taoDesc.contains(Line("需要道术上限 25（你现在 16）", Tint.Bad)),
+        // 性别不符的衣服永远穿不上，不提示
+        gain(who(Job.Taoist), "幽灵战衣(男)").map(_.amount).contains(5),
+        gain(who(Job.Taoist), "幽灵战衣(女)").isEmpty,
         // 同名但极品多攻击上限 2：算提升
-        gain(who(Job.Warrior, 10, EquipSlot.Weapon -> inst("青铜剑")), "青铜剑", Some(ItemBonus.Weapon(dc = 2))).map(_.amount).contains(2),
-        gain(who(Job.Warrior, 10, EquipSlot.Weapon -> inst("青铜剑")), "青铜剑").isEmpty,
+        gain(who(Job.Warrior, EquipSlot.Weapon -> inst("青铜剑")), "青铜剑", Some(ItemBonus.Weapon(dc = 2))).map(_.amount).contains(2),
+        gain(who(Job.Warrior, EquipSlot.Weapon -> inst("青铜剑")), "青铜剑").isEmpty,
         // 身上那件持久 0 不加属性，按 0 算
-        gain(who(Job.Warrior, 10, EquipSlot.Weapon -> inst("铁剑", dura = 0)), "木剑").map(_.amount).contains(7),
+        gain(who(Job.Warrior, EquipSlot.Weapon -> inst("铁剑", dura = 0)), "木剑").map(_.amount).contains(7),
         // 空位：有主属性就算
-        gain(who(Job.Taoist, 30), "珍珠戒指").contains(Upgrade.Gain("道术", None, 2)),
-        gain(who(Job.Taoist, 30), "古铜戒指").isEmpty,
+        gain(who(Job.Taoist), "珍珠戒指").contains(Upgrade.Gain("道术", None, 2)),
+        gain(who(Job.Taoist), "古铜戒指").isEmpty,
         // 双戒指和较弱那只（玻璃 0-1）比；两只都比它强就不算
         gain(taoist, "珍珠戒指").contains(Upgrade.Gain("道术", Some(ItemName("玻璃戒指")), 1)),
         gain(bothStrong, "珍珠戒指").isEmpty,

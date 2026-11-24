@@ -135,15 +135,14 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
     val now = serverNow
     view.actors.values.map(a => if view.me.contains(a.id) then motion.shown(a, now) else a)
 
-  /** 自己作为穿戴者（比装备好坏用，#1200）；还没进游戏或没收到属性时为空。 */
+  /** 自己作为穿戴者（比装备好坏用，#1200）；还没进游戏时为空。 */
   def wearer: Option[Upgrade.Wearer] =
     for
       a <- view.self
-      s <- view.stats
       h <- a.look match
         case h: Look.Human => Some(h)
         case _             => None
-    yield Upgrade.Wearer(h.job, h.sex, s.level, s.stats, view.worn)
+    yield Upgrade.Wearer(h.job, h.sex, view.worn)
 
   /** 一件物品换下身上同部位那件后主属性提升多少（不是提升为空，#1200）。 */
   def upgradeOf(name: ItemName, bonus: Option[ItemBonus]): Option[Upgrade.Gain] =

@@ -180,7 +180,7 @@ object Requirement:
     case Mc(_)    => stats.mc.hi
     case Sc(_)    => stats.sc.hi
 
-  /** 这个人穿不上它的原因（等级/属性不够、性别不符；不看负重 #1169），穿得上为空。服务端穿戴和客户端提醒共用。 */
+  /** 这个人穿不上它的原因（等级/属性不够、性别不符；不看负重 #1169），穿得上为空。服务端穿戴用（高级物品提醒不看它，#1215）。 */
   def refusal(d: ItemDef, level: Int, stats: Stats, sex: Sex): Option[String] =
     val r    = of(d)
     val have = current(r, level, stats)
