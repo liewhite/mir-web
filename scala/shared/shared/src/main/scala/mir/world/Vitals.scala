@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.DropDef
 import mir.model.*
 import mir.protocol.*
-import mir.rules.{ItemEffects, ItemKind, Leveling, PassiveSkills, Progress, RandomUpgrade, Rates, Recovery, Rng, Rules, Skill, SpellRules}
+import mir.rules.{ItemEffects, ItemKind, Leveling, PassiveSkills, PetBody, Progress, RandomUpgrade, Rates, Recovery, Rng, Rules, Skill, SpellRules}
 
 /**
  * 血、蓝与生死：一下攻击的结算、扣血、死亡（经验、掉落）、复活、回血回蓝、属性重算。
@@ -214,6 +214,13 @@ final class Vitals(w: World):
   private[world] def setMaxHp(m: Monster, max: Int, hp: Option[Int] = None): Unit =
     m.maxHpNow = max
     m.hp = hp.fold(max)(math.min(_, max))
+
+  /** 换一副身板（召唤加成、换图还原）；不给 hp 就是满血。 */
+  private[world] def shape(m: Monster, b: PetBody, hp: Option[Int] = None): Unit =
+    setMaxHp(m, b.hp, hp)
+    m.dc = b.dc
+    m.baseAc = b.ac
+    m.baseMac = b.mac
 
   /** 进图时放上存档里的血蓝（重算属性后按上限截；死着下线的，回来时活着）。 */
   private[world] def restore(p: Player, hp: Hp, mp: Mp): Unit =

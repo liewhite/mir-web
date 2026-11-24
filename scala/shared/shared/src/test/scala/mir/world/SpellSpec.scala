@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.*
 import mir.model.*
 import mir.protocol.*
-import mir.rules.{Rng, SpellRules}
+import mir.rules.{PetBody, Rng, SpellRules}
 import mir.terrain.Terrain
 import mir.rules.SpellRules.{TameOutcome, TameTarget}
 import mir.testkit.TestFiles
@@ -126,6 +126,40 @@ object SpellSpec extends ZIOSpecDefault:
         s.notices.exists(_.contains(s"最多 ${SpellRules.SummonsEach} 只")),
         count(SpellRules.SkeletonPet) == 3,
         count(SpellRules.ShinsuPet) == 2
+      )
+    },
+    test("道术加成宝宝（#1209）：道术上限每点 +2%，封顶 +60%，乘血、攻、防、魔防；技能等级只乘血和攻") {
+      val md = catalog.monster(SpellRules.SkeletonPet).get
+      def body(sc: Int) = SpellRules.summonedBody(md, 3, sc)
+      def x(v: Int, k: Double) = math.floor(v * k + 0.5).toInt
+      val lv3 = SpellRules.summonBoost(3)
+      assertTrue(
+        SpellRules.summonScBoost(0) == 1.0,
+        SpellRules.summonScBoost(20) == 1.4,
+        SpellRules.summonScBoost(30) == 1.6,
+        SpellRules.summonScBoost(40) == 1.6,
+        body(0) == PetBody(x(md.hp, lv3), Span(x(md.dc.lo, lv3), x(md.dc.hi, lv3)), md.ac, md.mac),
+        body(20).hp == x(md.hp, lv3 * 1.4),
+        body(20).dc == Span(x(md.dc.lo, lv3 * 1.4), x(md.dc.hi, lv3 * 1.4)),
+        body(20).ac == Span(x(md.ac.lo, 1.4), x(md.ac.hi, 1.4)),
+        body(20).mac == Span(x(md.mac.lo, 1.4), x(md.mac.hi, 1.4)),
+        body(40) == body(30)
+      )
+    },
+    test("召唤时按主人道术上限定下宝宝身板，之后道术变了也不变（#1209）") {
+      val s = sim()
+      val p = caster(s, Job.Taoist, List(17), charm = true)
+      p.stats = p.stats.copy(sc = Span(5, 20))
+      s.cast(p, 17, None, p.cell); s.run(3000)
+      val m  = p.pets.flatMap(s.w.actor).collectFirst { case m: Monster => m }.get
+      val want = SpellRules.summonedBody(m.defn, 3, 20)
+      p.stats = p.stats.copy(sc = Span(0, 0))
+      assertTrue(
+        m.body == want,
+        m.maxHp == want.hp,
+        m.ac == want.ac,
+        m.mac == want.mac,
+        want.ac != m.defn.ac
       )
     },
     test("灵魂火符命中炸开用原版 1360 起的帧，不是幽灵盾的 1320（PlayScn.pas mtExploBujauk）") {

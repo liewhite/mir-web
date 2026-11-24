@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.{MerchantDef, MonsterDef, MonsterLook, Span}
 import mir.model.*
 import mir.protocol.{ActionView, FieldView, GroundThing, GroundView, Look}
-import mir.rules.{Skill, Stats}
+import mir.rules.{PetBody, Skill, Stats}
 
 import scala.collection.mutable
 
@@ -121,6 +121,9 @@ final class Monster(id: ActorId, val defn: MonsterDef, val behavior: Behavior, i
   private[world] var spawn: Option[Int] = initSpawn
   private[world] var maxHpNow: Int  = defn.hp
   private[world] var dc: Span       = defn.dc
+  /** 防御、魔防底数（不含状态加成）：平时取数据表，召唤的宝宝按道术加成 */
+  private[world] var baseAc: Span   = defn.ac
+  private[world] var baseMac: Span  = defn.mac
   private[world] var target: Option[ActorId] = None
   private[world] var nextThink: Millis  = now
   private[world] var lastAttack: Millis = Millis.zero
@@ -149,8 +152,10 @@ final class Monster(id: ActorId, val defn: MonsterDef, val behavior: Behavior, i
   def expScale: Double = extras.map(_.expScale).product
 
   def maxHp: Int   = maxHpNow
-  def ac: Span     = buffedAc(defn.ac)
-  def mac: Span    = buffedMac(defn.mac)
+  def ac: Span     = buffedAc(baseAc)
+  def mac: Span    = buffedMac(baseMac)
+  /** 此刻的身板（宝宝换图时带走） */
+  def body: PetBody = PetBody(maxHpNow, dc, baseAc, baseMac)
   def agility: Int = defn.speed
   def hit: Int     = defn.hit
   def isGuard: Boolean = defn.isGuard

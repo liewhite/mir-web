@@ -343,6 +343,22 @@ object WorldSpec extends ZIOSpecDefault:
           s2.w.visibility.selfView(p2).status.shieldUntil.contains(Millis(60_000))
         )
       },
+      test("宝宝换图带着身板：血、攻击、防御、魔防都还原（#1209）") {
+        val s    = sim()
+        val p    = join(s.w, "甲", Cell(30, 30))
+        val pet  = put(s.w, "蛤蟆", Cell(31, 30))
+        val body = mir.rules.PetBody(500, Span(20, 30), Span(11, 12), Span(13, 14))
+        pet.master = Some(p.id)
+        p.pets += pet.id
+        s.w.vitals.shape(pet, body, Some(321))
+        s.w.handle(p.id, GameCmd.Teleport(TeleportRef(0)))
+        s.flush()
+        val d   = s.departures.find(_.player == p.id).get
+        val s2  = sim(testMap.copy(id = MapId("U")))
+        val p2  = s2.w.player(s2.w.join(d.data.copy(place = Place(s2.w.mapId, Cell(30, 30))), d.carried)).get
+        val got = p2.pets.flatMap(s2.w.actor).collectFirst { case m: Monster => m }
+        assertTrue(got.map(_.body).contains(body), got.map(_.hp).contains(321), got.map(_.ac).contains(Span(11, 12)))
+      },
       test("离开视野范围就消失，走回来重新出现") {
         val s = sim()
         val a = join(s.w, "甲", Cell(5, 30))

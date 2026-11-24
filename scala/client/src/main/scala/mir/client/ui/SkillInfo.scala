@@ -102,11 +102,15 @@ object SkillInfo:
     private def repelOdds(l: Int, below: Int) = chance(r => SpellRules.repelPush(L, L - below, l)(using r).isDefined)
     private def turnUndead(l: Int, below: Int) = chance(r => SpellRules.turnUndeadKills(L, L - below, l)(using r))
 
-    private def petLine(name: String, l: Int): String =
-      catalog.monster(MonsterName(name)).fold(name) { md =>
-        val b = SpellRules.summonBoost(l)
-        def x(v: Int) = math.floor(v * b + 0.5).toInt
-        s"$name 血 ${x(md.hp)}、攻击 ${x(md.dc.lo)}-${x(md.dc.hi)}（基础 ${md.hp}、${md.dc.lo}-${md.dc.hi} ×$b）"
+    private def petLines(name: String, l: Int): List[String] =
+      val scBoost = SpellRules.summonScBoost(sc.hi)
+      val rule = s"道术上限每点 +${SpellRules.SummonScPctPerPoint}% 宝宝血量、攻击、防御、魔防，最多 +${SpellRules.SummonScPctCap}%（召唤时定下，之后换装不变）；你现在道术上限 ${sc.hi}，×$scBoost"
+      rule :: catalog.monster(MonsterName(name)).fold(List(name)) { md =>
+        val b = SpellRules.summonedBody(md, l, sc.hi)
+        List(
+          s"$name 血 ${b.hp}、攻击 ${b.dc.lo}-${b.dc.hi}、防御 ${b.ac.lo}-${b.ac.hi}、魔防 ${b.mac.lo}-${b.mac.hi}",
+          s"（基础 血 ${md.hp}、攻击 ${md.dc.lo}-${md.dc.hi}、防御 ${md.ac.lo}-${md.ac.hi}、魔防 ${md.mac.lo}-${md.mac.hi}；血和攻击再×技能等级加成 ${SpellRules.summonBoost(l)}）"
+        )
       }
 
     def headline(skill: Skill): Option[Int => String] = skill match
@@ -123,7 +127,7 @@ object SkillInfo:
       case Skill.Poisoning  => Some(l => s"绿毒 ${span(r => SpellRules.poisonSecs(d, l, sc, green = true)(using r))} 秒、红毒 ${span(r => SpellRules.poisonSecs(d, l, sc, green = false)(using r))} 秒")
       case Skill.SoulShield | Skill.HolyArmor => Some(l => s"${span(r => SpellRules.defenceUpSecs(d, l, sc)(using r))} 秒")
       case Skill.HolyCurtain => Some(l => s"${span(r => SpellRules.holyCurtainSecs(d, l, sc)(using r))} 秒")
-      case Skill.SummonSkeleton | Skill.SummonShinsu => Some(l => s"×${SpellRules.summonBoost(l)}")
+      case Skill.SummonSkeleton | Skill.SummonShinsu => Some(l => s"×${SpellRules.summonBoost(l)}（血、攻）")
       case Skill.Invisible | Skill.GroupInvisible => Some(l => s"${span(r => SpellRules.invisibleSecs(d, l, sc)(using r))} 秒")
       case Skill.ShowHp => Some(l => s"成功 ${chance(r => SpellRules.showHpWorks(l)(using r))}")
       case Skill.TurnUndead => Some(l => s"低 2 级的 ${turnUndead(l, 2)}")
@@ -209,9 +213,9 @@ object SkillInfo:
           s"怪物 ≤ ${L - 2} 级 ${at(0)}，${L - 1} 级 ${at(1)}，$L 级 ${at(2)}，${L + 1} 级 ${at(3)}，${L + 2} 级 ${at(4)}"
         )
       case Skill.SummonSkeleton =>
-        List(s"用 1 张护身符召唤一只，同时最多 ${SpellRules.SummonsEach} 只（不占诱惑之光的名额）", petLine(SpellRules.SkeletonPet.value, l))
+        s"用 1 张护身符召唤一只，同时最多 ${SpellRules.SummonsEach} 只（不占诱惑之光的名额）" :: petLines(SpellRules.SkeletonPet.value, l)
       case Skill.SummonShinsu =>
-        List(s"用 1 张护身符召唤一只，同时最多 ${SpellRules.SummonsEach} 只（不占诱惑之光的名额）", petLine(SpellRules.ShinsuPet.value, l))
+        s"用 1 张护身符召唤一只，同时最多 ${SpellRules.SummonsEach} 只（不占诱惑之光的名额）" :: petLines(SpellRules.ShinsuPet.value, l)
       case Skill.Invisible => List(s"用 1 张护身符隐身 ${span(r => SpellRules.invisibleSecs(d, l, sc)(using r))} 秒，怪物看不见你（打怪或放别的技能就现身）")
       case Skill.GroupInvisible =>
         val w = SpellRules.GroupRadius * 2 + 1

@@ -39,8 +39,7 @@ final class Roster(w: World):
       w.catalog.monster(pd.kind).flatMap(w.spawner.spawnMonster(_, None, p.cell, 1)).foreach { m =>
         m.master = Some(p.id)
         m.petLevel = pd.level
-        w.vitals.setMaxHp(m, pd.maxHp, Some(pd.hp))
-        m.dc = pd.dc
+        w.vitals.shape(m, pd.body, Some(pd.hp))
         m.cover = Cover.Open
         p.pets += m.id
       }
@@ -78,7 +77,7 @@ final class Roster(w: World):
       w.out.sound(p.cell, Sounds.spaceIn)
     else
       val pets = p.pets.flatMap(w.actor).collect {
-        case m: Monster if !m.dead => PetData(m.defn.name, m.hp, m.maxHpNow, m.dc, m.petLevel)
+        case m: Monster if !m.dead => PetData(m.defn.name, m.hp, m.body, m.petLevel)
       }.toList
       w.out.sound(p.cell, Sounds.spaceOut)
       // 下毒的人留在这张图：编号到了别的图不算数

@@ -1,7 +1,10 @@
 package mir.rules
 
 import mir.core.MonsterName
-import mir.data.{SkillDef, Span}
+import mir.data.{MonsterDef, SkillDef, Span}
+
+/** 宝宝的身板：血上限、攻击、防御、魔防（召唤加成或收服时定下，跟着主人换图带走）。 */
+final case class PetBody(hp: Int, dc: Span, ac: Span, mac: Span)
 
 /**
  * 技能的数值公式：威力、持续秒数、成功率、范围。出处 ref/Mir176 MagicManager.cs（配置取 GameSvrConf 默认值），
@@ -239,6 +242,23 @@ object SpellRules:
 
   /** 召唤骷髅、神兽：血量和攻击 ×(1 + 技能等级×0.35)。 */
   def summonBoost(level: Int): Double = 1 + level * 0.35
+
+  /** 道术加成（#1209，本服加的）：召唤那一刻主人道术上限每点 +2%，最多 +60%。 */
+  val SummonScPctPerPoint = 2
+  val SummonScPctCap      = 60
+
+  /** 道术加成的倍数：1 + min(道术上限×2%, 60%)。 */
+  def summonScBoost(scMax: Int): Double =
+    1 + math.min(math.max(scMax, 0) * SummonScPctPerPoint, SummonScPctCap) / 100.0
+
+  /** 召唤出来的宝宝：技能等级加成乘血量和攻击，道术加成乘血量、攻击、防御、魔防。 */
+  def summonedBody(base: MonsterDef, level: Int, scMax: Int): PetBody =
+    val sc   = summonScBoost(scMax)
+    val both = summonBoost(level) * sc
+    PetBody(scaled(base.hp, both), scaled(base.dc, both), scaled(base.ac, sc), scaled(base.mac, sc))
+
+  private def scaled(v: Int, k: Double): Int    = math.floor(v * k + 0.5).toInt
+  private def scaled(s: Span, k: Double): Span = Span(scaled(s.lo, k), scaled(s.hi, k))
 
   /** 收服后宝宝走路、出手间隔的上限（毫秒）：1500 - 等级×200、2000 - 等级×200。 */
   def petWalkCap(level: Int): Int   = 1500 - level * 200

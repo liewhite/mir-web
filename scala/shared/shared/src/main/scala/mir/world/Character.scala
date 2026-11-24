@@ -1,8 +1,9 @@
 package mir.world
 
 import mir.core.*
-import mir.data.{Catalog, Span}
+import mir.data.Catalog
 import mir.model.*
+import mir.rules.PetBody
 import zio.json.*
 
 /** 某张地图上的某一格。 */
@@ -69,7 +70,7 @@ object CharacterData:
     )
 
 /** 跟着主人换图的宝宝。 */
-final case class PetData(kind: MonsterName, hp: Int, maxHp: Int, dc: Span, level: Int)
+final case class PetData(kind: MonsterName, hp: Int, body: PetBody, level: Int)
 
 /** 物品实例编号的来源：全服唯一（服务端按数据库里最大编号往上发）。 */
 trait UidSource:

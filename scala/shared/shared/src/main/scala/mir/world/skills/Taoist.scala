@@ -112,7 +112,7 @@ object Taoist:
         else w.out.notice(p, "没有困住怪（要比你低几级的怪才困得住）", Tone.System)
       })
 
-  /** 召唤宝宝：同名的最多 SpellRules.SummonsEach 只，按技能等级加血加攻。 */
+  /** 召唤宝宝：同名的最多 SpellRules.SummonsEach 只，按技能等级和主人道术上限加成（SpellRules.summonedBody）。 */
   final class Summon(pet: MonsterName, override val castFx: Option[CastFx]) extends SkillHandler:
     def cast(c: SpellCtx)(using Rng): Effect =
       import c.*
@@ -130,12 +130,9 @@ object Taoist:
             case Some(md) =>
               consume(a)
               w.spawner.spawnMonster(md, None, p.cell.step(p.dir), 1).foreach { m =>
-                val boost = SpellRules.summonBoost(lv)
-                def scale(v: Int) = math.floor(v * boost + 0.5).toInt
                 m.master = Some(p.id)
                 m.petLevel = lv
-                w.vitals.setMaxHp(m, scale(md.hp))
-                m.dc = mir.data.Span(scale(md.dc.lo), scale(md.dc.hi))
+                w.vitals.shape(m, SpellRules.summonedBody(md, lv, sc.hi))
                 p.pets += m.id
                 c.fx("magic", 1500, 10, 60, Anchor.OnActor(m.id))
               }
