@@ -69,6 +69,24 @@ final class Gfx(val ctx: dom.CanvasRenderingContext2D, sprites: SpriteStore):
       ctx.stroke()
     }
 
+  /** 齿轮（实心，中间挖空）：圆心 (cx, cy)、齿尖半径 r，8 个齿。 */
+  def gear(cx: Double, cy: Double, r: Double, color: String): Unit =
+    val teeth = 8
+    val inner = r * 0.72
+    ctx.beginPath()
+    (0 until teeth * 4).foreach { k =>
+      // 每个齿分 4 段：齿顶两点在外圈，齿根两点在内圈
+      val a   = (k.toDouble / (teeth * 4) - 0.0625 / 2) * math.Pi * 2
+      val rad = if k % 4 < 2 then r else inner
+      val (x, y) = (cx + rad * math.cos(a), cy + rad * math.sin(a))
+      if k == 0 then ctx.moveTo(x, y) else ctx.lineTo(x, y)
+    }
+    ctx.closePath()
+    ctx.moveTo(cx + r * 0.32, cy)
+    ctx.arc(cx, cy, r * 0.32, 0, math.Pi * 2, counterclockwise = true)
+    ctx.fillStyle = color
+    ctx.fill()
+
   /** 描边矩形（自己画的按钮、面板）。 */
   def frame(r: Rect, fill: String, stroke: String): Unit =
     ctx.fillStyle = fill

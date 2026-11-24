@@ -85,7 +85,7 @@ final class Board(ui: ClassicUi):
     ui.button(Button(Rect(bx + 643, by + 61, 24, 24), () => ui.run(UiAction.State(StatePage.Equip)), img = Some(8)))
     ui.button(Button(Rect(bx + 682, by + 41, 24, 22), () => ui.run(UiAction.Bag), img = Some(9)))
     ui.button(Button(Rect(bx + 722, by + 21, 24, 23), () => ui.run(UiAction.State(StatePage.Magic)), img = Some(10)))
-    ui.button(Button(Rect(bx + 764, by + 11, 24, 23), () => ui.run(UiAction.Settings), img = Some(11)))
+    settingsButton(Rect(bx + 764, by + 11, 24, 23))
     // 快捷栏（只放药和卷轴，1-6 键或点一下就用）
     beltRects.zipWithIndex.foreach { (r, i) =>
       val place = ItemPlace.Belt(i)
@@ -101,6 +101,17 @@ final class Board(ui: ClassicUi):
     }
     ui.button(Button(Rect(bx + 530, by + 104, 28, 13), () => ui.logout(), img = Some(136), always = true))
     ui.button(Button(Rect(bx + 560, by + 104, 28, 13), () => ui.logout(), img = Some(138), always = true))
+
+  /**
+   * 设置按钮：原版这个位置是声音开关（底栏图上画着喇叭），用户 11-24 嫌联想不到设置，
+   * 在喇叭上盖一块同色圆底、画齿轮；颜色取自原版按钮（平时暗蓝底灰蓝图案，按下亮蓝底白图案）。
+   */
+  private def settingsButton(r: Rect): Unit =
+    ui.button(Button(r, () => ui.run(UiAction.Settings)))
+    val down       = ui.isPressed(r)
+    val (cx, cy)   = (r.x + 12.5, r.y + 11.5)
+    g.circle(cx, cy, 9.5, if down then "#104284" else "#0c2142")
+    g.gear(cx, cy, 7.5, if down then "#fffbf0" else "#6070a8")
 
   /** 折好的行（每帧都画，量字宽不便宜，记住） */
   private val wrapped = scala.collection.mutable.HashMap.empty[String, Vector[String]]
