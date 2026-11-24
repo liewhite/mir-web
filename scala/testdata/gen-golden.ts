@@ -37,7 +37,7 @@ const golden = {
   drops: Object.entries(data.drops).flatMap(([monster, rows]) =>
     rows.map((d) => ({
       monster, item: d.item,
-      chance: dropChance(d, d.item === '金币' ? null : byName.get(d.item) ?? null),
+      chance: dropChance(monster, d, d.item === '金币' ? null : byName.get(d.item) ?? null),
     })),
   ),
 };

@@ -192,14 +192,15 @@ final class Vitals(w: World):
         }
 
   /**
-   * 按爆率表掉落（概率按 Rates 换算；金币数量 amount/2 + Random(amount)；装备照原版可能是极品，见 RandomUpgrade）。
+   * 按爆率表掉落（概率按 Rates 换算，boss 的高级装备另有保底；金币数量 amount/2 + Random(amount)；装备照原版可能是极品，见 RandomUpgrade）。
    * 先把每行都掷完，物品超过 Rates.maxDropsPerKill 件时只留最稀有的（DropRules.cap，#1241）；金币不占名额。
    */
   private def dropLoot(m: Monster): Unit =
     given rng: Rng = w.rngOf
+    val rank = Rates.rankOf(m.defn.name)
     val hits = w.catalog.drops(m.defn.name).filter { (d: DropDef) =>
       val itemDef = if d.isGold then None else w.catalog.item(d.item)
-      rng.random(1_000_000) / 1_000_000.0 < Rates.dropChance(d, itemDef)
+      rng.random(1_000_000) / 1_000_000.0 < Rates.dropChance(rank, d, itemDef)
     }
     val (gold, items) = hits.partition(_.isGold)
     gold.foreach { d =>

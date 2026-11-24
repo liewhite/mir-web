@@ -1,5 +1,5 @@
 /**
- * 倍率（用户 11-23 在 #1137 定：大幅降低升级难度（经验 11-23 21:34 再调到 ×100）、大幅提高爆率、装备爆率至少 20%、每只怪能爆什么不变）。
+ * 倍率（用户 11-23 在 #1137 定：大幅降低升级难度（经验 11-23 21:34 再调到 ×100）、大幅提高爆率、每只怪能爆什么不变；爆率 11-24 在 #1241 改定）。
  * 原版数值在 game.json 里不动，只在这里换算。
  */
 import type { DropDef, ItemDef, Range, SkillDef } from '../data/defs';
@@ -8,13 +8,11 @@ import { itemKind } from './items';
 export const RATES = {
   /** 打怪经验倍数 */
   exp: 100,
-  /** 非装备物品（金币、药、书、材料）的掉落概率倍数，最高 100% */
+  /** 掉落概率倍数（所有怪、所有物品），最高 100% */
   drop: 20,
-  /** 高级装备（要求 20 级以上，或要求攻击/魔法/道术）的掉落概率下限 */
-  highEquipMin: 0.2,
+  /** boss（BOSSES）掉高级装备（要求 20 级以上，或要求攻击/魔法/道术）的概率下限；普通怪没有保底（#1241） */
+  bossHighEquipMin: 0.1,
   highEquipLevel: 20,
-  /** 祖玛首饰和头盔（ZUMA_GEAR）不吃保底，掉率封顶 highEquipMin 除以这个数（用户 11-24 在 #1241 定） */
-  zumaGearDivisor: 3,
   /** 打死一只怪最多掉几件物品（金币不算，#1241；只在 Scala 版实现） */
   maxDropsPerKill: 10,
   /** 战士的攻击、防御、魔防（上下限都乘，含装备加成，四舍五入）倍数（用户 11-24 在 #1176 定） */
@@ -23,10 +21,10 @@ export const RATES = {
   skillTrain: 10,
 } as const;
 
-/** 祖玛首饰和头盔：掉率 = 原版 × drop，封顶 highEquipMin / zumaGearDivisor，不吃保底（#1241）。 */
-export const ZUMA_GEAR: ReadonlySet<string> = new Set([
-  '绿色项链', '恶魔铃铛', '灵魂项链', '骑士手镯', '龙之手镯', '三眼手镯',
-  '力量戒指', '紫碧螺', '泰坦戒指', '心灵手镯', '阎罗手套', '黑铁头盔',
+/** 爆率算 boss 的怪（用户 11-24 在 #1241 定手写名单，和 Scala 版 Rates.bosses 一致）。 */
+export const BOSSES: ReadonlySet<string> = new Set([
+  '沃玛教主', '祖玛教主', '千年树妖', '石墓尸王', '牛魔王', '赤月恶魔', '双头金刚', '双头血魔', '黄泉教主', '虹魔教主',
+  '暗之沃玛教主', '暗之牛魔王', '暗之双头金刚', '暗之双头血魔', '暗之黄泉教主', '暗之虹魔教主',
 ]);
 
 /** 技能从 level（0..2）升到 level+1 实际要的熟练度：数据表数值 ÷ skillTrain。 */
@@ -41,12 +39,10 @@ export function jobRange(job: number, r: Range): Range {
   return [scale(r[0]), scale(r[1])];
 }
 
-/** 一行爆率实际的掉落概率（0..1）。def 为空表示金币。 */
-export function dropChance(d: DropDef, def: ItemDef | null): number {
-  const base = d.numerator / d.denominator;
-  const scaled = Math.min(1, base * RATES.drop);
-  if (def && ZUMA_GEAR.has(def.name)) return Math.min(scaled, RATES.highEquipMin / RATES.zumaGearDivisor);
-  return def && isHighEquip(def) ? Math.max(scaled, RATES.highEquipMin) : scaled;
+/** 一行爆率实际的掉落概率（0..1）：原版 × drop；boss 的高级装备至少 bossHighEquipMin。def 为空表示金币。 */
+export function dropChance(monster: string, d: DropDef, def: ItemDef | null): number {
+  const scaled = Math.min(1, (d.numerator / d.denominator) * RATES.drop);
+  return BOSSES.has(monster) && def && isHighEquip(def) ? Math.max(scaled, RATES.bossHighEquipMin) : scaled;
 }
 
 export function isHighEquip(def: ItemDef): boolean {

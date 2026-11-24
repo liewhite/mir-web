@@ -457,7 +457,7 @@ export class World {
     const table: DropDef[] = this.catalog.data.drops[m.def.name] ?? [];
     for (const d of table) {
       const def0 = d.item === '金币' ? null : this.catalog.itemsByName.get(d.item) ?? null;
-      if (Math.random() >= dropChance(d, def0)) continue;
+      if (Math.random() >= dropChance(m.def.name, d, def0)) continue;
       if (d.item === '金币') {
         const gold = Math.floor(d.amount / 2) + random(d.amount);
         if (gold > 0) this.dropAt(m.pos, { gold });

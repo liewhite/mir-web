@@ -120,37 +120,30 @@ object RulesSpec extends ZIOSpecDefault:
         val none  = Leveling.gain(catalog, Progress(3, Exp(9L)), Exp(0L))
         assertTrue(p == Progress(3, Exp(7L)), top == Progress(48, Exp(5L)), none == Progress(3, Exp(9L)))
       },
-      test("高级装备爆率至少 20%，药按 ×20 封顶 100%") {
-        val potion = DropDef(ItemName("金创药(小量)"), 1, 10, 1)
-        val rare   = DropDef(ItemName("裁决之杖"), 1, 5000, 1)
-        assertTrue(
-          Rates.dropChance(potion, catalog.item(potion.item)) == 1.0,
-          Rates.dropChance(rare, catalog.item(rare.item)) == 0.2,
-          Rates.dropChance(DropDef(DropDef.GoldName, 1, 100, 50), None) == 0.2
-        )
-      },
-      test("祖玛首饰和头盔 12 件不吃 20% 保底：原版 ×20，封顶 20%÷3；别的高级装备仍保底 20%（#1241）") {
-        // 按数据表里真实的爆率行算
+      test("爆率：普通怪一律原版 ×20 封顶 100%，boss 的高级装备至少 10%（#1241）") {
+        // 按数据表里真实的爆率行算（第一行）
         def chance(monster: String, name: String) =
-          val d = catalog.drops(MonsterName(monster)).find(_.item == ItemName(name)).get
-          Rates.dropChance(d, catalog.item(d.item))
+          val m = MonsterName(monster)
+          val d = catalog.drops(m).find(_.item == ItemName(name)).get
+          Rates.dropChance(Rates.rankOf(m), d, if d.isGold then None else catalog.item(d.item))
         def near(a: Double, b: Double) = math.abs(a - b) < 1e-12
-        val zumaRows = for
-          (_, rows) <- catalog.data.drops.toList
-          d         <- rows
-          if Rates.zumaGear(d.item)
-        yield Rates.dropChance(d, catalog.item(d.item))
         assertTrue(
-          Rates.zumaGear.size == 12,
-          Rates.zumaGear.forall(n => catalog.item(n).exists(Rates.isHighEquip)),
-          near(chance("祖玛教主", "力量戒指"), 0.2 / 3),   // 1/50 ×20 = 40% → 封顶 6.7%
-          near(chance("沃玛教主", "三眼手镯"), 0.2 / 3),   // 1/100 ×20 = 20% → 6.7%
-          near(chance("千年树妖", "绿色项链"), 0.02),      // 1/1000 ×20
-          near(chance("祖玛卫士3", "黑铁头盔"), 20.0 / 9000), // 1/9000 ×20 ≈ 0.22%
-          zumaRows.nonEmpty,
-          zumaRows.forall(_ <= 0.2 / 3 + 1e-12),
-          Rates.dropChance(DropDef(ItemName("裁决之杖"), 1, 5000, 1), catalog.item(ItemName("裁决之杖"))) == 0.2,
-          Rates.dropChance(DropDef(ItemName("魔血项链"), 1, 5000, 1), catalog.item(ItemName("魔血项链"))) == 0.2
+          Rates.bosses.forall(catalog.monster(_).isDefined),
+          Rates.rankOf(MonsterName("祖玛教主")) == MonsterRank.Boss,
+          Rates.rankOf(MonsterName("祖玛卫士3")) == MonsterRank.Common,
+          // 普通怪：高级装备也没有保底
+          near(chance("祖玛卫士3", "裁决之杖"), 10.0 / 900000 * 20), // ≈ 0.022%
+          near(chance("祖玛卫士3", "黑铁头盔"), 10.0 / 90000 * 20),  // ≈ 0.22%
+          near(chance("祖玛卫士3", "强效金创药"), 10.0 / 300 * 20),
+          // boss：高级装备原版 ×20，低于 10% 的抬到 10%
+          near(chance("祖玛教主", "力量戒指"), 0.4),  // 1/50 ×20
+          near(chance("沃玛教主", "三眼手镯"), 0.2),  // 1/100 ×20
+          chance("祖玛教主", "裁决之杖") == 0.1,       // 1/6000 ×20 → 10%
+          chance("祖玛教主", "井中月") == 0.1,         // 1/300 ×20 ≈ 6.7% → 10%
+          // boss 的非高级装备、药不保底
+          near(chance("祖玛教主", "复活戒指"), 1.0 / 100000 * 20),
+          chance("祖玛教主", "强效金创药") == 1.0,
+          Rates.dropChance(MonsterRank.Boss, DropDef(DropDef.GoldName, 1, 100, 50), None) == 0.2
         )
       },
       test("一只怪最多掉 10 件：多了留原版爆率最低的，同爆率按表顺序；可叠的一叠算一件（#1241）") {

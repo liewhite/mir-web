@@ -31,9 +31,8 @@ object RulesGoldenSpec extends ZIOSpecDefault:
   private final case class TsRates(
       exp: Int,
       drop: Int,
-      highEquipMin: Double,
+      bossHighEquipMin: Double,
       highEquipLevel: Int,
-      zumaGearDivisor: Int,
       maxDropsPerKill: Int,
       warriorBody: Double,
       skillTrain: Int
@@ -88,8 +87,8 @@ object RulesGoldenSpec extends ZIOSpecDefault:
   def spec = suite("规则与 TS 版一致")(
     test("倍率（rates.ts）") {
       val scala = TsRates(
-        Rates.exp, Rates.drop, Rates.highEquipMin, Rates.highEquipLevel,
-        Rates.zumaGearDivisor, Rates.maxDropsPerKill, Rates.warriorBody, Rates.skillTrain
+        Rates.exp, Rates.drop, Rates.bossHighEquipMin, Rates.highEquipLevel,
+        Rates.maxDropsPerKill, Rates.warriorBody, Rates.skillTrain
       )
       assertTrue(golden.rates == scala)
     },
@@ -134,7 +133,7 @@ object RulesGoldenSpec extends ZIOSpecDefault:
       // 同一只怪的爆率表里同一物品可能出现几行，按怪物分组后逐行按顺序比
       val want = golden.drops.groupBy(_.monster).view.mapValues(_.map(c => (c.item, c.chance))).toMap
       val got = catalog.data.drops.map { (m, rs) =>
-        m -> rs.map(d => (d.item, Rates.dropChance(d, if d.isGold then None else catalog.item(d.item))))
+        m -> rs.map(d => (d.item, Rates.dropChance(Rates.rankOf(m), d, if d.isGold then None else catalog.item(d.item))))
       }
       val diffs = (want.keySet ++ got.keySet).filter(m => want.getOrElse(m, Nil) != got.getOrElse(m, Nil))
       assertTrue(golden.drops.size == 6833, diffs.isEmpty)

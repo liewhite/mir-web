@@ -1,30 +1,34 @@
 package mir.rules
 
-import mir.core.{Exp, ItemName}
+import mir.core.{Exp, MonsterName}
 import mir.data.{DropDef, ItemDef, SkillDef, Span}
 import mir.model.Job
 
+/** 爆率上怪分两档：普通怪和 boss（数据表没有这个标记，名单见 Rates.bosses）。 */
+enum MonsterRank:
+  case Common, Boss
+
 /**
- * 倍率（用户 11-23 在 #1137 定：大幅降低升级难度、大幅提高爆率、装备爆率至少 20%、每只怪能爆什么不变）。
+ * 倍率（用户 11-23 在 #1137 定：大幅降低升级难度、大幅提高爆率、每只怪能爆什么不变；爆率 11-24 在 #1241 改定）。
  * 原版数值在 game.json 里不动，只在这里换算。照 TS 版 game/src/world/rates.ts 移植。
  */
 object Rates:
   /** 打怪经验倍数 */
   val exp: Int = 100
-  /** 非装备物品（金币、药、书、材料）的掉落概率倍数，最高 100% */
+  /** 掉落概率倍数（所有怪、所有物品），最高 100% */
   val drop: Int = 20
-  /** 高级装备（要求 20 级以上，或要求攻击/魔法/道术）的掉落概率下限 */
-  val highEquipMin: Double = 0.2
-  val highEquipLevel: Int  = 20
+  /** boss 掉高级装备（要求 20 级以上，或要求攻击/魔法/道术）的概率下限；普通怪没有保底（#1241） */
+  val bossHighEquipMin: Double = 0.1
+  val highEquipLevel: Int      = 20
   /**
-   * 祖玛首饰和头盔（用户 11-24 在 #1241 定「不要一下爆一地」：能爆的怪太多、小怪也爆）：不吃 highEquipMin 保底，
-   * 掉率 = 原版 × drop，封顶 highEquipMin / zumaGearDivisor。按物品生效，哪只怪掉都一样。
+   * 爆率算 boss 的怪（用户 11-24 在 #1241 定手写名单）：教主和王及其「暗之」版本；守卫、城墙不算。
+   * 新加 boss 往这里补（TS 版 rates.ts 的 BOSSES 同步）。
    */
-  val zumaGear: Set[ItemName] = Set(
-    "绿色项链", "恶魔铃铛", "灵魂项链", "骑士手镯", "龙之手镯", "三眼手镯",
-    "力量戒指", "紫碧螺", "泰坦戒指", "心灵手镯", "阎罗手套", "黑铁头盔"
-  ).map(ItemName(_))
-  val zumaGearDivisor: Int = 3
+  val bosses: Set[MonsterName] = Set(
+    "沃玛教主", "祖玛教主", "千年树妖", "石墓尸王", "牛魔王", "赤月恶魔", "双头金刚", "双头血魔", "黄泉教主", "虹魔教主",
+    "暗之沃玛教主", "暗之牛魔王", "暗之双头金刚", "暗之双头血魔", "暗之黄泉教主", "暗之虹魔教主"
+  ).map(MonsterName(_))
+  def rankOf(m: MonsterName): MonsterRank = if bosses(m) then MonsterRank.Boss else MonsterRank.Common
   /** 打死一只怪最多掉几件物品（金币不算；一叠可叠物算一件；#1241），多了按 DropRules.cap 留最稀有的 */
   val maxDropsPerKill: Int = 10
   /** 诱惑之光收服概率倍数（用户 11-23 在 #1163 要求提升；原版 3 级技能对低级怪约 5%），最高 100% */
@@ -44,13 +48,12 @@ object Rates:
       Span(scale(s.lo), scale(s.hi))
     case _ => s
 
-  /** 一行爆率实际的掉落概率（0..1）。def 为空表示金币。 */
-  def dropChance(d: DropDef, item: Option[ItemDef]): Double =
+  /** 一行爆率实际的掉落概率（0..1）：原版 × drop；boss 的高级装备至少 bossHighEquipMin。item 为空表示金币。 */
+  def dropChance(rank: MonsterRank, d: DropDef, item: Option[ItemDef]): Double =
     val scaled = math.min(1.0, d.numerator.toDouble / d.denominator * drop)
-    item match
-      case Some(i) if zumaGear(i.name) => math.min(scaled, highEquipMin / zumaGearDivisor)
-      case Some(i) if isHighEquip(i)   => math.max(scaled, highEquipMin)
-      case _                           => scaled
+    rank match
+      case MonsterRank.Boss if item.exists(isHighEquip) => math.max(scaled, bossHighEquipMin)
+      case _                                           => scaled
 
   /** 打死一只怪给的经验：数据表经验 × 复活折扣（复活一次减半），取整后乘经验倍数。 */
   def killExp(baseExp: Int, scale: Double): Exp = Exp(math.floor(baseExp * scale).toLong * exp)
