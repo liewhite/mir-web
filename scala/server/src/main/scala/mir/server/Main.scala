@@ -4,7 +4,7 @@ import mir.core.Millis
 import mir.data.Catalog
 import mir.server.admin.{AdminCmd, AdminReply, AdminSocket}
 import mir.server.auth.SessionTokens
-import mir.server.game.{GameServer, Maps}
+import mir.server.game.{GameServer, Headcount, Maps}
 import mir.server.http.HttpServer
 import mir.server.store.*
 import mir.server.tools.Migration
@@ -35,7 +35,8 @@ object Boot:
       social   = mir.social.Social()
       maps     = Maps(catalog, cfg.assetsDir, store.uids, clock, social)
       game     = GameServer(catalog, maps, store.chars, store.uids, Some(Backups(store.db, cfg.backupDir)), clock,
-                   idleTimeoutMs = cfg.liveness.idleTimeoutMs, social = social)
+                   idleTimeoutMs = cfg.liveness.idleTimeoutMs, social = social,
+                   headcount = Some(Headcount(() => store.accounts.count(), clock())))
       _       <- ZIO.acquireRelease(ZIO.succeed(GameServer.run(game)))(stop => ZIO.attemptBlocking(stop()).orDie)
       _       <- AdminSocket.serve(cfg.adminSocket, game.adminAndWait)
       http     = HttpServer(store.accounts, tokens, game, cfg.assetsDir, cfg.webDir, cfg.liveness.pingEveryMs)

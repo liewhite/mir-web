@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.Catalog
 import mir.model.*
 import mir.protocol.*
-import mir.server.game.{GameServer, Link, LinkEvent, Maps}
+import mir.server.game.{GameServer, Headcount, Link, LinkEvent, Maps}
 import mir.server.store.Db
 import mir.world.CharacterData
 import zio.test.*
@@ -34,7 +34,8 @@ object GameServerSpec extends ZIOSpecDefault:
     val acc   = store.accounts.add("alice", "secret1").fold(e => throw AssertionError(e.toString), identity)
     val char  = store.chars.create(acc.id, CharacterData.newbie(catalog, "阿狸", Job.Warrior, Sex.Male, store.uids))
       .fold(e => throw AssertionError(e), identity)
-    val game  = GameServer(catalog, Maps(catalog, assets, store.uids, () => now), store.chars, store.uids, None, () => now)
+    val game  = GameServer(catalog, Maps(catalog, assets, store.uids, () => now), store.chars, store.uids, None, () => now,
+      headcount = Some(Headcount(() => store.accounts.count(), now)))
     def advance(ms: Long): Unit = { now = now + ms; game.step() }
     def connect(n: Long): FakeLink =
       val l = FakeLink(LinkId(n), acc)
@@ -102,5 +103,38 @@ object GameServerSpec extends ZIOSpecDefault:
       val sb = f.store.chars.get(c2.id).get.data
       f.store.db.close()
       assertTrue(opened, red(sa) == 1, red(sb) == 7, sa.gold == Gold(200), sb.gold == Gold(400))
+    },
+    test("定时人数公告（#1244）：每 5 分钟给所有连接发一行注册/在线人数；游戏里没人在线的那一轮不发") {
+      val f = Fixture()
+      f.store.accounts.add("bob", "secret2")
+      def notices(l: FakeLink) = l.got.collect { case ServerMsg.Announce(t) => t }.toVector
+      val links = mutable.ArrayBuffer.empty[FakeLink]
+      /** 过 ms 毫秒：每 10 秒走一步，连接照常回 pong 免得按掉线超时关掉 */
+      def wait(ms: Long): Unit =
+        Iterator.iterate(ms)(_ - 10_000).takeWhile(_ > 0).foreach { left =>
+          links.foreach(l => f.game.post(LinkEvent.Alive(l)))
+          f.advance(left min 10_000)
+        }
+      // 只有人在选人画面：到点不发
+      val lobby = f.connect(1)
+      links += lobby
+      wait(Headcount.DefaultEveryMs)
+      val quietWhenNobody = notices(lobby).isEmpty && !lobby.closed
+      // 进游戏后：不到 5 分钟不发，到点发一行，选人画面的连接也收到
+      val a = f.connect(2)
+      links += a
+      f.say(a, SessionCmd.EnterGame(f.char.id))
+      wait(Headcount.DefaultEveryMs - 1_000)
+      val notYet = notices(a).isEmpty
+      wait(1_000)
+      val first = (notices(a), notices(lobby))
+      // 再过 5 分钟再发一行，中间不多发
+      wait(Headcount.DefaultEveryMs - 1_000)
+      val between = notices(a).size
+      wait(1_000)
+      val second = notices(a).size
+      f.store.db.close()
+      val line = "本服已注册 2 人，当前在线 1 人"
+      assertTrue(quietWhenNobody, notYet, first == (Vector(line), Vector(line)), between == 1, second == 2)
     }
   )

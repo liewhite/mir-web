@@ -45,6 +45,9 @@ final class Accounts(db: Db):
   def get(id: AccountId): Option[Account] =
     db.run(Db.query(_, "SELECT id, name FROM accounts WHERE id = ?", id.value)(rs => Account(AccountId(rs.getLong(1)), rs.getString(2)))).headOption
 
+  /** 已注册账号数（定时人数公告用，#1244）。 */
+  def count(): Int = db.run(Db.query(_, "SELECT count(*) FROM accounts")(_.getInt(1))).headOption.getOrElse(0)
+
   /** 全部账号和各自的角色数（不含已删的角色）。 */
   def list(): List[(Account, Int)] =
     db.run(Db.query(_,

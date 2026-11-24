@@ -46,6 +46,8 @@ enum LinkEvent:
  * 掉线超时（#1218）：手机锁屏、切后台、断网时浏览器不发关闭帧，服务端收不到 Closed，角色会一直挂着。
  * 网络层每 10 秒发一个协议层 ping，浏览器自动回 pong（`Alive`，后台标签页也照回，#1238），所以一个连接超过 `idleTimeoutMs`
  * （默认 30 秒）既没指令也没 pong 就当它断了：关连接、存档下线。误判了也没关系，客户端会自动重连并回到游戏。
+ *
+ * 定时人数公告（#1244）：给了 `headcount` 就每 5 分钟（有人在线时）全服公告一行注册/在线人数。
  */
 final class GameServer(
     catalog: Catalog,
@@ -56,7 +58,8 @@ final class GameServer(
     clock: () => Millis,
     saveEveryMs: Long = 30_000L,
     idleTimeoutMs: Long = 30_000L,
-    social: Social = Social()
+    social: Social = Social(),
+    headcount: Option[Headcount] = None
 ):
   import GameServer.*
 
@@ -123,6 +126,7 @@ final class GameServer(
       lastSave = now
       online.values.foreach(o => snapshot(o).foreach(save(o.id, _)))
       backups.foreach(b => guard("备份数据库")(b.daily(System.currentTimeMillis())))
+    headcount.foreach(h => guard("人数公告")(h.due(now, online.size).foreach(broadcast)))
 
   /** 停服：全部在线角色存档下线。 */
   def shutdown(): Unit =
@@ -158,12 +162,15 @@ final class GameServer(
   /** 全服公告发给全部连接（含还在选人的），回话里列出游戏里在线的角色（部署前看有没有人在玩）。 */
   private def execute(cmd: AdminCmd): AdminReply = cmd match
     case AdminCmd.Announce(text) =>
-      conns.values.foreach(_.link.send(ServerMsg.Announce(text)))
+      broadcast(text)
       val names = online.values.map(_.name).toVector.sorted
       val who   = if names.isEmpty then "" else names.mkString("：", "、", "")
       val sent  = s"发给 ${conns.size} 个连接，游戏里在线 ${online.size} 人$who"
       System.err.println(s"公告：$text（$sent）")
       AdminReply.Done(s"已$sent")
+
+  /** 全服公告：发给全部连接（含还在选人的）。 */
+  private def broadcast(text: String): Unit = conns.values.foreach(_.link.send(ServerMsg.Announce(text)))
 
   private def session(c: Conn, cmd: SessionCmd): Unit =
     val account = c.link.account
