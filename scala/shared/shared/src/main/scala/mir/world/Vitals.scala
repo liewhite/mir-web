@@ -263,11 +263,19 @@ final class Vitals(w: World):
     case m: Monster => m.defn.level
     case _: Npc     => 0
 
-  /** 自然回复（规则见 Recovery）。 */
-  private[world] def regen(p: Player): Unit =
-    if !p.dead && w.now - p.lastRegen >= Recovery.IntervalMs then
-      p.lastRegen = w.now
-      heal(p, Recovery.hpPerTick(p.stats), Recovery.mpPerTick(p.stats)): Unit
+  /** 自然回复（规则见 Recovery）：中绿毒时计时一直清零，毒消失后从头计时。 */
+  private[world] def regen(a: Actor): Unit =
+    recovery(a).filter(_ => !a.dead).foreach { t =>
+      if a.statuses.has(StatusKind.GreenPoison) then a.lastRegen = w.now
+      else if w.now - a.lastRegen >= t.intervalMs then
+        a.lastRegen = w.now
+        heal(a, t.hp, t.mp): Unit
+    }
+
+  private def recovery(a: Actor): Option[Recovery.Tick] = a match
+    case p: Player  => Some(Recovery.player(p.stats))
+    case m: Monster => Some(Recovery.monster(m.maxHp))
+    case _: Npc     => None
 
   /** 重算属性：等级 + 身上装备（持久用完的不算；护身符和毒药不加属性）+ 被动技能。血蓝按新上限截。 */
   private[world] def recalc(p: Player): Unit =

@@ -210,13 +210,22 @@ object Rules:
   def attackPower(base: Int, spread: Int)(using rng: Rng): Int = base + rng.random(math.max(0, spread) + 1)
 
 /**
- * 自然回复：每 IntervalMs 毫秒回一次血和蓝。每次回 max(1, 上限/75) + 装备的体力/魔法恢复。
- * （原版 1.76 是每 6 秒回 上限/75+1、蓝每 16 秒回 上限/18+1，这里沿用 TS 版加快后的规则。）
+ * 自然回复：每隔 intervalMs 回一次血和蓝。中绿毒期间不回，毒消失后从头计时（原版绿毒每掉一次血就把回血计时清零，
+ * ObjBase.pas 2729–2736，#1214）。
+ * - 玩家：每 IntervalMs 回 max(1, 上限/75) + 装备的体力/魔法恢复（原版 1.76 是每 6 秒回 上限/75+1、
+ *   蓝每 16 秒回 上限/18+1，这里沿用 TS 版加快后的规则）。
+ * - 怪物和宝宝：照原版每 MonsterIntervalMs 回 上限/75+1（ObjBase.pas 2276–2320），没有蓝。
  */
 object Recovery:
-  val IntervalMs = 2000
+  /** 一次自然回复：隔多久、回多少血和蓝 */
+  final case class Tick(intervalMs: Int, hp: Int, mp: Int)
+
+  val IntervalMs        = 2000
+  val MonsterIntervalMs = 6000
   def hpPerTick(s: Stats): Int = math.max(1, s.maxHp / 75) + s.hpRegen
   def mpPerTick(s: Stats): Int = math.max(1, s.maxMp / 75) + s.mpRegen
+  def player(s: Stats): Tick   = Tick(IntervalMs, hpPerTick(s), mpPerTick(s))
+  def monster(maxHp: Int): Tick = Tick(MonsterIntervalMs, maxHp / 75 + 1, 0)
 
 /**
  * 精确概率：把一个用 Rng 的计算的每一种随机取值都走一遍，得出每种结果的概率（技能说明用，#1165）。

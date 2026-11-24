@@ -153,6 +153,7 @@ object WorldSpec extends ZIOSpecDefault:
         join(s.w, "甲", Cell(30, 30))
         val k = put(s.w, "沃玛教主", Cell(40, 40))
         k.hp = k.maxHp * 3 / 10 // 狂暴档位 7 - 血/(上限/7) = 5
+        k.lastRegen = Millis(Long.MaxValue / 2) // 不让它自然回血（#1214）换档，只看狂暴
         s.run(30_500)
         val ready = (k.extras, k.attackInterval) match
           case (Vector(ExtraState.CowKing(_, Rage.Ready, _, _)), 10_000) => true
@@ -709,6 +710,39 @@ object WorldSpec extends ZIOSpecDefault:
         val mons  = s.w.monsters.size
         println(s"比奇省 ${mons} 只怪，模拟 30 秒用了 $ms 毫秒")
         assertTrue(mons > 1000, s.consistent(a), s.consistent(b), s.views(a.id).actors.size < mons)
+      }
+    ),
+    suite("自然回血（#1214）")(
+      test("怪物每 6 秒回 上限/75+1；中绿毒期间不回，只掉血") {
+        val s = sim()
+        join(s.w, "甲", Cell(5, 5))
+        val m = put(s.w, "僵尸1", Cell(55, 55))
+        m.statuses.put(Status.Seized, Millis(Long.MaxValue / 2))
+        val half = m.maxHp / 2
+        m.hp = half
+        s.run(5500)
+        val before6s = m.hp
+        s.run(1000)
+        val after6s = m.hp
+        s.w.conditions.poison(m, PoisonKind.Green, 20_000, 1, m.id)
+        val poisoned = m.hp
+        s.run(19_000)
+        assertTrue(before6s == half, after6s == half + m.maxHp / 75 + 1, m.hp < poisoned)
+      },
+      test("玩家中绿毒不自然回血回蓝，毒消失后照常回") {
+        val s = sim()
+        val p = join(s.w, "甲", Cell(5, 5))
+        val m = put(s.w, "僵尸1", Cell(55, 55))
+        m.statuses.put(Status.Seized, Millis(Long.MaxValue / 2))
+        p.belt.indices.foreach(p.belt(_) = None) // 不让它自动喝药
+        p.bag.indices.foreach(p.bag(_) = None)
+        p.hp = 50_000
+        p.mp = 0
+        s.w.conditions.poison(p, PoisonKind.Green, 10_000, 1, m.id)
+        s.run(9500)
+        val (hp1, mp1) = (p.hp, p.mp)
+        s.run(3000)
+        assertTrue(hp1 < 50_000, mp1 == 0, p.hp > hp1, p.mp > 0)
       }
     ),
     suite("地图文件")(

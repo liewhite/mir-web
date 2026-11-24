@@ -41,6 +41,8 @@ sealed abstract class Actor(val id: ActorId, initCell: Cell, initDir: Dir, now: 
   private[world] var lastHitBy: Option[ActorId] = None
   /** 治愈术还没回完的血（Vitals.mend / tickMending） */
   private[world] var mending: Option[Mending] = None
+  /** 上次自然回复的时刻（Vitals.regen） */
+  private[world] var lastRegen: Millis = now
 
   def maxHp: Int
   def look: Look
@@ -91,7 +93,6 @@ final class Player(id: ActorId, val charName: String, val job: Job, val sex: Sex
   private[world] val cooldown: mutable.Map[SkillId, Millis] = mutable.Map.empty
   /** 宝宝 */
   private[world] val pets: mutable.ArrayBuffer[ActorId] = mutable.ArrayBuffer.empty
-  private[world] var lastRegen: Millis = now
   // 自动功能（AutoPlay）
   private[world] var intent: Intent      = Intent.Idle
   /** 玩家亲手走动后的一小段时间里不自动走动（免得和摇杆抢） */

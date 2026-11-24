@@ -141,12 +141,10 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
             case _          => ()
           vitals.tickPoison(a)
           vitals.tickMending(a)
+          vitals.regen(a)
       }
       conditions.tickFields()
-      players.toVector.foreach { p =>
-        vitals.regen(p)
-        AutoPlay.run(this, p)
-      }
+      players.toVector.foreach(AutoPlay.run(this, _))
       actorsNow.foreach {
         case m: Monster if m.dead && clock >= m.removeAt => actors.remove(m.id): Unit
         case _                                           => ()
