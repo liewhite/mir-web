@@ -246,6 +246,11 @@ object MonsterAi:
             }
           }
         true // 不动的怪：够不着就等人走近
+      case Strike.Warp =>
+        if ready(w, m) then
+          swing(w, m, Some(t))
+          physical(w, m, t, power(w, m)): Unit
+        true
       case Strike.Spawn(_, _) => true
 
   /** 毒气：判命中的魔法一下，打到身上有 1/20 麻痹。 */

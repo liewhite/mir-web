@@ -180,7 +180,7 @@ final case class MonsterDef(
     viewRange: Int
 ):
   /**
-   * 守卫（不打玩家、玩家打不到，见到怪就打）：按 Race 认（OpenMir2 Race.cs：11 Supreguard、12 Petsupreguard、
+   * 守卫（见到怪就打，平时不打玩家；玩家亲手选中能打它，打了它会还手，见 Look.attackable）：按 Race 认（OpenMir2 Race.cs：11 Supreguard、12 Petsupreguard、
    * 20 ArcherPolice、112 ArcherGuard）。TS 版按名字带「卫士」认，把沃玛卫士、祖玛卫士也当成了守卫。
    */
   def isGuard: Boolean = MonsterDef.GuardRaces.contains(race)

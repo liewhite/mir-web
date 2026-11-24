@@ -139,6 +139,8 @@ final class Monster(id: ActorId, val defn: MonsterDef, val behavior: Behavior, i
   private[world] val minions: mutable.ArrayBuffer[ActorId] = mutable.ArrayBuffer.empty
   /** 附加本领各自的状态（顺序同 behavior.extras，刷出来时由 MonsterAi.init 设好） */
   private[world] var extras: Vector[ExtraState] = Vector.empty
+  /** 守卫记着的最近打了它的人（只有守卫记，见 Hostility.isEnemy） */
+  private[world] var grudge: Option[Grudge] = None
   hp = defn.hp
 
   /** 打死给的经验倍数（僵尸复活一次减半） */
@@ -158,6 +160,13 @@ final class Monster(id: ActorId, val defn: MonsterDef, val behavior: Behavior, i
     else if statuses.has(StatusKind.Crazy) && master.isEmpty then Mood.Crazy
     else Mood.Calm
   def look: Look   = Look.Monster(defn.name, cover, master, mood)
+
+/** 守卫记的仇：谁、最后一次打它的时刻。 */
+final case class Grudge(by: ActorId, at: Millis)
+
+object Grudge:
+  /** 记多久：最后一次挨打后 30 秒（原版 LastHiter 过 30 秒清掉，BaseObject.Base.cs） */
+  val Ms: Long = 30_000
 
 /** NPC：商人、仓库。 */
 final class Npc(id: ActorId, val ref: MerchantRef, val defn: MerchantDef, now: Millis)

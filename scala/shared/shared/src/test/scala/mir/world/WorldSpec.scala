@@ -163,6 +163,36 @@ object WorldSpec extends ZIOSpecDefault:
           case _                                                         => false
         assertTrue(ready, crazy)
       },
+      test("守卫平时不和玩家互打、不打鸡鹿羊，隔几格也一刀砍死野怪（#1205）") {
+        val s    = sim()
+        val p    = join(s.w, "甲", Cell(33, 30))
+        val g    = put(s.w, "卫士", Cell(30, 30))
+        val deer = put(s.w, "鹿", Cell(30, 34))
+        val bug  = put(s.w, "洞蛆", Cell(26, 30))
+        val hurt = s.run(10_000, Some(p))
+        assertTrue(
+          g.behavior.strike == Strike.Warp,
+          hurt == 0,
+          bug.dead,
+          !deer.dead,
+          !s.w.isEnemy(p, g),
+          !s.w.isEnemy(g, p),
+          s.w.canAttack(p, g)
+        )
+      },
+      test("玩家选中守卫打它，守卫还手（走远几格照样砍到）；30 秒没再打就不记仇（#1205）") {
+        val s  = sim()
+        val p  = join(s.w, "甲", Cell(31, 30))
+        val g  = put(s.w, "带刀护卫", Cell(30, 30))
+        s.cmd(p, GameCmd.Attack(Dir.Left, Some(g.id)))
+        val angry = s.w.isEnemy(g, p)
+        p.intent = Intent.Idle // 只打这一下（不管「按住攻击」设置）
+        s.w.grid.teleportActor(p, Cell(35, 30))
+        val hit = s.run(5000, Some(p))
+        s.run(Grudge.Ms.toInt)
+        val after = s.run(10_000, Some(p))
+        assertTrue(angry, hit > 0, after == 0, !s.w.isEnemy(g, p), g.cell == Cell(30, 30))
+      },
       test("传送菜单：每个目的地都是游戏里有的地图，传到别的图交给服务端") {
         val s    = sim()
         val p    = join(s.w, "甲", Cell(30, 30))

@@ -42,6 +42,13 @@ object Look:
       case (Some(x), Some(y)) => Side.hostile(x, y)
       case _                  => false)
 
+  /**
+   * 长这样的 a 能不能亲手打长这样的 b：敌对的，或者是玩家打守卫（#1205，同原版：守卫能选中来打，挨了打会还手）。
+   * 只管玩家亲手选的单个目标（锁定后攻击键、单体技能、普攻）；范围攻击、自动找怪、宝宝仍只认 hostile，不会顺手打到守卫。
+   */
+  def attackable(a: Look, b: Look, isGuard: MonsterName => Boolean): Boolean =
+    hostile(a, b, isGuard) || (a.isInstanceOf[Human] && b.exposed && b.side(isGuard).contains(Side.Guards))
+
 /** 一个动作：种类、开始时刻、持续多久；移动的起点；攻击的种类；施法的特效编号。 */
 final case class ActionView(
     kind: ActKind,

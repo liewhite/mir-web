@@ -20,7 +20,7 @@ object PlayerOps:
     case GameCmd.Turn(dir)       => if !p.dead then w.grid.face(p, dir)
     case GameCmd.Attack(dir, target) =>
       if p.settings.stickyAttack then
-        target.flatMap(w.actor).filter(w.isEnemy(p, _)).foreach(t => p.intent = Intent.Hunt(t.id, once = false))
+        target.flatMap(w.actor).filter(w.canAttack(p, _)).foreach(t => p.intent = Intent.Hunt(t.id, once = false))
       report(w, p, Combat.attack(w, p, dir, Slack))
     case GameCmd.Cast(skill, target, cell) =>
       report(w, p, Combat.cast(w, p, skill, SpellTarget(cell, target.flatMap(w.actor)), Slack))

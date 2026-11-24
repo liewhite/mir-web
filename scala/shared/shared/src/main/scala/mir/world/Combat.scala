@@ -50,7 +50,7 @@ object Combat:
       w.grid.face(p, dir)
       val target = w.occupant(p.cell.step(dir))
       val style =
-        if p.fireReady && target.exists(w.isEnemy(p, _)) then HitStyle.Fire
+        if p.fireReady && target.exists(w.canAttack(p, _)) then HitStyle.Fire
         else if p.powerHitReady && p.knows(Skill.PowerHit) then HitStyle.Power
         else if p.wideHitOn && p.knows(Skill.WideHit) && p.mp >= SwordRules.WideHitMp then HitStyle.Wide
         else if p.longHitOn && p.knows(Skill.LongHit) then HitStyle.Long
@@ -102,7 +102,7 @@ object Combat:
       }
       train(w, p, Skill.WideHit.id, 1)
     // 练剑术、攻杀计数（PlayObject.Attack.cs:360、943）
-    if target.exists(w.isEnemy(p, _)) then
+    if target.exists(w.canAttack(p, _)) then
       List(Skill.OneSword, Skill.SpiritSword).filter(p.knows).foreach(s => train(w, p, s.id, rng.random(3) + 1))
     val hasWeapon = p.worn.contains(EquipSlot.Weapon)
     p.skill(Skill.PowerHit.id).filter(_ => hasWeapon).foreach { ph =>

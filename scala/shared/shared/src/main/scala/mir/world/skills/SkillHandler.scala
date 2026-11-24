@@ -102,9 +102,9 @@ final class SpellCtx(
   def inReach(c: Cell): Either[Effect, Unit] =
     Either.cond(c.chebyshev(p.cell) <= SpellRules.CastRange, (), Effect.Fail(s"太远了（技能最多放到 ${SpellRules.CastRange} 格远）"))
 
-  /** 选中的、够得着的敌人 */
+  /** 选中的、够得着的敌人（亲手选的，守卫也算，见 Look.attackable） */
   def enemy: Either[Effect, Actor] =
-    target.filter(w.isEnemy(p, _)).toRight(Effect.Fail("需要选中一个目标")).flatMap(a => inReach(a.cell).map(_ => a))
+    target.filter(w.canAttack(p, _)).toRight(Effect.Fail("需要选中一个目标")).flatMap(a => inReach(a.cell).map(_ => a))
 
   def enemyMonster: Either[Effect, Monster] =
     enemy.flatMap { case m: Monster => Right(m); case _ => Left(Effect.Fail("需要选中一只怪")) }

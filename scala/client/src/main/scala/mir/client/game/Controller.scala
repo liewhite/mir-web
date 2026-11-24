@@ -61,7 +61,7 @@ final class Controller(client: GameClient):
       case _                                            => ()
     client.locked = None
 
-  /** 攻击键：打锁定的怪；没锁定就锁身边最近的。 */
+  /** 攻击键：打锁定的怪（锁定的守卫也打）；没锁定就锁身边最近的怪。 */
   def attack(): Unit = autoTarget() match
     case Some(t) =>
       client.locked = Some(t)
@@ -99,9 +99,12 @@ final class Controller(client: GameClient):
 
   def pickUpHere(): Unit = client.send(GameCmd.PickUp)
 
-  /** 锁定的目标还能打且在技能范围内就是它，否则范围内最近的怪（范围 = 原版魔法锁定范围 8 格，服务端同样判）。 */
+  /**
+   * 锁定的目标还能打（含守卫）且在技能范围内就是它，否则范围内最近的怪（不会自己挑上守卫）；
+   * 范围 = 原版魔法锁定范围 8 格，服务端同样判。
+   */
   private def autoTarget(): Option[ActorId] =
-    lockedInReach(client.isEnemy).orElse(nearest(client.isEnemy)).map(_.id)
+    lockedInReach(client.canAttack).orElse(nearest(client.isEnemy)).map(_.id)
 
   /** 锁定的对象，要是符合 kind 且在技能范围内 */
   private def lockedInReach(kind: ActorView => Boolean): Option[ActorView] =
@@ -136,7 +139,7 @@ final class Controller(client: GameClient):
             client.send(GameCmd.PickUp)
           case Some(g) => approach(me.cell, g.cell, adjacent = false)
       case Intent.Fight(t) =>
-        client.actor(t).filter(client.isEnemy) match
+        client.actor(t).filter(client.canAttack) match
           case None => intent = Intent.Idle
           case Some(a) if a.cell.chebyshev(me.cell) == 1 =>
             if now >= nextAttack && client.motion.ready(now) && client.actionDone(me, now) then

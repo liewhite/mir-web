@@ -22,7 +22,7 @@ object AutoPlay:
   private def free(w: World, p: Player): Boolean = w.now >= p.manualUntil
 
   private def hunt(w: World, p: Player, id: ActorId, once: Boolean): Unit =
-    w.actor(id).filter(t => !t.dead && w.isEnemy(p, t)) match
+    w.actor(id).filter(t => !t.dead && w.canAttack(p, t)) match
       case None => p.intent = Intent.Idle
       case Some(t) =>
         val d = p.cell.chebyshev(t.cell)

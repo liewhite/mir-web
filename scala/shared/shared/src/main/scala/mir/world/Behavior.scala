@@ -30,6 +30,11 @@ enum Strike:
   case Area(range: Int, poison: Boolean)
   /** 贴身自爆（爆裂蜘蛛 ExplosionSpider），活 60 秒也会自爆 */
   case Explode
+  /**
+   * 守卫（SuperGuard.AttackTarget）：不走动，目标多远都一刀砸上去（原版瞬间挂到目标身后砍一下再回原位），
+   * 按攻击力扣防御。多远算掉目标由 MonsterAi.hunt 管（超过 14 格就不追了）。
+   */
+  case Warp
   /** 不攻击，只放小怪（角蝇巢 BeeQueen、幻影蜘蛛 SpiderHouse）；below：小怪出在脚下一格 */
   case Spawn(child: MonsterName, below: Boolean)
 
@@ -99,6 +104,7 @@ object Behavior:
 
   /** 数据表 Race → 行为（WorldServer.MonGen.cs CreateMonster）。没列出的按普通近战。 */
   def of(d: MonsterDef): Behavior = d.race match
+    case 11 | 12      => Behavior(Strike.Warp)
     case 50 | 51 | 52 => Behavior(Strike.Melee, passive = true)
     case 82 | 119     => Behavior(Strike.Spit)
     case 85           => Behavior(Strike.Melee, hiding = Hiding.Burrow(4, 4), rooted = true)

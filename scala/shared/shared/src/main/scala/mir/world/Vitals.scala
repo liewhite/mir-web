@@ -18,11 +18,13 @@ final class Vitals(w: World):
 
   /**
    * 一下攻击的完整结算（所有攻击都走这里）：是不是敌人 → 命中 → 扣防/魔防 → damage（红毒、魔法盾、扣血）。
-   * by 是攻击方，要还在这张图上、活着、和目标是敌对的；None 是没有攻击方的伤害（冲撞撞墙自己挨的），不看敌我。
+   * by 是攻击方，要还在这张图上、活着、打得了目标（canAttack：敌人，或玩家亲手打守卫；范围攻击在调用方先按 isEnemy 筛）；
+   * None 是没有攻击方的伤害（冲撞撞墙自己挨的），不看敌我。
    */
   private[world] def strike(by: Option[Actor], target: Actor, blow: Blow): StrikeResult =
     val reachable = !target.isInstanceOf[Npc] && !target.dead && w.present(target) &&
-      by.forall(b => w.present(b) && w.isEnemy(b, target))
+      by.forall(b => w.present(b) && w.canAttack(b, target))
+    if reachable then by.foreach(b => provokeGuard(target, b.id))
     if !reachable then StrikeResult.Ignored
     else if blow.accuracy.exists(acc => !Rules.hits(acc, target.agility)) then
       miss(target)
@@ -55,6 +57,7 @@ final class Vitals(w: World):
         val dmg = shield.fold(poisoned)(lv => math.max(1, math.round(poisoned * (1 - SpellRules.shieldAbsorb(lv))).toInt))
         target.hp -= dmg
         target.lastHitBy = source
+        source.foreach(provokeGuard(target, _))
         val src = source.flatMap(w.actor)
         target match
           case m: Monster =>
@@ -79,6 +82,16 @@ final class Vitals(w: World):
               if m.target.isEmpty then m.target = source
             case p: Player if p.action.kind == ActKind.Stand => w.grid.setAction(p, ActKind.Struck, 210)
             case _                                           => ()
+
+  /**
+   * 打守卫就被它记仇（Hostility.isEnemy），打空、被防住也算：守卫敏捷 200、防御 100~200，大多数攻击打不动它，
+   * 只认打出血的话用户要的「打它会还手」几乎看不到（#1205；原版只在打中时记 LastHiter）。
+   */
+  private def provokeGuard(target: Actor, by: ActorId): Unit = target match
+    case m: Monster if m.isGuard && m.id != by =>
+      m.grudge = Some(Grudge(by, w.now))
+      if m.target.isEmpty then m.target = Some(by)
+    case _ => ()
 
   private[world] def miss(t: Actor): Unit = w.out.nearby(t.cell, ServerMsg.Miss(t.id))
 
