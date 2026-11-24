@@ -61,9 +61,12 @@ final case class ActorView(id: ActorId, look: Look, cell: Cell, dir: Dir, hp: Hp
 object ActorView:
   given JsonCodec[ActorView] = DeriveJsonCodec.gen
 
-/** 地上的东西：一件物品（special：极品，名字换颜色显眼，#1191）或一堆金币。 */
+/**
+ * 地上的东西：一件物品或一堆金币。物品带极品附加（#1191，有就是极品，名字换色）：
+ * 客户端拿它和自己身上的比，比身上的强的名字另换一种颜色（#1200）。
+ */
 enum GroundThing:
-  case Item(name: ItemName, special: Boolean = false)
+  case Item(name: ItemName, bonus: Option[ItemBonus] = None)
   case Coins(amount: Gold)
 
 object GroundThing:

@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.{ItemDef, MerchantService}
 import mir.model.*
 import mir.protocol.{GameCmd, ServerMsg, ChatKind, Tone}
-import mir.rules.{ItemKind, Pace, PotionRules, Pricing, Requirement, ScrollEffect, Skill, dressSex}
+import mir.rules.{ItemKind, Pace, PotionRules, Pricing, Requirement, ScrollEffect, Skill}
 
 /**
  * 玩家指令的执行：移动、攻击、施法、物品、NPC 买卖存取、设置、说话。
@@ -189,11 +189,7 @@ object PlayerOps:
     yield r
 
   private def canWear(p: Player, d: ItemDef): Result =
-    val r    = Requirement.of(d)
-    val have = Requirement.current(r, p.level, p.stats)
-    if have < r.value then Left(s"需要${r.label} ${r.value}（你现在 $have）")
-    else if dressSex(d).exists(_ != p.sex) then Left("性别不符")
-    else ok
+    Requirement.refusal(d, p.level, p.stats, p.sex).toLeft(())
 
   /** 穿戴；prefer 指定左右手镯/戒指位。换下来的放回原处。 */
   def equip(w: World, p: Player, uid: ItemUid, prefer: Option[EquipSlot]): Result =

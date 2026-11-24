@@ -179,6 +179,14 @@ object Requirement:
     case Mc(_)    => stats.mc.hi
     case Sc(_)    => stats.sc.hi
 
+  /** 这个人穿不上它的原因（等级/属性不够、性别不符；不看负重 #1169），穿得上为空。服务端穿戴和客户端提醒共用。 */
+  def refusal(d: ItemDef, level: Int, stats: Stats, sex: Sex): Option[String] =
+    val r    = of(d)
+    val have = current(r, level, stats)
+    if have < r.value then Some(s"需要${r.label} ${r.value}（你现在 $have）")
+    else if dressSex(d).exists(_ != sex) then Some("性别不符")
+    else None
+
 /** 喝药：普通药分 Ticks 跳、每隔 TickMs 毫秒回一跳，每跳回 总量/Ticks（向上取整）；太阳水类（instant）一次回完。 */
 object PotionRules:
   val Ticks  = 5

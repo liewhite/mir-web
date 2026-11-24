@@ -282,7 +282,9 @@ final class ClassicUi(
   def describe(m: Me, it: ItemInstance): List[Line] = catalog.item(it.name).fold(Nil) { d =>
     val cur = ItemKind.slots(ItemKind.of(d)).headOption.flatMap(m.view.worn.get).filter(_.uid != it.uid)
       .flatMap(c => catalog.item(c.name).map(_ -> c.bonus))
-    Describe.itemLines(catalog, d, Some(it), m.job, m.stats, cur)
+    // 身上穿着的那件不提醒（和自己比没意义）
+    val gain = Option.unless(m.view.worn.values.exists(_.uid == it.uid))(client.upgradeOf(it.name, it.bonus)).flatten
+    Describe.itemLines(catalog, d, Some(it), m.job, m.stats, cur, gain)
   }
 
   /** 电脑悬停说明：身上的物品，否则上层窗口里鼠标下的东西（商品、属性、技能）。 */

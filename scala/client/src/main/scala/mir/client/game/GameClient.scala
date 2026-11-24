@@ -5,7 +5,8 @@ import mir.client.net.{LinkEvent, ServerClock, Transport}
 import mir.client.render.*
 import mir.core.*
 import mir.data.Catalog
-import mir.model.ActKind
+import mir.model.{ActKind, ItemBonus}
+import mir.rules.Upgrade
 import mir.protocol.*
 import mir.view.ViewState
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits.*
@@ -131,6 +132,32 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
     val now = serverNow
     view.actors.values.map(a => if view.me.contains(a.id) then motion.shown(a, now) else a)
 
+  /** 自己作为穿戴者（比装备好坏用，#1200）；还没进游戏或没收到属性时为空。 */
+  def wearer: Option[Upgrade.Wearer] =
+    for
+      a <- view.self
+      s <- view.stats
+      h <- a.look match
+        case h: Look.Human => Some(h)
+        case _             => None
+    yield Upgrade.Wearer(h.job, h.sex, s.level, s.stats, view.worn)
+
+  /** 一件物品换下身上同部位那件后主属性提升多少（不是提升为空，#1200）。 */
+  def upgradeOf(name: ItemName, bonus: Option[ItemBonus]): Option[Upgrade.Gain] =
+    for
+      w <- wearer
+      d <- catalog.item(name)
+      g <- Upgrade.gain(w, d, bonus, catalog.item)
+    yield g
+
+  /** 地上比身上强的装备（设置里关了就不算）。 */
+  private def groundUpgrades: Set[GroundId] =
+    if !options.upgradeHint then Set.empty
+    else
+      view.ground.values.collect {
+        case GroundView(id, _, GroundThing.Item(n, b)) if upgradeOf(n, b).isDefined => id
+      }.toSet
+
   def actor(id: ActorId): Option[ActorView] = if view.me.contains(id) then self else view.actors.get(id)
 
   /** 能打的：活着、和自己敌对、露在外面（野怪、发狂的怪；不是守卫、宝宝），和服务端同一条规则（Look.hostile）。 */
@@ -156,7 +183,7 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
         md, me, actors, view.ground.values, view.fields.values, fx, locked,
         myShield = view.status.shieldUntil.exists(_ > now),
         meInvisible = view.status.invisibleUntil.exists(_ > now),
-        server = now, local = local, options = options
+        server = now, local = local, options = options, upgrades = groundUpgrades
       )
 
   // ---------------- 发：走路 ----------------

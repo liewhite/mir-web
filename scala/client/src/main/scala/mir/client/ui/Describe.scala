@@ -3,7 +3,7 @@ package mir.client.ui
 import mir.data.{Catalog, ItemDef, SkillDef, Span}
 import mir.model.{EquipSlot, ItemBonus, ItemInstance, Job, LearnedSkill, PoisonKind}
 import mir.protocol.SelfStats
-import mir.rules.{SpellRules, Durability, Rates, ItemEffects, ItemKind, PotionRules, Pricing, Recovery, Requirement, Rules, ScrollEffect, dressSex}
+import mir.rules.{Upgrade, SpellRules, Durability, Rates, ItemEffects, ItemKind, PotionRules, Pricing, Recovery, Requirement, Rules, ScrollEffect, dressSex}
 
 /**
  * 把物品、属性、技能讲成可量化的说明（用户 #1165：所有效果给精确数值）。纯函数，只出文字。
@@ -122,7 +122,8 @@ object Describe:
       inst: Option[ItemInstance],
       job: Job,
       me: SelfStats,
-      compareWith: Option[(ItemDef, Option[ItemBonus])]
+      compareWith: Option[(ItemDef, Option[ItemBonus])],
+      upgrade: Option[Upgrade.Gain] = None
   ): List[Line] =
     val k = ItemKind.of(d)
     val body: List[Line] = k match
@@ -141,10 +142,18 @@ object Describe:
           wearLines(d, slots, me) ++ durabilityLines(slots, inst) ++
           compareWith.fold(Nil)((c, cb) => compareLines(e, ItemEffects.of(c, cb), c.name.value))
       case ItemKind.Material | ItemKind.Other => Nil
-    val title = if inst.exists(_.special) then Line(s"${d.name.value}（极品）", Tint.Special) else Line(d.name.value, Tint.Title)
-    title :: body ++ List(
+    val titleText = if inst.exists(_.special) then s"${d.name.value}（极品）" else d.name.value
+    val title = Line(titleText, if upgrade.isDefined then Tint.Upgrade else if inst.exists(_.special) then Tint.Special else Tint.Title)
+    title :: upgradeLines(upgrade) ++ body ++ List(
       Line(s"商店收购价 ${Pricing.sell(d)} 金币", Tint.Gold)
     )
+
+  /** 高级物品提醒（#1200）：换上它主属性净提升多少。 */
+  private def upgradeLines(g: Option[Upgrade.Gain]): List[Line] =
+    g.toList.map { u =>
+      val vs = u.over.fold("该部位空着，穿上")(n => s"比身上的${n.value}")
+      Line(s"$vs${u.stat}高 ${u.amount}　下限+上限合计", Tint.Upgrade)
+    }
 
   /** a 比 b 多了什么：每项（文字，是不是往好的方向）。区间只有上限变的写成「攻击上限 +2」。 */
   private def diffs(a: ItemEffects, b: ItemEffects): List[(String, Boolean)] =

@@ -34,7 +34,10 @@ final class BagWindow(ui: ClassicUi) extends ToggleWindow:
         g.text(d.name.value, o.x + 70, o.y + 215, "#ff0")
         // 说明的前两条（只取括号前的部分）；穿不了的要求标红
         ui.describe(m, it).slice(1, 3).zipWithIndex.foreach { (l, i) =>
-          g.text(l.text.takeWhile(_ != '　'), o.x + 70, o.y + 229 + i * 14, if l.tint == Tint.Bad then "#f00" else "#fff")
+          g.text(l.text.takeWhile(_ != '　'), o.x + 70, o.y + 229 + i * 14, l.tint match
+            case Tint.Bad     => "#f00"
+            case Tint.Upgrade => Tint.Upgrade.color
+            case _            => "#fff")
         }
       }
     }

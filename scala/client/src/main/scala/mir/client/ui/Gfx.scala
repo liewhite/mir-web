@@ -21,6 +21,8 @@ enum Tint(val color: String):
   case Gold  extends Tint("#ffd96b")
   /** 极品（与地上极品名字同色） */
   case Special extends Tint(mir.client.render.Renderer.SpecialItemColor)
+  /** 比身上的强（与地上提升装备名字同色，#1200） */
+  case Upgrade extends Tint(mir.client.render.Renderer.UpgradeItemColor)
 
 final case class Line(text: String, tint: Tint = Tint.Plain)
 

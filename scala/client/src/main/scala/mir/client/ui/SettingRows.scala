@@ -34,6 +34,7 @@ object SettingRow:
     GameToggle("战士：烈火冷却好了自动开", _.autoFireSword, (s, v) => s.copy(autoFireSword = v)),
     LocalToggle("头顶显示血条", _.showHpBars, (o, v) => o.copy(showHpBars = v)),
     LocalToggle("地上物品显示名字", _.showItemNames, (o, v) => o.copy(showItemNames = v)),
+    LocalToggle("比身上强的装备名字换色（粉紫）", _.upgradeHint, (o, v) => o.copy(upgradeHint = v)),
     LocalToggle("怪物显示名字", _.showMonsterNames, (o, v) => o.copy(showMonsterNames = v)),
     LocalToggle("音效", _.soundOn, (o, v) => o.copy(soundOn = v)),
     LocalToggle("背景音乐", _.musicOn, (o, v) => o.copy(musicOn = v))

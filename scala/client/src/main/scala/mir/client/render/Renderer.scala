@@ -361,8 +361,9 @@ final class Renderer(canvas: dom.HTMLCanvasElement, sprites: SpriteStore, assets
         if x >= -40 && x <= width + 40 && y >= -20 && y <= height + 20 then
           val (name, color) = g.thing match
             case GroundThing.Coins(n) => (s"金币 ${n.value}", "#ffe08a")
-            case GroundThing.Item(n, true) => (n.value, SpecialItemColor)
-            case GroundThing.Item(n, false) =>
+            case GroundThing.Item(n, _) if s.upgrades.contains(g.id) => (n.value, UpgradeItemColor)
+            case GroundThing.Item(n, Some(_)) => (n.value, SpecialItemColor)
+            case GroundThing.Item(n, None) =>
               val equip = catalog.item(n).map(ItemKind.of).exists(_.isInstanceOf[ItemKind.Equip])
               (n.value, if equip then "#ffd76b" else "#dddddd")
           text(name, x, y, color)
@@ -420,5 +421,7 @@ object Renderer:
   val FloatFont = "bold 14px sans-serif"
   /** 极品的名字颜色（地上、说明标题，#1191）：亮青色，和普通装备的金黄、杂物的白分开 */
   val SpecialItemColor = "#3cf0ff"
+  /** 比身上同部位那件强的装备（#1200）：粉紫色；既是极品又是提升时用它（更值得捡） */
+  val UpgradeItemColor = "#ff7cf5"
 
   private final case class Hit(id: ActorId, x: Double, y: Double, w: Double, h: Double, row: Int)

@@ -9,6 +9,8 @@ final case class ViewOptions(
     showHpBars: Boolean = true,
     showItemNames: Boolean = true,
     showMonsterNames: Boolean = true,
+    /** 地上比身上强的装备名字换色（#1200） */
+    upgradeHint: Boolean = true,
     soundOn: Boolean = true,
     musicOn: Boolean = false
 )
@@ -36,5 +38,7 @@ final case class Scene(
     meInvisible: Boolean,
     server: Millis,
     local: Double,
-    options: ViewOptions
+    options: ViewOptions,
+    /** 地上比自己身上强的装备（名字换提升色，#1200） */
+    upgrades: Set[GroundId] = Set.empty
 )
