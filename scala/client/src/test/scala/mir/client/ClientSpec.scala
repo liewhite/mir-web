@@ -53,10 +53,11 @@ object ClientSpec extends ZIOSpecDefault:
   private val testMap = MapDef(MapId("T"), "T", "测试", Set.empty, 40, 40)
 
   /** 世界 + 客户端，同步推进：每 50 毫秒 tick 一次，消息立刻交给客户端。 */
-  private final class Rig(blocked: Set[Cell] = Set.empty):
-    val md    = MapData.parse(testMap.id, "T", mapBin(40, 40, blocked)).fold(e => throw new AssertionError(e), identity)
+  private final class Rig(blocked: Set[Cell] = Set.empty, size: Int = 40):
+    val mapDef = testMap.copy(width = size, height = size)
+    val md    = MapData.parse(testMap.id, "T", mapBin(size, size, blocked)).fold(e => throw new AssertionError(e), identity)
     var now   = 0.0
-    val world = World(catalog, testMap, md.terrain, Rng.seeded(3), UidSource.counter(1), Millis(0))
+    val world = World(catalog, mapDef, md.terrain, Rng.seeded(3), UidSource.counter(1), Millis(0))
     val client = GameClient(catalog, ClientEnv(() => now, _ => Future.successful(md), (_, _, _) => ()))
     val ctl    = Controller(client)
     var me     = ActorId(0)
@@ -74,7 +75,7 @@ object ClientSpec extends ZIOSpecDefault:
 
     def join(at: Cell): Unit =
       val d = CharacterData.newbie(catalog, "甲", Job.Warrior, Sex.Male, UidSource.counter(1000))
-      me = world.join(d.copy(place = Place(testMap.id, at)))
+      me = world.join(d.copy(place = Place(mapDef.id, at)))
       deliver()
 
     def deliver(): Unit =
@@ -225,12 +226,62 @@ object ClientSpec extends ZIOSpecDefault:
         r.client.view.stats.exists(_.exp.value > 0)
       )
     },
-    test("点小地图走过去：寻路走到那一格停下") {
+    test("点全景地图走过去：寻路走到那一格停下") {
       val r = Rig(blocked = (8 to 14).map(y => Cell(12, y)).toSet)
       r.join(Cell(10, 10))
       r.ctl.goTo(Cell(16, 11))
       r.run(8000)
       assertTrue(r.serverCell == Cell(16, 11), r.ctl.intent == mir.client.game.Intent.Idle)
+    },
+    test("全景地图点长墙对面：先算好整条路绕过去（只靠就近寻路会卡在墙前），点墙里走到最近处") {
+      val wall = (0 to 110).map(y => Cell(60, y)).toSet
+      val r    = Rig(blocked = wall, size = 120)
+      r.join(Cell(55, 10))
+      r.ctl.goTo(Cell(65, 10))
+      r.run(120000)
+      val far = r.serverCell
+      r.ctl.goTo(Cell(60, 5)) // 墙里
+      r.run(10000)
+      assertTrue(far == Cell(65, 10), r.serverCell.chebyshev(Cell(60, 5)) == 1, r.ctl.intent == mir.client.game.Intent.Idle)
+    },
+    test("沿路走：走过的去掉、朝前面第 8 格走，到了算到，被挤离路要重算") {
+      import mir.client.game.Travel
+      val route = Travel.plan(_.y == 0, Cell(0, 0), Cell(20, 0)).get
+      val on    = Travel.follow(route, Cell(3, 0))
+      val near  = Travel.follow(route, Cell(3, 1))
+      assertTrue(
+        route.cells.size == 20, route.dest == Cell(20, 0),
+        on == Travel.Step.Next(Travel.Route.of((4 to 20).map(Cell(_, 0)).toVector).get, Cell(11, 0)),
+        near match { case Travel.Step.Next(rest, to) => rest.cells.head == Cell(4, 0) && to == Cell(11, 0); case _ => false },
+        Travel.follow(route, Cell(20, 0)) == Travel.Step.Arrived,
+        Travel.follow(route, Cell(10, 5)) == Travel.Step.OffRoute,
+        Travel.plan(_ => false, Cell(0, 0), Cell(5, 5)).isEmpty,
+        Travel.snap(c => c.x != 5, Cell(5, 3), Cell(9, 3)) == Cell(6, 3), Travel.snap(c => c.x != 5, Cell(5, 3), Cell(0, 3)) == Cell(4, 3)
+      )
+    },
+    test("全景地图：图片等比缩放居中、格子和屏幕互换、出口格合并成门、名字重叠的不写") {
+      import mir.client.ui.{Rect, WorldMap}
+      import mir.client.input.Pt
+      // 600×400 的图放进 800×600：宽撑满，放大 4/3，上下居中
+      val fit = WorldMap.Fit(600, 400, Rect(0, 0, 800, 600), 3)
+      val c   = Cell(100, 200)
+      val big = WorldMap.Fit(60, 40, Rect(0, 0, 800, 600), 3)
+      val gates = WorldMap.exits(List(
+        RouteDef(MapId("0"), 10, 10, MapId("A"), 0, 0), RouteDef(MapId("0"), 11, 10, MapId("A"), 0, 0),
+        RouteDef(MapId("0"), 30, 10, MapId("A"), 0, 0), RouteDef(MapId("0"), 12, 10, MapId("B"), 0, 0)
+      ))
+      val marks = List(
+        WorldMap.Mark(Pt(100, 100), "甲门", "#fff"), WorldMap.Mark(Pt(100, 102), "乙", "#fff"),
+        WorldMap.Mark(Pt(101, 101), "丁", "#fff"), WorldMap.Mark(Pt(395, 100), "丙", "#fff")
+      )
+      val placed = WorldMap.placeLabels(marks, Rect(0, 0, 400, 300), _.length * 12.0, 14, 6)
+      assertTrue(
+        fit.scale == 800.0 / 600, fit.y == (600 - 400 * fit.scale) / 2,
+        fit.toCell(fit.toScreen(c)).contains(c), fit.toCell(Pt(1, 1)).isEmpty,
+        big.scale == 3.0,
+        gates == List(WorldMap.Exit(Cell(10, 10), MapId("A")), WorldMap.Exit(Cell(30, 10), MapId("A")), WorldMap.Exit(Cell(12, 10), MapId("B"))),
+        placed.map(_._1.text) == List("甲门", "乙", "丙"), placed(1)._2.x == 100 - 6 - 12, placed(2)._2.x == 395 - 6 - 12
+      )
     },
     test("拖物品：脱下武器放进包裹、双击穿回、扔掉快捷栏的药，都以服务端的结果为准") {
       import mir.client.ui.{Hand, HandStep}

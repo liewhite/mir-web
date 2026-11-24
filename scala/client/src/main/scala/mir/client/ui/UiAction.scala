@@ -12,6 +12,8 @@ enum UiAction:
   case State(page: StatePage)
   case Settings
   case MiniMap
+  /** 全景地图 */
+  case WorldMap
   case Teleport
   case CloseAll
 
@@ -24,9 +26,10 @@ object UiAction:
       all(Bag, "F9", "b", "B", "i", "I") ++
       all(State(StatePage.Equip), "F10", "c", "C") ++
       all(State(StatePage.Magic), "F11", "k", "K") ++
-      all(MiniMap, "Tab", "m", "M") ++
+      all(MiniMap, "Tab") ++
+      all(WorldMap, "m", "M") ++
       all(Teleport, "t", "T") ++
       all(CloseAll, "Escape")).toMap
 
   /** 设置窗底部的键位说明 */
-  val Help = "WASD 跑(按住Shift走)  F1-F8 技能  1-6 快捷栏  空格 捡取  回车 说话  T 传送  Esc 关闭"
+  val Help = "WASD 跑(按住Shift走)  F1-F8 技能  1-6 快捷栏  空格 捡取  回车 说话  T 传送  M 全景地图  Esc 关闭"

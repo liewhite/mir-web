@@ -88,6 +88,7 @@
 - [x] 部署 kaojiang（Node 单机版，已停用）：systemd mir176（/opt/mir176，监听 cni0 10.42.0.1:18176），k3s ns mir176 Ingress；存档 /var/lib/mir176；密码 vault MIR176_PASSWORD
 - [x] 11-23 线上换成 Scala 多人版（#1148）：部署只用 `deploy/jvm/deploy.sh`（旧 deploy/deploy.sh 已停用）；用户账号 liewhite（密码 vault MIR176_PASSWORD），旧单机存档已导成角色；给朋友开号在服务器上 `/opt/mir176/bin/mir176ctl account add <账号>`。Node 版最后的存档留在 /var/lib/mir176/backup/save-node-final-pre-jvm.json。TS 版 game/ 不再上线，改玩法只改 scala/（TS 版只留作规则对照，scala/testdata/gen-golden.sh 用它算对照值）。
 - [x] 小地图、音效（tools/build_sounds.py → assets/sound/*.m4a）、远程怪、首屏预加载、物件 10 帧分块
+- [x] 全景地图（#1195）：点小地图或按 M 打开，整张小地图缩放铺满屏幕，标商人、出口、视野里的怪和人；点哪走哪（client/game/Travel：先按地形算整条路再分段就近寻路，墙里的点挪到最近能走的格）
 - [x] 手机布局（#1140，用户定）：`ui/viewport.ts` 按屏幕选布局——电脑/平板用原版底栏（`ui/classic/layout.ts` BoardLayout），触屏且短边 < 600 用手机布局（`ui/classic/touch.ts`）：界面与地图分开缩放、左半屏虚拟摇杆（`game/joystick.ts`）、点怪锁定并显示怪物信息、攻击键+F1–F8 技能环、物品点一下弹说明和操作菜单；安全区、添加到主屏幕全屏
 - [x] 第二阶段地图（#1139）：从比奇沿传送点走得到的 188 张地图全上（毒蛇山谷、盟重、沃玛森林/寺庙、石墓、祖玛、矿区、地牢等）；内容相同的地图共用素材（MapDef.asset），素材约 2.4G。
 - [x] 第三阶段地图（#1144，用户定「都加进去」）：数据表里有地图文件的 265 张全上（素材 3.6G），没路进去的白日门、封魔谷、苍月岛作为城市、未知暗殿和不归路作为独立地区进传送菜单（build_data.py TOWNS / ENTRIES），赤月、封魔殿、尸魔洞、骨魔洞、牛魔寺庙等按城后的路分组。

@@ -5,7 +5,7 @@ import mir.protocol.Look
 
 /**
  * 右上角小地图（PlayScn.DrawMiniMap，TS 版 ui/classic/classic.ts）：常驻 HUD，不算窗口；
- * 底栏小按钮或 Tab/M 在「半透明 → 不透明 → 关」之间切。点小地图走过去（原版没有，方便）。
+ * 底栏小按钮或 Tab 在「半透明 → 不透明 → 关」之间切。点小地图打开全景地图（WorldMap，原版没有）。
  */
 final class MiniMap(ui: ClassicUi):
   import ui.{catalog, g}
@@ -35,11 +35,7 @@ final class MiniMap(ui: ClassicUi):
     g.imgPart("mmap", mm.idx, mm.x, mm.y, mm.src.x, mm.src.y, mm.src.w, mm.src.h)
     g.ctx.globalAlpha = 1
     ui.area(box)
-    ui.hit(box) {
-      val tx = math.round((ui.mouse.x - mm.x + mm.src.x) * 32 / 48).toInt
-      val ty = math.round(ui.mouse.y - mm.y + mm.src.y).toInt
-      ui.ctl.goTo(Cell(tx, ty))
-    }
+    ui.hit(box)(ui.run(UiAction.WorldMap))
     def dot(c: Cell, color: String, size: Int = 2): Unit =
       val px = mm.x + c.x * 48 / 32 - mm.src.x
       val py = mm.y + c.y - mm.src.y
@@ -55,6 +51,6 @@ final class MiniMap(ui: ClassicUi):
     }
     if (scalajs.js.Date.now() / 300).toLong % 2 == 0 then dot(me, "#fff", 3)
     ui.ctl.intent match
-      case mir.client.game.Intent.GoTo(c) => dot(c, "#ff0", 3)
+      case mir.client.game.Intent.GoTo(r) => dot(r.dest, "#ff0", 3)
       case _                              => ()
   }

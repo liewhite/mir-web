@@ -17,8 +17,8 @@ enum Intent:
   case Fetch(item: GroundId)
   /** 走近锁定的怪打它（服务端按「按住攻击」设置决定打一下还是打到死） */
   case Fight(target: ActorId)
-  /** 走到某一格（点小地图） */
-  case GoTo(cell: Cell)
+  /** 沿算好的路走到某一格（点全景地图） */
+  case GoTo(route: Travel.Route)
 
 /**
  * 输入意图 → 游戏指令（照 TS 版 game/controller.ts，自动喝药、自动捡物、还手、烈火已挪到服务端 AutoPlay）。
@@ -77,8 +77,13 @@ final class Controller(client: GameClient):
     val cell = target.flatMap(client.actor).orElse(client.self).map(_.cell)
     cell.foreach(c => client.send(GameCmd.Cast(id, target, c)))
 
-  /** 走到某一格（点小地图）。 */
-  def goTo(cell: Cell): Unit = intent = Intent.GoTo(cell)
+  /** 走到某一格（全景地图）：按地形算好整条路；走不到的地方走到离它最近处，一步都走不了就不动。 */
+  def goTo(cell: Cell): Unit =
+    intent = (for
+      me    <- client.self
+      md    <- client.map
+      route <- Travel.plan(md.terrain.walkable, me.cell, cell)
+    yield Intent.GoTo(route)).getOrElse(Intent.Idle)
 
   /** 能主动放的技能（不是被动），按学会的顺序。 */
   def activeSkills: List[LearnedSkill] = client.view.skills.filterNot(s => Skill.isPassive(s.id))
@@ -126,8 +131,13 @@ final class Controller(client: GameClient):
               // 服务端「按住攻击」关着时只打一下
               if !client.view.settings.stickyAttack then intent = Intent.Idle
           case Some(a) => approach(me.cell, a.cell, adjacent = true)
-      case Intent.GoTo(cell) =>
-        if me.cell == cell then intent = Intent.Idle else approach(me.cell, cell, adjacent = false)
+      case Intent.GoTo(route) =>
+        Travel.follow(route, me.cell) match
+          case Travel.Step.Arrived => intent = Intent.Idle
+          case Travel.Step.OffRoute => goTo(route.dest)
+          case Travel.Step.Next(rest, toward) =>
+            intent = Intent.GoTo(rest)
+            approach(me.cell, toward, adjacent = false)
   }
 
   /** 朝目标走一步（寻路绕开障碍，远就跑）。 */

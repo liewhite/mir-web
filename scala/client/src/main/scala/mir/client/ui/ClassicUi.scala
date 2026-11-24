@@ -87,6 +87,7 @@ final class ClassicUi(
   val state    = StateWindow(this)
   val settings = SettingsWindow(this)
   val teleport = TeleportPanel(this)
+  val worldMap = WorldMap(this)
   val keyDlg   = KeyDialog(this)
   val quantity = QuantityPanel(this)
   val itemMenu = ItemMenuWindow(this)
@@ -95,7 +96,7 @@ final class ClassicUi(
    * 全部窗口，从下到上：绘制顺序、点击叠放（后画的盖住先画的）、悬停说明、全部关闭都按它。
    * 新加窗口只要写一个 Window 实现、在这里排好位置。
    */
-  val windows: List[Window] = List(merchant, bag, state, settings, teleport, keyDlg, quantity, itemMenu)
+  val windows: List[Window] = List(worldMap, merchant, bag, state, settings, teleport, keyDlg, quantity, itemMenu)
 
   def options: ViewOptions = client.options
 
@@ -176,6 +177,7 @@ final class ClassicUi(
     case UiAction.Settings       => itemMenu.close(); settings.toggle()
     case UiAction.Teleport       => itemMenu.close(); teleport.toggle()
     case UiAction.MiniMap        => miniMap.cycle()
+    case UiAction.WorldMap       => itemMenu.close(); worldMap.toggle()
     case UiAction.CloseAll       => closeAll()
 
   def logout(): Unit = env.logout()
