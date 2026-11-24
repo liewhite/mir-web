@@ -7,9 +7,18 @@ final case class MissileFx(lib: String, base: Int, stride: Int, frames: Int)
 
 /**
  * 攻击时身上的特效（原版 TGasKuDeGi.LoadSurface 等）：图库、起始帧（方向间隔 10）；
- * dir16：按 16 方向朝目标；extra：比攻击动作多放几帧；frames：固定帧数（不跟攻击动作走）。
+ * dir16：按 16 方向朝目标；extra：比攻击动作多放几帧；frames：固定帧数（不跟攻击动作走）；
+ * atFrame：攻击动作放到第几帧（从 0 数）才出现（原版 RunFrameAction）；frameTime：特效自己的每帧毫秒（不跟攻击动作走）。
  */
-final case class AttackFx(lib: String, base: Int, dir16: Boolean = false, extra: Int = 0, frames: Option[Int] = None)
+final case class AttackFx(
+    lib: String,
+    base: Int,
+    dir16: Boolean = false,
+    extra: Int = 0,
+    frames: Option[Int] = None,
+    atFrame: Int = 0,
+    frameTime: Option[Int] = None
+)
 
 /** 攻击放哪套帧。 */
 enum AttackAnim:
@@ -35,7 +44,9 @@ final case class MonsterLook(
     statueDir: Option[Dir] = None,
     attackFx: Option[AttackFx] = None,
     /** 远程攻击飞出去的东西（飞斧、刺、箭）；没有的远程怪只放攻击动作 */
-    missile: Option[MissileFx] = None
+    missile: Option[MissileFx] = None,
+    /** 钻下去倒放 ActCritical（大神兽变回小神兽，TSkeletonOma SM_DIGDOWN race 55）；否则正放 ActDeath */
+    digDownReversed: Boolean = false
 ):
   /** 攻击时放的那套帧 */
   def attackAction(t: MonsterActionTable): ActionInfo = attackAnim match
@@ -62,7 +73,9 @@ object MonsterLook:
     48 -> MonsterLook(deathNoDir = true), // 祖玛雕像
     49 -> MonsterLook(deathNoDir = true, statueDir = Some(Dir.DownLeft), attackFx = Some(AttackFx("mon7", 1680, frames = Some(9)))), // 祖玛教主
     52 -> MonsterLook(attackFx = Some(AttackFx("mon4", 3590))), // 楔蛾
-    53 -> MonsterLook(attackFx = Some(AttackFx("mon3", 3590))) // 粪虫
+    53 -> MonsterLook(attackFx = Some(AttackFx("mon3", 3590))), // 粪虫
+    // 大神兽（TWarriorElfMonster）：攻击第 5 帧在脚下喷火 Mon18 820 + 10×方向 + 1 起 5 帧、每帧 100ms（WARRIORELFFIREBASE）
+    55 -> MonsterLook(attackFx = Some(AttackFx("mon18", 821, frames = Some(5), atFrame = 5, frameTime = Some(100))), digDownReversed = true)
   )
 
   def of(raceImg: Int): MonsterLook = table.getOrElse(raceImg, Plain)

@@ -3,7 +3,7 @@ package mir.world
 import mir.core.*
 import mir.model.*
 import mir.protocol.Anchor
-import mir.rules.Rng
+import mir.rules.{PetBody, Rng, SpellRules}
 import mir.terrain.Path
 
 /**
@@ -23,8 +23,12 @@ object MonsterAi:
         m.cover = Cover.Stone
         m.style.statueDir.foreach(w.grid.face(m, _))
       case Hiding.Never => m.cover = Cover.Open
-    m.extras = m.behavior.extras.map(_.initial).toVector
+    m.extras = m.behavior.extras.map(_.initial(w.now)).toVector
     m.bornAt = w.now
+    // 神兽出现时从地下钻出来（TElfMonster / TElfWarriorMonster 第一次 Run 发 RM_DIGUP）
+    if m.extras.exists(_.isInstanceOf[ExtraState.Shapeshift]) then
+      shinsuPace(m)
+      digAnim(w, m, ActKind.DigUp): Unit
 
   def think(w: World, m: Monster): Unit =
     val rng = w.rngOf
@@ -40,7 +44,8 @@ object MonsterAi:
         val b = m.behavior
         if updateCover(w, m, b) then
           updateExtras(m)(extraTick(w, m, _))
-          if !m.dead then
+          // 本领处理里放了动作（变身钻出、钻下）的，这回合不再出手走动
+          if !m.dead && w.now >= m.busyUntil then
             b.strike match
               case Strike.Explode if w.now - m.bornAt > 60_000 => explode(w, m)
               case s: Strike.Spawn                           => spawnTick(w, m, s)
@@ -210,8 +215,10 @@ object MonsterAi:
         case (true, Some(t)) => m.cell.dir16(t.cell)
         case (true, None)    => m.dir.code * 2
         case (false, _)      => m.dir.code
-      val n = f.frames.getOrElse(frames + f.extra)
-      w.out.effect(f.lib, f.base + dir * 10, n, frameTime, Anchor.OnActor(m.id))
+      val n  = f.frames.getOrElse(frames + f.extra)
+      val ft = f.frameTime.getOrElse(frameTime)
+      def show(m: Monster): Unit = w.out.effect(f.lib, f.base + dir * 10, n, ft, Anchor.OnActor(m.id))
+      if f.atFrame > 0 then w.afterOn(m, f.atFrame.toLong * frameTime)(show) else show(m)
     }
 
   private def ready(w: World, m: Monster): Boolean = w.now - m.lastAttack >= m.attackInterval
@@ -240,7 +247,8 @@ object MonsterAi:
                     magical(w, m, t, pw - ph): Unit
                   case _ => gas(w, m, t, pw)
           true
-      case Strike.Spit =>
+      case Strike.Hold => true
+      case Strike.Spit(poison) =>
         val dir = m.cell.dirTo(t.cell)
         if d > 2 || m.cell.step(dir, d) != t.cell then false
         else
@@ -250,7 +258,7 @@ object MonsterAi:
             val pw = power(w, m)
             for k <- 1 to 2 do
               w.occupants(m.cell.step(dir, k)).foreach { a =>
-                if magical(w, m, a, pw, checkHit = true).connected && !a.dead && rng.random(20) == 0 then poisonGreen(w, a, m, 30_000, 1)
+                if magical(w, m, a, pw, checkHit = true).connected && poison && !a.dead && rng.random(20) == 0 then poisonGreen(w, a, m, 30_000, 1)
               }
           true
       case Strike.Missile(range, fly) =>
@@ -338,13 +346,17 @@ object MonsterAi:
   // 每项本领的处理拿着它的旧状态、返回新状态；加一种本领在这几个 match 里各加一个分支。
 
   private def updateExtras(m: Monster)(f: ExtraState => ExtraState): Unit =
-    m.extras = m.extras.map(f)
+    val before = m.extras
+    val after  = before.map(f)
+    // 处理中变了身的，extras 已换成新形态的初始状态，不拿旧形态的结果盖掉
+    if m.extras eq before then m.extras = after
 
   /** 活着时每回合 */
   private def extraTick(w: World, m: Monster, s: ExtraState): ExtraState = s match
     case r: ExtraState.Revive     => r
     case z: ExtraState.SummonZuma => summonZuma(w, m, z)
     case c: ExtraState.CowKing    => cowKing(w, m, c)
+    case s: ExtraState.Shapeshift => shapeshift(w, m, s)
 
   /** 死了以后每回合 */
   private def deadTick(w: World, m: Monster, s: ExtraState): ExtraState = s match
@@ -419,6 +431,60 @@ object MonsterAi:
       m.walkInterval = m.defn.walkSpeed
       (Rage.Calm, since)
     case Rage.Calm => (Rage.Calm, since)
+
+  /**
+   * 神兽变身（TElfMonster.Run / TElfWarriorMonster.Run）：小神兽一有仗打就原地变大、从地里钻出；
+   * 大神兽连续 Calm 那么久没仗打就钻下去，钻完变回小神兽。
+   */
+  private def shapeshift(w: World, m: Monster, s: ExtraState.Shapeshift): ExtraState =
+    shinsuPace(m)
+    val engaged = inFight(w, m)
+    s.when match
+      case ShiftWhen.Engaged =>
+        if engaged then morph(w, m, s.into, emerge = true)
+        s
+      case ShiftWhen.Calm(_) if engaged => s.copy(engagedAt = w.now)
+      case ShiftWhen.Calm(ms) if w.now - s.engagedAt > ms =>
+        m.target = None
+        val dur = digAnim(w, m, ActKind.DigDown)
+        w.afterOn(m, dur)(morph(w, _, s.into, emerge = false))
+        s.copy(engagedAt = w.now)
+      case ShiftWhen.Calm(_) => s
+
+  /** 神兽按宝宝等级定走路、出手间隔（ResetElfMon）。 */
+  private def shinsuPace(m: Monster): Unit =
+    m.walkInterval = SpellRules.shinsuWalkMs(m.petLevel)
+    m.attackInterval = SpellRules.shinsuHitMs(m.petLevel)
+
+  /** 有没有仗打：自己有活着的目标，或主人正按住攻击打着谁、最近挨过别的玩家打（原版 Master.TargetCret / LastHiter）。 */
+  private def inFight(w: World, m: Monster): Boolean =
+    def alive(id: ActorId) = w.actor(id).exists(!_.dead)
+    val mine = m.target.exists(alive)
+    val masters = m.master.flatMap(w.player).exists { p =>
+      val hunting = p.intent match
+        case Intent.Hunt(t, _) => alive(t)
+        case _                 => false
+      hunting || p.assailant.exists(g => w.now - g.at <= Grudge.Ms)
+    }
+    mine || masters
+
+  /**
+   * 原地变成 into 那种怪（MakeClone）：主人、宝宝等级、目标、身上状态都留着；召唤的按召唤加成和新形态底数重算身板，
+   * 血量按比例换算；emerge 时放钻出动作。
+   */
+  private def morph(w: World, m: Monster, into: MonsterName, emerge: Boolean): Unit =
+    w.catalog.monster(into).foreach { d =>
+      given Rng = w.rngOf
+      val ratio = m.hp.toDouble / math.max(1, m.maxHp)
+      m.morph(d, Behavior.of(d))
+      val body = m.summoning.fold(PetBody.of(d))(_.body(d))
+      w.vitals.shape(m, body, Some(math.max(1, math.round(body.hp * ratio).toInt)))
+      m.extras = m.behavior.extras.map(_.initial(w.now)).toVector
+      shinsuPace(m)
+      if emerge then
+        digAnim(w, m, ActKind.DigUp): Unit
+        w.out.sound(m.cell, Sounds.monster(d.appr, MonsterCry.Appear))
+    }
 
   /** 死了的僵尸过几秒爬起来（ZilKinZombi.Run）：血上限减半，再打死经验也减半。 */
   private def tryRevive(w: World, m: Monster, r: ExtraState.Revive): ExtraState =

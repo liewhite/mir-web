@@ -2,7 +2,7 @@ package mir.world
 
 import mir.core.{Millis, MonsterName}
 import mir.data.{MissileFx, MonsterDef, MonsterLook}
-import mir.rules.Rng
+import mir.rules.{Rng, SpellRules}
 
 /**
  * 怪物行为的描述：按数据表的 Race（服务端怪物类型）决定怎么出招、会不会藏起来、能不能动、附加本领。
@@ -20,8 +20,13 @@ enum Strike:
   case Magic
   /** 贴身喷气：魔法伤害，有机会麻痹（洞蛆、楔蛾、粪虫 GasAttackMonster） */
   case Gas
-  /** 朝前方 2 格喷毒：魔法伤害，有机会中绿毒（蜘蛛 SpitSpider） */
-  case Spit
+  /**
+   * 朝前方 2 格喷（SpitSpider.SpitAttack）：判命中的魔法伤害；poison 时打到身上有机会中绿毒（蜘蛛），
+   * 大神兽喷火不带毒（TElfWarriorMonster m_boUsePoison = False）。
+   */
+  case Spit(poison: Boolean)
+  /** 不出手（神兽小形态 TElfMonster NoAttackMode：跟着主人走，有仗打就变身，见 Extra.Shapeshift） */
+  case Hold
   /** 远程投掷（掷斧骷髅、弓箭手 DualAxeMonster） */
   case Missile(range: Int, fly: Option[MissileFx])
   /** 朝目标方向放一道 8 格电光，线上的都挨打；目标太近会后退（僵尸 LightingZombi） */
@@ -61,14 +66,28 @@ enum Extra:
   case SummonZuma
   /** 沃玛教主：被围住时瞬移到目标身后；血越少越狂暴（攻速、移速变快） */
   case CowKing
+  /**
+   * 神兽变身（ObjMon.pas TElfMonster / TElfWarriorMonster）：到时候就原地变成 into 那种怪，主人、宝宝等级、召唤加成、
+   * 血量比例带过去。两种形态都按宝宝等级定走路、出手间隔（SpellRules.shinsuWalkMs / shinsuHitMs），出现时从地下钻出来。
+   */
+  case Shapeshift(into: MonsterName, when: ShiftWhen)
 
   /** 刚刷出来时的状态。 */
-  def initial(using rng: Rng): ExtraState = this match
+  def initial(now: Millis)(using rng: Rng): ExtraState = this match
     // 1/3 的僵尸能复活 1~3 次（ZilKinZombi.Create）
     case Revive     => ExtraState.Revive(left = if rng.random(3) == 0 then rng.random(3) + 1 else 0, at = None, times = 0)
     case SummonZuma => ExtraState.SummonZuma(level = 5, lastCheck = Millis.zero)
     // 档位初值 0（CowKingMonster 构造 CrazyCount = 0）。TS 版和祖玛教主共用字段、初值误为 5，血刚好在第 5 档时第一次检查不狂暴
     case CowKing    => ExtraState.CowKing(level = 0, rage = Rage.Calm, rageAt = Millis.zero, lastCheck = Millis.zero)
+    // 没仗打的计时从出现那一刻算（TElfWarriorMonster.AppearNow dwDigDownTick := GetTickCount）
+    case Shapeshift(into, when) => ExtraState.Shapeshift(into, when, engagedAt = now)
+
+/** 神兽什么时候变身。「有仗打」= 自己有目标，或主人正打着谁、刚挨过别的玩家打（原版 Master.TargetCret / LastHiter）。 */
+enum ShiftWhen:
+  /** 一有仗打就变（小神兽 → 大神兽） */
+  case Engaged
+  /** 连续 ms 毫秒没仗打就钻下去变（大神兽 → 小神兽，原版 60 秒） */
+  case Calm(ms: Int)
 
 /** 一项附加本领在某只怪身上的状态（不可变，处理完换新的）。 */
 enum ExtraState:
@@ -78,6 +97,8 @@ enum ExtraState:
   case SummonZuma(level: Int, lastCheck: Millis)
   /** 狂暴档位（按剩余血算，变了就准备狂暴）、狂暴阶段及开始时刻、上次检查时刻（每 30 秒一次） */
   case CowKing(level: Int, rage: Rage, rageAt: Millis, lastCheck: Millis)
+  /** 变成哪种、什么时候变、最后一次有仗打的时刻 */
+  case Shapeshift(into: MonsterName, when: ShiftWhen, engagedAt: Millis)
 
   /** 打死给的经验倍数 */
   def expScale: Double = this match
@@ -119,7 +140,7 @@ object Behavior:
   def of(d: MonsterDef): Behavior = d.race match
     case 11 | 12      => Behavior(Strike.Warp, retarget = Retarget.Never)
     case 50 | 51 | 52 => Behavior(Strike.Melee, passive = true)
-    case 82 | 119     => Behavior(Strike.Spit)
+    case 82 | 119     => Behavior(Strike.Spit(poison = true))
     case 85           => Behavior(Strike.Melee, hiding = Hiding.Burrow(4, 4), rooted = true, retarget = Retarget.EachAttack)
     case 87 | 104 | 112 => Behavior(Strike.Missile(7, MonsterLook.of(d).missile))
     case 90 | 105 | 106 => Behavior(Strike.Gas)
@@ -135,6 +156,8 @@ object Behavior:
     case 115           => Behavior(Strike.Area(16, poison = false), rooted = true)
     case 116           => Behavior(Strike.Spawn(MonsterName("爆裂蜘蛛"), below = true), rooted = true)
     case 117           => Behavior(Strike.Explode)
+    case 113           => Behavior(Strike.Hold, extras = List(Extra.Shapeshift(SpellRules.ShinsuWarrior, ShiftWhen.Engaged)))
+    case 114           => Behavior(Strike.Spit(poison = false), extras = List(Extra.Shapeshift(SpellRules.ShinsuPet, ShiftWhen.Calm(SpellRules.ShinsuCalmMs))))
     case _             => Behavior(Strike.Melee)
 
   /** 动物：鸡（51）、鹿羊（52）、狼（53），原版 Animal = true，诱惑之光对它们无效（WorldServer.MonGen.cs）。 */

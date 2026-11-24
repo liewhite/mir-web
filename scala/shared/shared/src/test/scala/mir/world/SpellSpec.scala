@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.*
 import mir.model.*
 import mir.protocol.*
-import mir.rules.{Durability, PetBody, PoisonDose, Rng, SpellRules}
+import mir.rules.{Durability, PetBody, PoisonDose, Rng, SpellRules, Summoning}
 import mir.terrain.Terrain
 import mir.rules.SpellRules.{TameOutcome, TameTarget}
 import mir.testkit.TestFiles
@@ -132,6 +132,95 @@ object SpellSpec extends ZIOSpecDefault:
         count(SpellRules.ShinsuPet) == 2
       )
     },
+    suite("神兽照原版变身喷火（#1255）")(
+      test("小神兽不打架；附近有怪就原地变成神兽1：同一只、主人和等级不变、身板按神兽1 底数重算、血按比例；变了身也算神兽的名额") {
+        val s = sim()
+        val p = caster(s, Job.Taoist, List(30), charm = true)
+        p.stats = p.stats.copy(sc = Span(5, 20))
+        s.cast(p, 30, None, p.cell); s.run(3000)
+        val m = p.pets.flatMap(s.w.actor).collectFirst { case m: Monster => m }.get
+        val small = (m.defn.name, m.behavior.strike, m.walkInterval)
+        m.hp = m.maxHp / 2
+        val foe = put(s, "蛤蟆", Cell(p.cell.x + 4, p.cell.y))
+        pin(foe)
+        foe.maxHpNow = 100_000
+        foe.hp = 100_000
+        s.run(500)
+        val big  = catalog.monster(SpellRules.ShinsuWarrior).get
+        val want = Summoning(3, 20).body(big)
+        val seen = s.view.actors.get(m.id).map(_.look).collect { case l: Look.Monster => l.kind }
+        val half = m.hp.toDouble / m.maxHp
+        (1 to 3).foreach { _ => s.cast(p, 30, None, p.cell); s.run(1500) }
+        val shinsu = p.pets.flatMap(s.w.actor).count {
+          case q: Monster => SpellRules.summonedAs(q.defn.name).contains(SpellRules.ShinsuPet)
+          case _          => false
+        }
+        assertTrue(
+          small == (SpellRules.ShinsuPet, Strike.Hold, SpellRules.shinsuWalkMs(3)),
+          m.defn.name == SpellRules.ShinsuWarrior,
+          s.w.actor(m.id).contains(m),
+          m.master.contains(p.id),
+          m.petLevel == 3,
+          m.body == want,
+          math.abs(half - 0.5) < 0.03, // 半血变身还是半血（允许这期间自然回一跳）
+          m.attackInterval == SpellRules.shinsuHitMs(3),
+          seen.contains(SpellRules.ShinsuWarrior),
+          shinsu == SpellRules.SummonsEach,
+          s.notices.exists(_.contains(s"最多 ${SpellRules.SummonsEach} 只"))
+        )
+      },
+      test("神兽1 朝目标方向喷火：身前两格都挨打、不中毒，旁边的不挨；放 Mon18 喷火特效") {
+        val s = sim()
+        val p = caster(s, Job.Taoist, List(30), charm = true)
+        s.cast(p, 30, None, p.cell); s.run(3000)
+        val m = p.pets.flatMap(s.w.actor).collectFirst { case m: Monster => m }.get
+        s.w.grid.teleportActor(m, Cell(20, 20))
+        def foe(c: Cell) =
+          val f = put(s, "蛤蟆", c)
+          pin(f)
+          f.maxHpNow = 100_000
+          f.hp = 100_000
+          f
+        val near  = foe(Cell(21, 20))
+        val far   = foe(Cell(22, 20))
+        val aside = foe(Cell(20, 22))
+        s.run(3000)
+        assertTrue(
+          m.defn.name == SpellRules.ShinsuWarrior,
+          near.hp < 100_000,
+          far.hp < 100_000,
+          aside.hp == 100_000,
+          !near.statuses.has(StatusKind.GreenPoison) && !far.statuses.has(StatusKind.GreenPoison),
+          s.effects.contains(("mon18", 821 + 10 * Dir.Right.code))
+        )
+      },
+      test("神兽1 连续 60 秒没仗打就钻下去变回小神兽，血按比例、身板按神兽底数") {
+        val s = sim()
+        val p = caster(s, Job.Taoist, List(30), charm = true)
+        p.stats = p.stats.copy(sc = Span(5, 20))
+        s.cast(p, 30, None, p.cell); s.run(3000)
+        val m   = p.pets.flatMap(s.w.actor).collectFirst { case m: Monster => m }.get
+        val foe = put(s, "蛤蟆", Cell(p.cell.x + 4, p.cell.y))
+        pin(foe)
+        s.run(500)
+        val grew = m.defn.name
+        s.w.vitals.killWithoutReward(foe)
+        m.hp = m.maxHp / 2
+        s.run(55_000)
+        val still = m.defn.name
+        val ratio = m.hp.toDouble / m.maxHp
+        s.run(8_000)
+        val want = Summoning(3, 20).body(catalog.monster(SpellRules.ShinsuPet).get)
+        assertTrue(
+          grew == SpellRules.ShinsuWarrior,
+          still == SpellRules.ShinsuWarrior,
+          m.defn.name == SpellRules.ShinsuPet,
+          m.body == want,
+          ratio < 1.0,
+          math.abs(m.hp.toDouble / m.maxHp - ratio) < 0.03 // 血量比例带过去（允许自然回一跳）
+        )
+      }
+    ),
     test("道术加成宝宝（#1209）：道术上限每点 +2%，封顶 +60%，乘血、攻、防、魔防；技能等级只乘血和攻") {
       val md = catalog.monster(SpellRules.SkeletonPet).get
       def body(sc: Int) = SpellRules.summonedBody(md, 3, sc)

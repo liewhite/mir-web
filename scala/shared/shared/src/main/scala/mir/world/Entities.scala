@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.{MerchantDef, MonsterDef, MonsterLook, Span}
 import mir.model.*
 import mir.protocol.{ActionView, FieldView, GroundThing, GroundView, Look, PetView}
-import mir.rules.{PetBody, Pk, Skill, Stats}
+import mir.rules.{PetBody, Pk, Skill, Stats, Summoning}
 
 import scala.collection.mutable
 
@@ -134,8 +134,23 @@ enum Intent:
   case Fetch(item: GroundId)
 
 /** 怪物（含守卫、宝宝）。 */
-final class Monster(id: ActorId, val defn: MonsterDef, val behavior: Behavior, initSpawn: Option[Int], cell: Cell, dir: Dir, now: Millis)
+final class Monster(id: ActorId, initDefn: MonsterDef, initBehavior: Behavior, initSpawn: Option[Int], cell: Cell, dir: Dir, now: Millis)
     extends Actor(id, cell, dir, now):
+  // 形态：数据表那一行、行为、按外观的画法，三者一起变（只有变身会变，见 morph）
+  private var form: MonsterDef        = initDefn
+  private var formBehavior: Behavior  = initBehavior
+  private var formStyle: MonsterLook  = MonsterLook.of(initDefn)
+  def defn: MonsterDef     = form
+  def behavior: Behavior   = formBehavior
+  /** 按外观的画法和特效 */
+  def style: MonsterLook   = formStyle
+
+  /** 换成另一种怪的样子和行为（神兽变身，MonsterAi.morph）；血量身板由调用方经 Vitals 重设。 */
+  private[world] def morph(d: MonsterDef, b: Behavior): Unit =
+    form = d
+    formBehavior = b
+    formStyle = MonsterLook.of(d)
+
   /** 刷怪点（被诱惑收服后不再算它的，刷怪点会补一只） */
   private[world] var spawn: Option[Int] = initSpawn
   private[world] var maxHpNow: Int  = defn.hp
@@ -151,6 +166,8 @@ final class Monster(id: ActorId, val defn: MonsterDef, val behavior: Behavior, i
   /** 召唤物或被诱惑的怪：主人 */
   private[world] var master: Option[ActorId] = None
   private[world] var petLevel: Int = 0
+  /** 召唤出来的：召唤时定下的加成（变身时按它重算身板）；野怪、收服的为 None */
+  private[world] var summoning: Option[Summoning] = None
   /** 尸体消失时刻 */
   private[world] var removeAt: Millis = Millis.zero
   private[world] var cover: Cover   = Cover.Open
@@ -178,8 +195,6 @@ final class Monster(id: ActorId, val defn: MonsterDef, val behavior: Behavior, i
   def agility: Int = defn.speed
   def hit: Int     = defn.hit
   def isGuard: Boolean = defn.isGuard
-  /** 按外观的画法和特效 */
-  val style: MonsterLook = MonsterLook.of(defn)
   /** 此刻的状态（定住优先；宝宝不会发狂），也是名字颜色 */
   def mood: Mood =
     if statuses.has(StatusKind.Seized) then Mood.Seized

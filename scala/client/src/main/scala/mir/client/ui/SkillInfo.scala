@@ -218,7 +218,12 @@ object SkillInfo:
       case Skill.SummonSkeleton =>
         s"用 1 张护身符召唤一只，同时最多 ${SpellRules.SummonsEach} 只（不占诱惑之光的名额）" :: petLines(SpellRules.SkeletonPet.value, l)
       case Skill.SummonShinsu =>
-        s"用 1 张护身符召唤一只，同时最多 ${SpellRules.SummonsEach} 只（不占诱惑之光的名额）" :: petLines(SpellRules.ShinsuPet.value, l)
+        val big = SpellRules.ShinsuWarrior.value
+        val calm = SpellRules.ShinsuCalmMs / 1000
+        List(
+          s"用 1 张护身符召唤一只，同时最多 ${SpellRules.SummonsEach} 只（不占诱惑之光的名额）",
+          s"平时是小神兽，跟着你、不打架；它或你有仗打（你在打怪、刚被人打）就原地变成$big，朝前方 2 格喷火（魔法伤害，按魔防减），每 ${SpellRules.shinsuHitMs(l) / 1000.0} 秒喷一次；$calm 秒没仗打变回小神兽"
+        ) ++ petLines(SpellRules.ShinsuPet.value, l) ++ petLines(big, l).drop(1)
       case Skill.Invisible => List(s"用 1 张护身符隐身 ${span(r => SpellRules.invisibleSecs(d, l, sc)(using r))} 秒，怪物看不见你（打怪或放别的技能就现身）")
       case Skill.GroupInvisible =>
         val w = SpellRules.GroupRadius * 2 + 1

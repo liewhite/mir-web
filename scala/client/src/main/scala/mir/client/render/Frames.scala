@@ -96,6 +96,8 @@ object Frames:
         case ActKind.DigUp =>
           if style.herb then pick(t.walk, 0, frameOf(t.walk, a, now, loop = false))
           else pick(t.death, deathDir, frameOf(t.death, a, now, loop = false))
+        case ActKind.DigDown if style.digDownReversed =>
+          pick(t.critical, dir.code, t.critical.frames - 1 - frameOf(t.critical, a, now, loop = false))
         case ActKind.DigDown => pick(t.death, if style.herb then 0 else deathDir, frameOf(t.death, a, now, loop = false))
         case ActKind.Stand | ActKind.Die | ActKind.Dead => stand
 

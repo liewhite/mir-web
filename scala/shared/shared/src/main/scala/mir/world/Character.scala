@@ -3,7 +3,7 @@ package mir.world
 import mir.core.*
 import mir.data.Catalog
 import mir.model.*
-import mir.rules.{Charges, PetBody}
+import mir.rules.{Charges, PetBody, Summoning}
 import zio.json.*
 
 /** 某张地图上的某一格。 */
@@ -73,8 +73,8 @@ object CharacterData:
       worn = worn, storage = Nil, skills = Nil, settings = CharSettings(), longHitOn = true, wideHitOn = false
     )
 
-/** 跟着主人换图的宝宝。 */
-final case class PetData(kind: MonsterName, hp: Int, body: PetBody, level: Int)
+/** 跟着主人换图的宝宝：此刻的形态、血、身板、宝宝等级，召唤的还有召唤加成（变身时重算身板用）。 */
+final case class PetData(kind: MonsterName, hp: Int, body: PetBody, level: Int, summoning: Option[Summoning] = None)
 
 /** 物品实例编号的来源：全服唯一（服务端按数据库里最大编号往上发）。 */
 trait UidSource:

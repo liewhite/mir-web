@@ -2,7 +2,7 @@ package mir.world.skills
 
 import mir.core.*
 import mir.protocol.{Anchor, Tone}
-import mir.rules.SpellRules
+import mir.rules.{SpellRules, Summoning}
 import mir.rules.Rng
 import mir.world.*
 import mir.world.Sounds.SpellPhase
@@ -117,7 +117,7 @@ object Taoist:
     def cast(c: SpellCtx)(using Rng): Effect =
       import c.*
       val have = p.pets.flatMap(w.actor).count {
-        case m: Monster => m.defn.name == pet
+        case m: Monster => SpellRules.summonedAs(m.defn.name).contains(pet) // 变了身的大神兽也算神兽
         case _          => false
       }
       charm match
@@ -132,7 +132,9 @@ object Taoist:
               w.spawner.spawnMonster(md, None, p.cell.step(p.dir), 1).foreach { m =>
                 m.master = Some(p.id)
                 m.petLevel = lv
-                w.vitals.shape(m, SpellRules.summonedBody(md, lv, sc.hi))
+                val how = Summoning(lv, sc.hi)
+                m.summoning = Some(how)
+                w.vitals.shape(m, how.body(md))
                 p.pets += m.id
                 c.fx("magic", 1500, 10, 60, Anchor.OnActor(m.id))
               }

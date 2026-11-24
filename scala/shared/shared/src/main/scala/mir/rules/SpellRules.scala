@@ -10,6 +10,17 @@ final case class PoisonDose(secs: Int, power: Int)
 /** 宝宝的身板：血上限、攻击、防御、魔防（召唤加成或收服时定下，跟着主人换图带走）。 */
 final case class PetBody(hp: Int, dc: Span, ac: Span, mac: Span)
 
+object PetBody:
+  /** 数据表原样的身板（野怪、收服的宝宝） */
+  def of(d: MonsterDef): PetBody = PetBody(d.hp, d.dc, d.ac, d.mac)
+
+/**
+ * 召唤那一刻定下的加成：技能等级、主人道术上限。宝宝换形态（神兽变身）时按新形态的数据表底数重算身板，
+ * 跟着主人换图带走。
+ */
+final case class Summoning(level: Int, scMax: Int):
+  def body(d: MonsterDef): PetBody = SpellRules.summonedBody(d, level, scMax)
+
 /**
  * 技能的数值公式：威力、持续秒数、成功率、范围。出处 ref/Mir176 MagicManager.cs（配置取 GameSvrConf 默认值），
  * 野蛮冲撞出自 PlayObject.Base.cs DoMotaebo。
@@ -45,8 +56,17 @@ object SpellRules:
   val SummonsEach     = 3
   val SkeletonPet     = MonsterName("变异骷髅")
   val ShinsuPet       = MonsterName("神兽")
+  /** 神兽有仗打时变成的大神兽（原版 g_Config.sDragon1），没仗打 60 秒变回 ShinsuPet */
+  val ShinsuWarrior   = MonsterName("神兽1")
+  /** 大神兽连续多久没仗打变回小神兽（TElfWarriorMonster.Run 6 * 10 * 1000） */
+  val ShinsuCalmMs    = 60_000
+  /** 召唤出来的宝宝算哪一种召唤（同种计数用；大神兽算神兽），不是召唤的为 None */
+  def summonedAs(pet: MonsterName): Option[MonsterName] =
+    if pet == SkeletonPet then Some(SkeletonPet)
+    else if pet == ShinsuPet || pet == ShinsuWarrior then Some(ShinsuPet)
+    else None
   /** 是不是召唤出来的宝宝（不占诱惑之光的名额） */
-  def isSummoned(pet: MonsterName): Boolean = pet == SkeletonPet || pet == ShinsuPet
+  def isSummoned(pet: MonsterName): Boolean = summonedAs(pet).isDefined
   /** 圣言术：怪物等级上限（MagTurnUndeadLevel） */
   val TurnUndeadLevelLimit = 50
 
@@ -275,3 +295,7 @@ object SpellRules:
   /** 收服后宝宝走路、出手间隔的上限（毫秒）：1500 - 等级×200、2000 - 等级×200。 */
   def petWalkCap(level: Int): Int   = 1500 - level * 200
   def petAttackCap(level: Int): Int = 2000 - level * 200
+
+  /** 神兽两种形态的走路、出手间隔（毫秒），level 是宝宝等级（召唤技能等级）：500 - 等级×50、1500 - 等级×100（ObjMon.pas ResetElfMon）。 */
+  def shinsuWalkMs(level: Int): Int = 500 - level * 50
+  def shinsuHitMs(level: Int): Int  = 1500 - level * 100
