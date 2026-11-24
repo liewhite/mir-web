@@ -68,6 +68,10 @@ final class Board(ui: ClassicUi):
     val mpText = s"${st.mp.value}/${s.maxMp}"
     g.text(hpText, bx + 86 - g.width(hpText) / 2, by + 186, "#fff", bold = true)
     g.text(mpText, bx + 86 - g.width(mpText) / 2, by + 200, "#9fc6ff", bold = true)
+    // 地图名和自己的坐标（原版 DrawScrn.pas：左下角 8, SCREENHEIGHT-20）
+    val title = m.view.map.flatMap(ui.catalog.map).fold("")(_.title)
+    val here  = m.actor.cell
+    g.text(s"$title ${here.x}:${here.y}".trim, bx + 8, ui.H - 20, "#fff", bold = true)
     g.text(st.level.toString, bx + 660, ui.H - 104, "#fff", bold = true)
     g.size(Gfx.Main, 7).foreach { (bw, bh) =>
       val er = st.expToNext.fold(1.0)(need => st.exp.value.toDouble / math.max(1L, need.value))
