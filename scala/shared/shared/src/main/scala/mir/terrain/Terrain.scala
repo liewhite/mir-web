@@ -44,12 +44,13 @@ object Terrain:
 object Path:
   /**
    * 从 from 到 to 的方向序列；到不了就走到最接近的位置；一步也走不了为 None。
-   * adjacent：走到 to 旁边一格就停（to 本身被占也行）。maxNodes 限制搜索量。
+   * adjacent：走到 to 旁边一格就停（to 本身被占也行）；已经站在 to 上（人穿怪站到怪身上，#1240）就挑旁边一格走开。
+   * maxNodes 限制搜索量。
    */
   def find(canEnter: Cell => Boolean, from: Cell, to: Cell, maxNodes: Int, adjacent: Boolean): Option[List[Dir]] =
     final case class Node(cell: Cell, g: Int, f: Int, parent: Option[Node])
     def h(c: Cell): Int = c.chebyshev(to)
-    if from == to then Some(Nil)
+    if from == to && !adjacent then Some(Nil)
     else
       val open    = mutable.PriorityQueue.empty[Node](using Ordering.by[Node, Int](n => -n.f))
       val best    = mutable.HashMap(from -> 0)
@@ -62,13 +63,13 @@ object Path:
         val cur = open.dequeue()
         visited += 1
         val d = h(cur.cell)
-        if d == 0 || (adjacent && d == 1) then found = Some(cur)
+        if d == (if adjacent then 1 else 0) then found = Some(cur)
         else
           if d < h(closest.cell) then closest = cur
           for dir <- Dir.values do
             val n      = cur.cell.step(dir)
             val isGoal = n == to
-            val ok     = if isGoal then adjacent || canEnter(n) else canEnter(n)
+            val ok     = canEnter(n) && !(adjacent && isGoal)
             val g      = cur.g + 1
             if ok && best.get(n).forall(_ > g) then
               best(n) = g

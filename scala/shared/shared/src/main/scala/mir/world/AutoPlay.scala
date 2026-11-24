@@ -55,7 +55,7 @@ object AutoPlay:
 
   /** 走到目标旁边（或站上去）；走不了就转过去等一下。 */
   private def approach(w: World, p: Player, target: Cell, adjacent: Boolean): Unit =
-    val moved = Path.find(w.canEnter, p.cell, target, 3000, adjacent).flatMap(_.headOption).exists(w.grid.move(p, _, run = false))
+    val moved = Path.find(w.walkableFor(p), p.cell, target, 3000, adjacent).flatMap(_.headOption).exists(w.grid.move(p, _, run = false))
     if !moved then
       w.grid.face(p, p.cell.dirTo(target))
       p.busyUntil = w.now + 200

@@ -39,6 +39,11 @@ enum Look:
     case m: Monster => m.pet.map(_.master)
     case _          => None
 
+  /** 挡不挡玩家走路：人物穿怪（#1240），怪（含宝宝、守卫）不挡，玩家和 NPC 挡。服务端 Placement.walkableFor 同一条。 */
+  def blocksPlayers: Boolean = this match
+    case _: Monster => false
+    case _          => true
+
   /** 露在外面打得到（埋着的、石像打不到）。 */
   def exposed: Boolean = this match
     case m: Monster => m.cover == Cover.Open

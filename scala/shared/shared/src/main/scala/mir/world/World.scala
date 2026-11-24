@@ -98,7 +98,7 @@ final class World(
   private[world] val trades: Trades             = Trades(this)
 
   // 对外（服务端、测试）开放的查询和进出图
-  export grid.{occupant, canEnter, freeCellNear, randomSpot}
+  export grid.{occupant, occupants, canEnter, walkableFor, freeCellNear, randomSpot}
   export conditions.activeFields
   export hostility.{canAttack, harms, isEnemy}
   export roster.{join, leave, snapshot}

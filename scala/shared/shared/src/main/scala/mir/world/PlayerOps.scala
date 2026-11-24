@@ -73,7 +73,7 @@ object PlayerOps:
   /** 原版做法：客户端带上起点格，对得上、走得通就回 MoveOk，否则回 MoveDenied 把他拉回服务端的位置。 */
   private def step(w: World, p: Player, from: Cell, dir: Dir, run: Boolean): Unit =
     val n     = if run then 2 else 1
-    val clear = (1 to n).forall(k => w.canEnter(p.cell.step(dir, k)))
+    val clear = (1 to n).forall(k => w.walkableFor(p)(p.cell.step(dir, k)))
     if p.dead || from != p.cell || w.now + Slack < p.busyUntil || !clear then
       w.out.tell(p, ServerMsg.MoveDenied(p.cell, p.dir))
     else

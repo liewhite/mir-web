@@ -249,7 +249,7 @@ object MonsterAi:
             swing(w, m, Some(t))
             val pw = power(w, m)
             for k <- 1 to 2 do
-              w.occupant(m.cell.step(dir, k)).foreach { a =>
+              w.occupants(m.cell.step(dir, k)).foreach { a =>
                 if magical(w, m, a, pw, checkHit = true).connected && !a.dead && rng.random(20) == 0 then poisonGreen(w, a, m, 30_000, 1)
               }
           true
@@ -274,7 +274,7 @@ object MonsterAi:
             swing(w, m, Some(t))
             val dir = m.cell.dirTo(t.cell)
             val pw  = power(w, m)
-            (1 to 8).flatMap(k => w.occupant(m.cell.step(dir, k))).distinctBy(_.id).foreach(magical(w, m, _, pw): Unit)
+            (1 to 8).flatMap(k => w.occupants(m.cell.step(dir, k))).distinctBy(_.id).foreach(magical(w, m, _, pw): Unit)
           true
       case Strike.Area(range, poison) =>
         if d < range && ready(w, m) then

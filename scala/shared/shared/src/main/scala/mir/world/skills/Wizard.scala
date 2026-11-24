@@ -55,7 +55,7 @@ object Wizard:
   private def lineHit(c: SpellCtx, cells: Seq[Cell], undeadBonus: Boolean)(using Rng): Effect =
     import c.*
     val power = mcPower()
-    cells.flatMap(w.occupant).distinctBy(_.id).filter(w.harms(p, _)).foreach { a =>
+    cells.flatMap(w.occupants).distinctBy(_.id).filter(w.harms(p, _)).foreach { a =>
       val pw = if undeadBonus && isUndead(a) then SpellRules.vsUndead(power) else power
       w.afterOn(a, 100)(hitMagic(_, pw))
     }

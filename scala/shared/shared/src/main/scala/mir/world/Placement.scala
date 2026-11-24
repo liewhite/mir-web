@@ -5,32 +5,54 @@ import mir.model.*
 import mir.protocol.*
 import mir.data.MapFlag
 import mir.rules.{Pace, Rng}
+import scala.collection.mutable
 
 /**
- * 占位与移动：谁站在哪一格（一格只站一个活的），以及对象的格子、朝向、动作——这些只在这里改，
+ * 占位与移动：谁站在哪一格，以及对象的格子、朝向、动作——这些只在这里改，
  * 改格子时同时维护占位表，旁人看到的变化由 Visibility 在 flush 时比出来。
+ * 一格一般只站一个活的；例外是人物能穿怪（#1240）：玩家可以走进、停在怪（含宝宝）站的格子上，
+ * 于是一格可能叠着几个，占位表按先来后到记下全部。怪、NPC 和被推的对象仍只进空格。
  */
 final class Placement(w: World):
-  private val occupancy = new Array[Int](w.terrain.width * w.terrain.height)
+  /** 格子下标 → 站在上面的对象（先来的在前）；只记有人的格子。 */
+  private val occupancy = mutable.HashMap.empty[Int, List[ActorId]]
   private var stepFoot  = 0
 
   private def idx(c: Cell): Int = c.y * w.terrain.width + c.x
   private val RandomSpotTries = 300
 
-  def occupant(c: Cell): Option[Actor] =
-    if !w.terrain.inside(c) then None
-    else
-      val id = occupancy(idx(c))
-      if id == 0 then None else w.actor(ActorId(id))
+  /** 站在这格上的全部对象（先来的在前；玩家穿怪时会叠着几个）。范围类伤害用它。 */
+  def occupants(c: Cell): List[Actor] =
+    if !w.terrain.inside(c) then Nil
+    else occupancy.getOrElse(idx(c), Nil).flatMap(w.actor)
 
-  private[world] def occupy(a: Actor): Unit = occupancy(idx(a.cell)) = a.id.value
+  /** 站在这格上的（叠着几个时是先来的那个）。 */
+  def occupant(c: Cell): Option[Actor] = occupants(c).headOption
+
+  private[world] def occupy(a: Actor): Unit =
+    val i = idx(a.cell)
+    occupancy(i) = occupancy.getOrElse(i, Nil).filterNot(_ == a.id) :+ a.id
 
   private[world] def vacate(a: Actor): Unit =
     val i = idx(a.cell)
-    if occupancy(i) == a.id.value then occupancy(i) = 0
+    occupancy.get(i).map(_.filterNot(_ == a.id)).foreach { rest =>
+      if rest.isEmpty then occupancy.remove(i) else occupancy(i) = rest
+    }
 
   /** 地形可走且没人站。 */
-  def canEnter(c: Cell): Boolean = w.terrain.walkable(c) && occupant(c).isEmpty
+  def canEnter(c: Cell): Boolean = w.terrain.walkable(c) && occupants(c).isEmpty
+
+  /**
+   * a 自己走路时能不能走进这格。玩家穿怪（#1240）：站着的只有怪（含宝宝、守卫）就能走进去、停在上面；
+   * 别的玩家、NPC 照旧挡路。怪和 NPC 只进空格。
+   */
+  def walkableFor(a: Actor)(c: Cell): Boolean = a match
+    case _: Player => w.terrain.walkable(c) && occupants(c).forall(isMonster)
+    case _         => canEnter(c)
+
+  private def isMonster(a: Actor): Boolean = a match
+    case _: Monster => true
+    case _          => false
 
   /** 本图随机一格能站的（MapRandomMove 的取格）；地图带 NORANDOMMOVE 的不许随机传送。 */
   def randomSpot(using rng: Rng): Either[String, Cell] =
@@ -59,7 +81,7 @@ final class Placement(w: World):
   private[world] def move(a: Actor, dir: Dir, run: Boolean): Boolean =
     val steps = if run then 2 else 1
     val path  = (1 to steps).map(a.cell.step(dir, _))
-    if a.dead || !path.forall(canEnter) then false
+    if a.dead || !path.forall(walkableFor(a)) then false
     else
       val from = a.cell
       relocate(a, path.last)

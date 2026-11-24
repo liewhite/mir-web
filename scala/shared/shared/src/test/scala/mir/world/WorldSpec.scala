@@ -527,6 +527,63 @@ object WorldSpec extends ZIOSpecDefault:
         assertTrue(bad == 0)
       }
     ),
+    suite("人物穿怪（#1240）")(
+      test("被怪堵在角落：走到怪身上、跑过两只怪都行，怪还在原地；离开后格子还给怪") {
+        val s  = sim()
+        val p  = join(s.w, "甲", Cell(0, 0))
+        val ms = List(Cell(1, 0), Cell(0, 1), Cell(1, 1)).map(put(s.w, "蛤蟆", _))
+        s.flush()
+        val walked = s.cmd(p, GameCmd.Walk(Cell(0, 0), Dir.DownRight)).contains(ServerMsg.MoveOk)
+        val onTop  = p.cell == Cell(1, 1) && s.w.occupants(Cell(1, 1)).map(_.id) == List(ms(2).id, p.id)
+        // 跑：起点 (0,0)，(1,1)、(2,2) 都站着怪，一口气跑到 (2,2)
+        val s2 = sim()
+        val q  = join(s2.w, "乙", Cell(0, 0))
+        List(Cell(1, 0), Cell(0, 1), Cell(1, 1), Cell(2, 2)).foreach(put(s2.w, "蛤蟆", _))
+        s2.flush()
+        val ran = s2.cmd(q, GameCmd.Run(Cell(0, 0), Dir.DownRight)).contains(ServerMsg.MoveOk) && q.cell == Cell(2, 2)
+        // 走开后那格只剩怪
+        s.run(1000)
+        val left = s.cmd(p, GameCmd.Walk(Cell(1, 1), Dir.Right)).contains(ServerMsg.MoveOk) &&
+          s.w.occupants(Cell(1, 1)).map(_.id) == List(ms(2).id)
+        assertTrue(walked, onTop, ran, left, ms.forall(m => !m.dead))
+      },
+      test("别的玩家照旧挡路；怪不能走进玩家站的格子（叠着怪和人的格子也不行）") {
+        val s = sim()
+        val p = join(s.w, "甲", Cell(10, 10))
+        val q = join(s.w, "乙", Cell(11, 10))
+        val m = put(s.w, "蛤蟆", Cell(10, 12))
+        s.flush()
+        val blocked = s.cmd(p, GameCmd.Walk(Cell(10, 10), Dir.Right)).contains(ServerMsg.MoveDenied(Cell(10, 10), p.dir))
+        s.run(1000)
+        s.cmd(p, GameCmd.Walk(Cell(10, 10), Dir.Down)): Unit
+        s.run(1000)
+        s.cmd(p, GameCmd.Walk(Cell(10, 11), Dir.Down)): Unit
+        val stacked = p.cell == Cell(10, 12)
+        assertTrue(
+          blocked, stacked,
+          !s.w.walkableFor(m)(Cell(11, 10)), !s.w.walkableFor(m)(Cell(10, 12)), !s.w.canEnter(Cell(10, 12)),
+          s.w.walkableFor(q)(Cell(10, 12)) == false // 叠着玩家的格子别的玩家也进不去
+        )
+      },
+      test("站在锁定的怪身上时，寻路「走到旁边」会先挪开一格") {
+        val t    = Terrain.open(10, 10)
+        val path = mir.terrain.Path.find(t.walkable, Cell(5, 5), Cell(5, 5), 100, adjacent = true)
+        assertTrue(path.exists(_.size == 1), mir.terrain.Path.find(t.walkable, Cell(5, 5), Cell(5, 5), 100, adjacent = false).contains(Nil))
+      },
+      test("挥刀打前面一格：那格叠着怪和玩家时打得到怪") {
+        val s = sim()
+        val p = join(s.w, "甲", Cell(10, 10))
+        val q = join(s.w, "乙", Cell(20, 20))
+        val m = put(s.w, "蛤蟆", Cell(11, 10))
+        s.w.grid.teleportActor(q, Cell(11, 10))
+        val hp = m.hp
+        (0 until 10).foreach { _ =>
+          s.run(1500)
+          s.cmd(p, GameCmd.Attack(Dir.Right, Some(m.id))): Unit
+        }
+        assertTrue(m.hp < hp || m.dead)
+      }
+    ),
     suite("非法指令被拒，不能凭空生成物品和金币")(
       test("用、扔、卖不在身上的物品；仓库里没有的取不出；走错起点被拉回") {
         val s    = sim()

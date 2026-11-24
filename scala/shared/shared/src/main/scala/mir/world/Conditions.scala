@@ -85,7 +85,7 @@ final class Conditions(w: World):
             fields(f.id) = f.copy(nextBurn = w.now + SpellRules.FireWallTickMs)
             for
               o <- w.actor(owner)
-              t <- w.occupant(f.cell)
+              t <- w.occupants(f.cell)
             do w.vitals.strike(Some(o), t, Blow(Defence.MagicArmor, damage, staggers = false)): Unit
           case _ => ()
     }

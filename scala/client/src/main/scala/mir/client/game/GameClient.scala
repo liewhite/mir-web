@@ -186,11 +186,12 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
     !a.dead && self.exists(_.id != a.id) && a.look.side(catalog.isGuard).contains(mir.rules.Side.Players)
 
   /**
-   * 此刻哪些格子能走进去：地形能走、没有活着的对象站着（按看得到的算，服务端最终判定）。
+   * 此刻哪些格子能走进去：地形能走、没有别的玩家或 NPC 站着——人物穿怪，怪（含宝宝）不挡路（#1240，
+   * 和服务端 Placement.walkableFor 同一条规则；按看得到的算，服务端最终判定）。
    * 先把站人的格子收成集合，寻路时反复查也不慢。
    */
   def passable: Cell => Boolean =
-    val taken = actors.iterator.filter(a => !a.dead && !view.me.contains(a.id)).map(_.cell).toSet
+    val taken = actors.iterator.filter(a => !a.dead && !view.me.contains(a.id) && a.look.blocksPlayers).map(_.cell).toSet
     c => map.exists(_.terrain.walkable(c)) && !taken.contains(c)
 
   def scene(local: Double): Option[Scene] =
