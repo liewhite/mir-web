@@ -94,3 +94,13 @@ enum PoisonKind:
 
 object PoisonKind:
   given JsonCodec[PoisonKind] = EnumCodec.byName(values, _.toString)
+
+/**
+ * 身上状态把角色染成的颜色（原版客户端 Actor.pas GetDrawEffectValue）：绿毒染绿、红毒染红、麻痹染灰。
+ * 几种同时有时只显示一种，按原版后判的盖前面的：麻痹 > 红毒 > 绿毒。
+ */
+enum BodyTint:
+  case Green, Red, Gray
+
+object BodyTint:
+  given JsonCodec[BodyTint] = EnumCodec.byName(values, _.toString)

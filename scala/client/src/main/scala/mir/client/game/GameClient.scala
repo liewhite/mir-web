@@ -120,7 +120,10 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
 
   /** 说话的人：名字对得上的玩家。 */
   private def speaker(name: String): Option[ActorId] =
-    view.actors.values.collectFirst { case a @ ActorView(_, Look.Human(n, _, _, _, _, _), _, _, _, _, _, _) if n == name => a.id }
+    view.actors.values.find(_.look match
+      case h: Look.Human => h.name == name
+      case _             => false
+    ).map(_.id)
 
   // ---------------- 查 ----------------
 

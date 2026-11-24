@@ -222,16 +222,23 @@ object SpellSpec extends ZIOSpecDefault:
         m.maxHpNow = 100_000
         m.hp = 100_000
         def kinds = StatusKind.poisons.filter(m.statuses.has)
+        def tint  = s.view.actors.get(m.id).flatMap(_.tint)
+        val before = tint
         s.cast(p, 6, Some(m), m.cell)
         val first = kinds
+        val green = tint
         s.run(3000)
         s.cast(p, 6, Some(m), m.cell)
         val both = kinds
+        val red  = tint
         s.run(3000)
         s.cast(p, 6, Some(m), m.cell)
         assertTrue(
+          before.isEmpty,
           first == List(StatusKind.GreenPoison),
+          green.contains(BodyTint.Green),
           both == StatusKind.poisons,
+          red.contains(BodyTint.Red),
           p.bag(slots(0)).map(_.dura).contains(800),
           p.bag(slots(1)).map(_.dura).contains(900),
           m.hp < 100_000

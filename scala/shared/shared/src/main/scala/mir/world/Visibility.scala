@@ -14,7 +14,7 @@ final class Visibility(w: World):
   import World.ViewRange
 
   /** 一个对象上次广播出去的样子（变了才再发）。 */
-  private final case class Shown(cell: Cell, dir: Dir, action: ActionView, hp: Int, maxHp: Int, look: Look)
+  private final case class Shown(cell: Cell, dir: Dir, action: ActionView, hp: Int, maxHp: Int, look: Look, tint: Option[BodyTint])
   private val lastBroadcast = mutable.Map.empty[ActorId, Shown]
 
   /** 一个玩家已经知道的对象、地上物品，和上次发给他的「自己」的状态。 */
@@ -36,7 +36,7 @@ final class Visibility(w: World):
 
   /** 一个对象此刻的样子（进入视野时发的全貌）。 */
   def viewOf(a: Actor): ActorView =
-    ActorView(a.id, a.look, a.cell, a.dir, Hp(a.hp), Hp(a.maxHp), a.action, a.dead)
+    ActorView(a.id, a.look, a.cell, a.dir, Hp(a.hp), Hp(a.maxHp), a.action, a.dead, a.tint)
 
   /** 某玩家此刻能看到的对象和地上物品。 */
   def visibleTo(p: Player): (Iterable[Actor], Iterable[GroundItem]) =
@@ -47,7 +47,7 @@ final class Visibility(w: World):
 
   private def sees(p: Player, c: Cell): Boolean = p.cell.chebyshev(c) <= ViewRange
 
-  private def shown(a: Actor): Shown = Shown(a.cell, a.dir, a.action, a.hp, a.maxHp, a.look)
+  private def shown(a: Actor): Shown = Shown(a.cell, a.dir, a.action, a.hp, a.maxHp, a.look, a.tint)
 
   /** 自己的全部界面状态。 */
   private[world] def selfView(p: Player): SelfView =
@@ -90,7 +90,8 @@ final class Visibility(w: World):
         val act  = Option.when(was.cell != now.cell || was.dir != now.dir || was.action != now.action)(ServerMsg.Act(a.id, now.cell, now.dir, now.action))
         val hp   = Option.when(was.hp != now.hp || was.maxHp != now.maxHp)(ServerMsg.HpChanged(a.id, Hp(now.hp), Hp(now.maxHp)))
         val look = Option.when(was.look != now.look)(ServerMsg.LookChanged(a.id, now.look))
-        val all  = List(look, act, hp).flatten
+        val tint = Option.when(was.tint != now.tint)(ServerMsg.TintChanged(a.id, now.tint))
+        val all  = List(look, act, hp, tint).flatten
         if all.nonEmpty then changes(a.id) = all
       }
       lastBroadcast(a.id) = now

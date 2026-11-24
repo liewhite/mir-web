@@ -78,7 +78,7 @@ final class LocalServer(catalog: Catalog, assets: Assets, listener: LinkEvent =>
           enter(chars.find(_._1.id == id).fold(data)(_._2), Carried())
     case SessionCmd.Ping(ms) => deliver(ServerMsg.Pong(ms, clock))
 
-  /** 地址带 &hero：新建的角色 40 级、学会本职业全部技能（3 级，前 8 个按 F1–F8）、左手镯戴护身符（本机看技能效果用）。 */
+  /** 地址带 &hero：新建的角色 40 级、学会本职业全部技能（3 级，前 8 个按 F1–F8）、左手镯戴护身符、包裹里放灰黄药粉（本机看技能效果用）。 */
   private def hero: Boolean = dom.window.location.search.contains("hero")
 
   private def heroOf(d: CharacterData): CharacterData =
@@ -86,7 +86,10 @@ final class LocalServer(catalog: Catalog, assets: Assets, listener: LinkEvent =>
       mir.model.LearnedSkill(s.id, 3, 0, Option.when(i < 8)(i + 1))
     }
     val charm = catalog.item(ItemName("护身符")).map(it => mir.model.ItemInstance(uids.next(), it.name, 100_000, 100_000))
-    d.copy(level = 40, hp = Hp(99_999), mp = Mp(99_999), skills = skills.toList, worn = d.worn ++ charm.map(mir.model.EquipSlot.BraceletL -> _))
+    val powders = List("灰色药粉(大量)", "黄色药粉(大量)").flatMap(n => catalog.item(ItemName(n))).map(it => mir.model.ItemInstance(uids.next(), it.name, 100_000, 100_000))
+    val free    = d.bag.indices.filter(d.bag(_).isEmpty)
+    val bag     = free.zip(powders).foldLeft(d.bag)((b, p) => b.updated(p._1, Some(p._2)))
+    d.copy(level = 40, hp = Hp(99_999), mp = Mp(99_999), skills = skills.toList, bag = bag, worn = d.worn ++ charm.map(mir.model.EquipSlot.BraceletL -> _))
 
   private def enter(data: CharacterData, carried: Carried): Unit =
     world(data.place.map).recoverWith(_ => world(CharacterData.start.map)).foreach { w =>

@@ -40,6 +40,7 @@ final case class ViewState(
       update(id)(_.copy(cell = cell, dir = dir, action = action, dead = ViewState.isDeath(action.kind)))
     case ServerMsg.HpChanged(id, hp, maxHp) => update(id)(_.copy(hp = hp, maxHp = maxHp))
     case ServerMsg.LookChanged(id, look)    => update(id)(_.copy(look = look))
+    case ServerMsg.TintChanged(id, tint)    => update(id)(_.copy(tint = tint))
     case ServerMsg.GroundAppear(g)          => copy(ground = ground.updated(g.id, g))
     case ServerMsg.GroundDisappear(id)      => copy(ground = ground - id)
     case ServerMsg.FieldAppear(f)           => copy(fields = fields.updated(f.id, f))

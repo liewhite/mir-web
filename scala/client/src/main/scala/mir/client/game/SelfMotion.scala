@@ -43,7 +43,7 @@ final case class SelfMotion(
    */
   def shown(server: ActorView, now: Millis): ActorView = local match
     case Some(l) if pending.nonEmpty || now - l.action.startedAt < l.action.duration =>
-      l.copy(hp = server.hp, maxHp = server.maxHp, look = server.look, dead = server.dead)
+      l.copy(hp = server.hp, maxHp = server.maxHp, look = server.look, dead = server.dead, tint = server.tint)
     case Some(l) if server.cell == l.cell && sameMove(server.action, l.action) => server.copy(action = l.action)
     case _                                                                       => server
 

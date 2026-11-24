@@ -44,6 +44,13 @@ sealed abstract class Actor(val id: ActorId, initCell: Cell, initDir: Dir, now: 
 
   def maxHp: Int
   def look: Look
+
+  /** 身上状态染的颜色（见 BodyTint：麻痹 > 红毒 > 绿毒） */
+  def tint: Option[BodyTint] =
+    if statuses.has(StatusKind.Paralyzed) then Some(BodyTint.Gray)
+    else if statuses.has(StatusKind.RedPoison) then Some(BodyTint.Red)
+    else Option.when(statuses.has(StatusKind.GreenPoison))(BodyTint.Green)
+
   def ac: Span
   def mac: Span
   def agility: Int

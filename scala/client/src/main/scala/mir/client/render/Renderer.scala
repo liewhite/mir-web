@@ -4,7 +4,7 @@ import mir.client.assets.{Assets, MapData, Sprite, SpriteStore}
 import mir.client.assets.MapData.{GroundBlock, UnitX, UnitY}
 import mir.core.*
 import mir.data.Catalog
-import mir.model.{ActKind, Cover, FieldKind, Mood}
+import mir.model.{ActKind, BodyTint, Cover, FieldKind, Mood}
 import mir.protocol.*
 import mir.rules.ItemKind
 import org.scalajs.dom
@@ -34,6 +34,7 @@ final class Renderer(canvas: dom.HTMLCanvasElement, sprites: SpriteStore, assets
   private val groundJobs  = mutable.HashMap.empty[String, Future[Unit]]
   /** 这一帧画出来的、可点中的角色（点怪锁定用） */
   private var hits = Vector.empty[Hit]
+  private val tinter = Tinter()
   private var dpr  = 1.0
 
   var camX = 0.0
@@ -199,6 +200,14 @@ final class Renderer(canvas: dom.HTMLCanvasElement, sprites: SpriteStore, assets
     if x <= width && y <= height && x + sp.w >= 0 && y + sp.h >= 0 then
       ctx.drawImage(sp.img, sp.sx, sp.sy, sp.w, sp.h, math.round(x).toDouble, math.round(y).toDouble, sp.w, sp.h)
 
+  /** 画一帧，有染色就画染好的（中毒、麻痹）。 */
+  private def blitTinted(sp: Sprite, tint: Option[BodyTint], x: Double, y: Double): Unit =
+    tint.flatMap(tinter(sp, _)) match
+      case Some(c) =>
+        if x <= width && y <= height && x + sp.w >= 0 && y + sp.h >= 0 then
+          ctx.drawImage(c, 0, 0, sp.w, sp.h, math.round(x).toDouble, math.round(y).toDouble, sp.w, sp.h)
+      case None => blit(sp, x, y)
+
   private def lighter(draw: => Unit): Unit =
     ctx.globalCompositeOperation = "lighter"
     draw
@@ -271,11 +280,13 @@ final class Renderer(canvas: dom.HTMLCanvasElement, sprites: SpriteStore, assets
     val weapon = h.weapon.flatMap(catalog.item).flatMap(w => sprites.sprite("weapon", (w.shape * 2 + sex) * Frames.HumanFrames + frame))
     val hair   = Option.when(h.hair > 0)(()).flatMap(_ => sprites.sprite("hair", (h.hair * 2 + sex) * Frames.HumanFrames + frame))
     val front  = Frames.weaponInFront(h.sex, frame)
-    def put(sp: Option[Sprite]): Unit = sp.foreach(x => blit(x, dx + x.ox, dy + x.oy))
-    if !front then put(weapon)
-    put(body)
-    put(hair)
-    if front then put(weapon)
+    // 原版 HumActor.DrawChr：身子和头发染色，武器不染
+    val tint   = a.tint.filter(_ => !a.dead)
+    def put(sp: Option[Sprite], t: Option[BodyTint]): Unit = sp.foreach(x => blitTinted(x, t, dx + x.ox, dy + x.oy))
+    if !front then put(weapon, None)
+    put(body, tint)
+    put(hair, tint)
+    if front then put(weapon, None)
     // 剑术刀光
     val act = a.action
     if act.kind == ActKind.Heavy && now - act.startedAt < act.duration then
@@ -295,7 +306,7 @@ final class Renderer(canvas: dom.HTMLCanvasElement, sprites: SpriteStore, assets
         f   = Frames.monster(t, mir.data.MonsterLook.of(d), a.action, a.dir, now, a.dead, m.cover)
         sp <- sprites.sprite(d.lib, d.offset + f)
       yield
-        blit(sp, dx + sp.ox, dy + sp.oy)
+        blitTinted(sp, a.tint.filter(_ => !a.dead), dx + sp.ox, dy + sp.oy)
         sp
 
   // ---------------- 特效 ----------------
