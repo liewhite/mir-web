@@ -35,6 +35,10 @@ enum LinkEvent:
  * 每一步：处理投来的事件（会话指令自己办，游戏指令交给角色所在的世界）→ 推进有人的图 → 取出各图要发的消息
  * 按对象编号发给对应连接 → 把换图的玩家交给目的地图。
  * 存档时机：下线、换图、升级、每 30 秒全部在线角色；数据库每天备份一次。
+ *
+ * 掉线超时（#1218）：手机锁屏、切后台、断网时浏览器不发关闭帧，服务端收不到 Closed，角色会一直挂着。
+ * 客户端每 10 秒发一次 Ping，所以一个连接超过 `idleTimeoutMs`（默认 30 秒）什么都没收到就当它断了：
+ * 关连接、存档下线。连接其实还活着（如后台页面的定时器被浏览器放慢）也没关系，客户端会自动重连并回到游戏。
  */
 final class GameServer(
     catalog: Catalog,
@@ -43,7 +47,8 @@ final class GameServer(
     uids: UidSource,
     backups: Option[Backups],
     clock: () => Millis,
-    saveEveryMs: Long = 30_000L
+    saveEveryMs: Long = 30_000L,
+    idleTimeoutMs: Long = 30_000L
 ):
   import GameServer.*
 
@@ -54,10 +59,10 @@ final class GameServer(
 
   // ---------------- 以下只在游戏线程里用 ----------------
 
-  /** 一个连接：在大厅（playing 为空）或在玩某个角色。 */
-  private final class Conn(val link: Link, var playing: Option[CharId])
+  /** 一个连接：在大厅（playing 为空）或在玩某个角色；heardAt 是最后收到它消息的时刻（判掉线超时）。 */
+  private final class Conn(val link: Link, var playing: Option[CharId], var heardAt: Millis)
   /** 一个在线角色：哪个连接、在哪张图、在图里的对象编号。 */
-  private final class Online(val id: CharId, val conn: Conn, var map: MapId, var actor: ActorId)
+  private final class Online(val id: CharId, val name: String, val conn: Conn, var map: MapId, var actor: ActorId)
 
   private val conns  = mutable.Map.empty[LinkId, Conn]
   private val online = mutable.Map.empty[CharId, Online]
@@ -72,7 +77,14 @@ final class GameServer(
   /** 走一步。 */
   def step(): Unit =
     val now = clock()
-    Iterator.continually(inbox.poll()).takeWhile(_ != null).foreach(e => guard(s"处理 $e")(handle(e)))
+    Iterator.continually(inbox.poll()).takeWhile(_ != null).foreach(e => guard(s"处理 $e")(handle(e, now)))
+    conns.values.filter(c => now - c.heardAt > idleTimeoutMs).toVector.foreach { c =>
+      guard(s"掉线超时 ${c.link.id.value}") {
+        System.err.println(s"连接 ${c.link.id.value}（${c.link.account.name}）${now - c.heardAt} 毫秒没有消息，按掉线处理")
+        disconnect(c)
+        c.link.close()
+      }
+    }
     val active = maps.loaded.filter(w => w.hasPlayers || touched.contains(w.mapId)).toVector
     touched.clear()
     active.foreach(w => guard(s"推进地图 ${w.mapId}")(w.tick(now)))
@@ -101,14 +113,15 @@ final class GameServer(
     msgs.foreach(o.conn.link.send)
     if msgs.exists(_.isInstanceOf[ServerMsg.LevelUp]) then w.snapshot(o.actor).foreach(save(o.id, _))
 
-  private def handle(e: LinkEvent): Unit = e match
+  private def handle(e: LinkEvent, now: Millis): Unit = e match
     case LinkEvent.Opened(link) =>
-      conns(link.id) = Conn(link, None)
+      conns(link.id) = Conn(link, None, now)
       link.send(ServerMsg.LoggedIn(link.account.name))
     case LinkEvent.Closed(link) =>
-      conns.remove(link.id).flatMap(_.playing).flatMap(online.get).foreach(logout)
+      conns.get(link.id).foreach(disconnect)
     case LinkEvent.Received(link, cmd) =>
       conns.get(link.id).foreach { c =>
+        c.heardAt = now
         cmd match
           case s: SessionCmd => session(c, s)
           case g: GameCmd =>
@@ -149,9 +162,10 @@ final class GameServer(
           old.conn.link.close()
         takeOut(old).getOrElse(sc.data)
       case None => sc.data
-    val o = Online(sc.id, c, data.place.map, ActorId(0))
+    val o = Online(sc.id, sc.data.name, c, data.place.map, ActorId(0))
     c.playing = Some(sc.id)
     online(sc.id) = o
+    System.err.println(s"上线 ${o.name}（${c.link.account.name}），在线 ${online.size} 人")
     enter(o, data)
 
   /** 把角色放进存档里那张图；那张图开不了（数据表或素材缺了）就送回城，再不行送新手村。 */
@@ -183,6 +197,12 @@ final class GameServer(
   private def logout(o: Online): Unit =
     takeOut(o): Unit
     o.conn.playing = None
+    System.err.println(s"下线 ${o.name}，在线 ${online.size} 人")
+
+  /** 连接没了（断开或超时）：移出连接表，在玩的角色存档下线。之后这个连接再来的事件都忽略。 */
+  private def disconnect(c: Conn): Unit =
+    conns.remove(c.link.id)
+    c.playing.flatMap(online.get).foreach(logout)
 
   private def snapshot(o: Online): Option[CharacterData] = maps.get(o.map).toOption.flatMap(_.snapshot(o.actor))
 
