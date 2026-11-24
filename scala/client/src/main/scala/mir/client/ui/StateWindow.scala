@@ -33,11 +33,11 @@ final class StateWindow(ui: ClassicUi) extends Window:
 
   private def flip(by: Int): Unit = page = StatePage.fromOrdinal((page.ordinal + by + StatePage.values.length) % StatePage.values.length)
 
-  def origin: Pt = Pt(ui.W - 232 - ui.safe.right, 0)
+  def origin: Pt = Pt(ui.W - Width - ui.safe.right, 0)
 
   def draw(m: Me): Unit =
     val o = origin
-    ui.area(Rect(o.x, o.y, 232, 325))
+    ui.area(Rect(o.x, o.y, Width, Height))
     g.img(Gfx.Main, 370, o.x, o.y)
     g.text(m.name, o.x + 116 - g.width(m.name) / 2, o.y + 23, "#ffe08a", bold = true)
     page match
@@ -61,24 +61,10 @@ final class StateWindow(ui: ClassicUi) extends Window:
     EquipRects(slot).moved(o.x, o.y)
 
   private def drawEquipPage(m: Me, o: Pt): Unit =
-    g.img(Gfx.Main, if m.sex == Sex.Female then 377 else 376, o.x + 38, o.y + 52)
-    val bbx     = o.x + 31
-    val bby     = o.y + 96
-    val hairIdx = (if m.sex == Sex.Female then 480 else 440) + m.hair
-    g.sprite(Gfx.Main, hairIdx).foreach(h => g.img(Gfx.Main, hairIdx, bbx + h.ox, bby + h.oy))
-    // 衣服、武器、头盔画在人形上（stateitem 图带偏移）
-    List(EquipSlot.Dress, EquipSlot.Weapon, EquipSlot.Helmet).foreach { slot =>
-      for
-        it <- m.view.worn.get(slot) if !ui.handFrom(ItemPlace.Worn(slot))
-        d  <- catalog.item(it.name)
-        s  <- g.sprite("stateitem", d.look)
-      do g.img("stateitem", d.look, bbx + s.ox, bby + s.oy)
-    }
+    // 手上拿着的那件不画在身上
+    drawFigure(ui, o, m.sex, m.hair, m.view.worn.filterNot((slot, _) => ui.handFrom(ItemPlace.Worn(slot))))
     EquipSlot.values.foreach { slot =>
       val r = equipRect(slot)
-      if !OnFigure(slot) then
-        m.view.worn.get(slot).filterNot(_ => ui.handFrom(ItemPlace.Worn(slot))).flatMap(i => catalog.item(i.name))
-          .foreach(d => g.item(d.look, 1, r))
       ui.hit(r)(ui.clickPlace(ItemPlace.Worn(slot), ui.client.view.worn.get(slot), r))
     }
 
@@ -169,6 +155,10 @@ final class StateWindow(ui: ClassicUi) extends Window:
     Describe.statLines(m.name, m.job, m.stats, avgA, avgH)
 
 object StateWindow:
+  /** 窗口大小（底图 Main 370） */
+  val Width  = 232.0
+  val Height = 325.0
+
   /** 装备格（状态窗内坐标，FState.pas DSWNecklace 等） */
   val EquipRects: Map[EquipSlot, Rect] = Map(
     EquipSlot.Necklace  -> Rect(168, 87, 34, 31),
@@ -183,3 +173,26 @@ object StateWindow:
 
   /** 画在人形上的装备（其余画在格子里） */
   val OnFigure: Set[EquipSlot] = Set(EquipSlot.Dress, EquipSlot.Weapon, EquipSlot.Helmet)
+
+  /**
+   * 装备页的人形和身上各件（窗口左上角在 o）：自己的状态窗和查看别人装备的窗口（#1263）共用，
+   * 照 FState.pas DStateWinDirectPaint / DUserState1DirectPaint：身子、头发，衣服武器头盔画在人形上，其余画在格子里。
+   */
+  def drawFigure(ui: ClassicUi, o: Pt, sex: Sex, hair: Int, worn: Map[EquipSlot, ItemInstance]): Unit =
+    import ui.{catalog, g}
+    g.img(Gfx.Main, if sex == Sex.Female then 377 else 376, o.x + 38, o.y + 52)
+    val bbx     = o.x + 31
+    val bby     = o.y + 96
+    val hairIdx = (if sex == Sex.Female then 480 else 440) + hair
+    g.sprite(Gfx.Main, hairIdx).foreach(h => g.img(Gfx.Main, hairIdx, bbx + h.ox, bby + h.oy))
+    // 衣服、武器、头盔画在人形上（stateitem 图带偏移）
+    List(EquipSlot.Dress, EquipSlot.Weapon, EquipSlot.Helmet).foreach { slot =>
+      for
+        it <- worn.get(slot)
+        d  <- catalog.item(it.name)
+        s  <- g.sprite("stateitem", d.look)
+      do g.img("stateitem", d.look, bbx + s.ox, bby + s.oy)
+    }
+    EquipSlot.values.filterNot(OnFigure).foreach { slot =>
+      worn.get(slot).flatMap(i => catalog.item(i.name)).foreach(d => g.item(d.look, 1, EquipRects(slot).moved(o.x, o.y)))
+    }

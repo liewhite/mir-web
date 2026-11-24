@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.{MerchantDef, MonsterDef, MonsterLook, Span}
 import mir.model.*
 import mir.protocol.{ActionView, FieldView, GroundThing, GroundView, Look, PetView}
-import mir.rules.{PetBody, Pk, Skill, Stats, Summoning}
+import mir.rules.{PetBody, Pk, PkStanding, Skill, Stats, Summoning}
 
 import scala.collection.mutable
 
@@ -121,8 +121,10 @@ final class Player(id: ActorId, val charName: String, val job: Job, val sex: Sex
   def mac: Span    = stats.mac
   def agility: Int = stats.agility
   def brawler: Boolean = statuses.has(StatusKind.Brawler)
+  /** PK 身份（名字颜色） */
+  def standing: PkStanding = Pk.standing(pkPoints, brawler)
   def look: Look   =
-    Look.Human(charName, job, sex, hair, worn.get(EquipSlot.Weapon).map(_.name), worn.get(EquipSlot.Dress).map(_.name), Pk.standing(pkPoints, brawler))
+    Look.Human(charName, job, sex, hair, worn.get(EquipSlot.Weapon).map(_.name), worn.get(EquipSlot.Dress).map(_.name), standing)
 
   def skill(id: SkillId): Option[LearnedSkill] = skills.find(_.id == id)
   def knows(s: Skill): Boolean                 = skill(s.id).isDefined

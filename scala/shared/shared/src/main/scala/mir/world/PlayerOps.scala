@@ -3,7 +3,7 @@ package mir.world
 import mir.core.*
 import mir.data.{ItemDef, MerchantService}
 import mir.model.*
-import mir.protocol.{GameCmd, ServerMsg, ChatKind, Tone}
+import mir.protocol.{GameCmd, InspectView, ServerMsg, ChatKind, Tone}
 import mir.rules.{ItemKind, Pace, PotionRules, Pricing, Requirement, ScrollEffect, Skill}
 
 /**
@@ -57,6 +57,8 @@ object PlayerOps:
     case GameCmd.UpdateSettings(s) =>
       p.settings = s.copy(autoHpPercent = s.autoHpPercent.max(0).min(100), autoMpPercent = s.autoMpPercent.max(0).min(100))
     case GameCmd.Say(text) => say(w, p, text)
+    case GameCmd.Inspect(target) =>
+      inspect(w, p, target).fold(w.out.refuse(p, _), v => w.out.tell(p, ServerMsg.Inspected(v)))
 
   private def report(w: World, p: Player, o: Outcome): Unit = o match
     case Outcome.Refused(why) => w.out.refuse(p, why)
@@ -67,6 +69,18 @@ object PlayerOps:
   private val ok: Result = Right(())
 
   private def result(w: World, p: Player, r: Result): Unit = r.left.foreach(w.out.refuse(p, _))
+
+  // ---------------- 查看别人装备 ----------------
+
+  /**
+   * 查看另一个玩家身上的装备（#1263，照原版 ClientQueryUserState：对方要在身边视野里，CretInNearXY）：
+   * 同图、视野内（World.ViewRange）、活着的别的玩家；只给穿戴中的，不给包裹。
+   */
+  private[world] def inspect(w: World, p: Player, target: ActorId): Either[String, InspectView] =
+    for
+      t <- w.player(target).filter(t => (t ne p) && p.cell.chebyshev(t.cell) <= World.ViewRange).toRight("看不到这个玩家")
+      _ <- Either.cond(!t.dead, (), s"${t.charName}已经死了")
+    yield InspectView(t.charName, t.sex, t.hair, t.standing, t.worn.toMap)
 
   // ---------------- 移动 ----------------
 

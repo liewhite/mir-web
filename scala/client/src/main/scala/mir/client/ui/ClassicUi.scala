@@ -89,6 +89,7 @@ final class ClassicUi(
   val merchant = MerchantPanel(this)
   val bag      = BagWindow(this)
   val state    = StateWindow(this)
+  val inspect  = InspectWindow(this)
   val settings = SettingsWindow(this)
   val teleport = TeleportPanel(this)
   val worldMap = WorldMap(this)
@@ -103,7 +104,7 @@ final class ClassicUi(
    * 全部窗口，从下到上：绘制顺序、点击叠放（后画的盖住先画的）、悬停说明、全部关闭都按它。
    * 新加窗口只要写一个 Window 实现、在这里排好位置。
    */
-  val windows: List[Window] = List(worldMap, merchant, bag, state, settings, teleport, group, friends, deal, keyDlg, quantity, itemMenu)
+  val windows: List[Window] = List(worldMap, merchant, bag, inspect, state, settings, teleport, group, friends, deal, keyDlg, quantity, itemMenu)
 
   def options: ViewOptions = client.options
 
@@ -171,6 +172,10 @@ final class ClassicUi(
   def dealOpened(partner: String): Unit =
     itemMenu.close()
     bag.show()
+  /** 查看别人装备（#1263）：打开「他的装备」窗口 */
+  def inspected(view: InspectView): Unit =
+    itemMenu.close()
+    inspect.open(view)
   /** 升级的提示服务端已经发了（Notice），这里不再重复 */
   def levelUp(level: Int): Unit = ()
   /** 死了：关掉窗口、弹「回城复活」（提示文字服务端发） */

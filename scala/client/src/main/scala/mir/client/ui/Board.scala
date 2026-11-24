@@ -185,7 +185,7 @@ final class Board(ui: ClassicUi):
   /**
    * 锁定对象的信息卡：怪是名字、等级、攻防、经验（倍率后），中了毒或麻痹再加一行；宝宝绿框；别的玩家是名字、职业、灰/黄/红名
    * （#1225；安全区外打得到时红框，提醒攻击键会打他），下面一排键：组队（#1220：没组队「组队」、自己是队长时「加入小组」/「踢出小组」，队员没有）、
-   * 「私聊」（聊天框填好「/名字 」）、「加好友」/「删好友」（#1221）、「交易」（#1222）。都有血条，右上角 × 取消锁定。
+   * 「私聊」（聊天框填好「/名字 」）、「加好友」/「删好友」（#1221）、「交易」（#1222）、「装备」（#1263，看他身上穿的）。都有血条，右上角 × 取消锁定。
    */
   private def drawTarget(m: Me, top: Double): Unit =
     for
@@ -230,11 +230,18 @@ final class Board(ui: ClassicUi):
           (if isFriend then "删好友" -> (() => ui.social(SocialCmd.RemoveFriend(other)))
            else "加好友" -> (() => ui.social(SocialCmd.AddFriend(other)))),
           // 交易（#1222）：对方也对我点了就打开交易窗口
-          "交易" -> (() => ui.send(GameCmd.DealTry(id)))
+          "交易" -> (() => ui.send(GameCmd.DealTry(id))),
+          // 看他身上的装备（#1263，原版 Ctrl+右键点人）
+          "装备" -> (() => ui.send(GameCmd.Inspect(id)))
         )
-    val gap = 3.0
-    val w   = (row.w - gap * (keys.size - 1)) / keys.size
-    keys.zipWithIndex.foreach { case ((label, act), i) => drawCardKey(Rect(row.x + i * (w + gap), row.y, w, row.h), label, act) }
+    // 各键宽 = 字宽 + 平分剩下的空（5 个键时「踢出小组」这种长字也放得下）
+    val gap   = 3.0
+    val texts = keys.map((label, _) => g.width(label))
+    val pad   = (row.w - gap * (keys.size - 1) - texts.sum) / keys.size
+    keys.zip(texts).foldLeft(row.x) { case (x, ((label, act), tw)) =>
+      drawCardKey(Rect(x, row.y, tw + pad, row.h), label, act)
+      x + tw + pad + gap
+    }: Unit
 
   /** 锁定玩家时信息卡下面的组队键：能做什么由自己的组队状态决定（队员不能拉人踢人，没有键）。 */
   private def groupAction(group: GroupView, me: String, other: String): Option[(String, SocialCmd)] =

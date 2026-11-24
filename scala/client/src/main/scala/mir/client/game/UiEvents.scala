@@ -1,7 +1,7 @@
 package mir.client.game
 
 import mir.core.*
-import mir.protocol.{ChatKind, CharSummary, Tone, WhisperWay}
+import mir.protocol.{ChatKind, CharSummary, InspectView, Tone, WhisperWay}
 
 /**
  * 客户端核心告诉界面的事（界面 ui.ClassicUi 实现它）。
@@ -23,6 +23,8 @@ trait UiEvents:
   def npcOpened(npc: ActorId, merchant: MerchantRef): Unit
   /** 交易窗口打开了（#1222） */
   def dealOpened(partner: String): Unit
+  /** 服务端回了别的玩家的装备（#1263） */
+  def inspected(view: InspectView): Unit
   def levelUp(level: Int): Unit
   def died(): Unit
   def kicked(reason: String): Unit
@@ -40,6 +42,7 @@ object UiEvents:
     def announce(text: String): Unit                           = ()
     def npcOpened(npc: ActorId, merchant: MerchantRef): Unit   = ()
     def dealOpened(partner: String): Unit                      = ()
+    def inspected(view: InspectView): Unit                     = ()
     def levelUp(level: Int): Unit                              = ()
     def died(): Unit                                           = ()
     def kicked(reason: String): Unit                           = ()

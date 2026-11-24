@@ -107,6 +107,8 @@ enum GameCmd:
   case UpdateSettings(settings: CharSettings)
   /** 说话：「!」开头是全图喊话 */
   case Say(text: String)
+  /** 查看视野里另一个玩家身上的装备（#1263，原版 CM_QUERYUSERSTATE）：服务端回 Inspected 或 Refused */
+  case Inspect(target: ActorId)
 
 object GameCmd:
   given JsonCodec[GameCmd] = DeriveJsonCodec.gen
@@ -226,6 +228,8 @@ enum ServerMsg:
   case Died
   /** 打开 NPC 对话（商店、仓库）：npc 是对象编号，merchant 是 game.json merchants 下标 */
   case NpcOpened(npc: ActorId, merchant: MerchantRef)
+  /** 查看别人装备的结果（#1263，原版 SM_SENDUSERSTATE）：客户端据此打开「他的装备」窗口 */
+  case Inspected(view: InspectView)
   /** 交易窗口的样子（#1222）：打开、任一边改了、确认了都发整份；关掉（成交、取消）为空 */
   case Deal(deal: Option[DealView])
 

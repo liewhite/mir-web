@@ -136,6 +136,15 @@ final case class GroundView(id: GroundId, cell: Cell, thing: GroundThing)
 object GroundView:
   given JsonCodec[GroundView] = DeriveJsonCodec.gen
 
+/**
+ * 查看别的玩家的装备（#1263，原版 SM_SENDUSERSTATE / TUserStateInfo）：点那一刻的快照——名字（按 PK 身份上色）、
+ * 性别发型（画人形）、身上穿戴的各件（含极品附加、耐久），不含包裹。原版还有行会名，这里没有行会。
+ */
+final case class InspectView(name: String, sex: Sex, hair: Int, pk: PkStanding, worn: Map[EquipSlot, ItemInstance])
+
+object InspectView:
+  given JsonCodec[InspectView] = DeriveJsonCodec.gen
+
 /** 地上持续的法术一格（火墙、困魔咒光圈）：进视野时发，没了发消失（原版 ClEvent）。 */
 final case class FieldView(id: FieldId, cell: Cell, kind: FieldKind)
 
