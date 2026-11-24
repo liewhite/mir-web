@@ -690,6 +690,26 @@ object WorldSpec extends ZIOSpecDefault:
         val gotGold = p.gold == g0 + Gold(77) && s.w.groundItems.map(_.loot).toList.collect { case Loot.Item(it) => it.name } == List(ItemName("金创药(小量)"))
         assertTrue(onlySword, masterOff, gotGold, s.consistent(p))
       },
+      test("自动捡物走到格子上只捡勾了的种类，同一格叠着的装备留在地上；手动捡取全捡（#1235）") {
+        val s = sim()
+        val p = join(s.w, "甲", Cell(25, 30))
+        p.settings = p.settings.copy(autoPickup = false)
+        // 周围 7×7 都铺满金币后，再掉的东西就叠在中心格上
+        (1 to 49).foreach(_ => s.w.dropAt(Cell(30, 30), Loot.Coins(Gold(1))))
+        s.w.dropAt(Cell(30, 30), Loot.Item(s.w.newItem(ItemName("铁剑")).get))
+        val sword = s.w.groundItems.find(_.loot.isInstanceOf[Loot.Item]).get
+        val stacked = s.w.groundItems.count(_.cell == sword.cell) >= 2
+        val g0 = p.gold
+        s.cmd(p, GameCmd.UpdateSettings(p.settings.copy(autoPickup = true, pickupKinds = Set(PickupKind.Gold))))
+        s.run(60000)
+        val coinsTaken = p.gold == g0 + Gold(49) && s.w.groundItems.map(_.id).toList == List(sword.id)
+        val swordLeft  = !p.bag.flatten.exists(_.name == ItemName("铁剑"))
+        s.cmd(p, GameCmd.UpdateSettings(p.settings.copy(autoPickup = false)))
+        s.w.grid.teleportActor(p, sword.cell)
+        s.cmd(p, GameCmd.PickUp)
+        val manual = p.bag.flatten.exists(_.name == ItemName("铁剑")) && s.w.groundItems.isEmpty
+        assertTrue(stacked, coinsTaken, swordLeft, manual, s.consistent(p))
+      },
       test("物品按 StdMode 分到自动捡物的各类：肉和矿石一类、捆装药算药品") {
         def kind(n: String) = mir.rules.ItemKind.pickupKind(catalog.item(ItemName(n)).get)
         assertTrue(

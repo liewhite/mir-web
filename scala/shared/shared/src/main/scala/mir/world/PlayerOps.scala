@@ -116,9 +116,9 @@ object PlayerOps:
   /** 提示里的叫法：一叠写成「金创药(小量) ×5」。 */
   private def label(it: ItemInstance): String = if it.count > 1 then s"${it.name.value} ×${it.count}" else it.name.value
 
-  /** 捡起脚下的东西（金币直接加）。 */
-  def pickUp(w: World, p: Player): Boolean =
-    val here = w.groundItems.filter(_.cell == p.cell).toVector
+  /** 捡起脚下的东西（金币直接加）；`take` 挑捡哪些，手动捡取全捡，自动捡物只捡勾了的种类。 */
+  def pickUp(w: World, p: Player, take: Loot => Boolean = _ => true): Boolean =
+    val here = w.groundItems.filter(g => g.cell == p.cell && take(g.loot)).toVector
     here.count { g =>
       g.loot match
         case Loot.Coins(amount) =>

@@ -38,7 +38,8 @@ object AutoPlay:
     w.groundItem(id) match
       case None => p.intent = Intent.Idle
       case Some(g) if g.cell == p.cell =>
-        PlayerOps.pickUp(w, p)
+        // 同一格常叠着别的掉落，只捡勾了的种类（#1235）
+        PlayerOps.pickUp(w, p, worth(w, p, _))
         p.intent = Intent.Idle
       case Some(g) => if free(w, p) then approach(w, p, g.cell, adjacent = false)
 
@@ -72,15 +73,18 @@ object AutoPlay:
 
   /** 附近最近的、设置里勾了这一类、包裹放得下的地上物品（#1178）。 */
   private def nearestLoot(w: World, p: Player, radius: Int): Option[GroundItem] =
-    val wanted = p.settings.pickupKinds
     w.groundItems.filter { g =>
-      val worth = g.loot match
-        case Loot.Coins(_) => wanted(PickupKind.Gold)
-        case Loot.Item(it) =>
-          w.catalog.item(it.name).exists(d => wanted(ItemKind.pickupKind(d)) && PlayerOps.fits(p, d).isRight)
       // 有别人站着的格子捡不了
-      worth && p.cell.chebyshev(g.cell) <= radius && w.occupant(g.cell).forall(_.id == p.id)
+      worth(w, p, g.loot) && p.cell.chebyshev(g.cell) <= radius && w.occupant(g.cell).forall(_.id == p.id)
     }.minByOption(g => p.cell.chebyshev(g.cell))
+
+  /** 自动捡物要不要这件：设置里勾了这一类，且包裹放得下。 */
+  private def worth(w: World, p: Player, loot: Loot): Boolean =
+    val wanted = p.settings.pickupKinds
+    loot match
+      case Loot.Coins(_) => wanted(PickupKind.Gold)
+      case Loot.Item(it) =>
+        w.catalog.item(it.name).exists(d => wanted(ItemKind.pickupKind(d)) && PlayerOps.fits(p, d).isRight)
 
   /** 血蓝低于设定的百分比自动喝药：优先普通药（慢回），太阳水留着；每 1.5 秒最多一次。 */
   private def autoPotion(w: World, p: Player): Unit =
