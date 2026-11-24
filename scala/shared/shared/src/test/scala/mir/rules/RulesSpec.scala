@@ -128,6 +128,51 @@ object RulesSpec extends ZIOSpecDefault:
           Rates.dropChance(rare, catalog.item(rare.item)) == 0.2,
           Rates.dropChance(DropDef(DropDef.GoldName, 1, 100, 50), None) == 0.2
         )
+      },
+      test("祖玛首饰和头盔 12 件不吃 20% 保底：原版 ×20，封顶 20%÷3；别的高级装备仍保底 20%（#1241）") {
+        // 按数据表里真实的爆率行算
+        def chance(monster: String, name: String) =
+          val d = catalog.drops(MonsterName(monster)).find(_.item == ItemName(name)).get
+          Rates.dropChance(d, catalog.item(d.item))
+        def near(a: Double, b: Double) = math.abs(a - b) < 1e-12
+        val zumaRows = for
+          (_, rows) <- catalog.data.drops.toList
+          d         <- rows
+          if Rates.zumaGear(d.item)
+        yield Rates.dropChance(d, catalog.item(d.item))
+        assertTrue(
+          Rates.zumaGear.size == 12,
+          Rates.zumaGear.forall(n => catalog.item(n).exists(Rates.isHighEquip)),
+          near(chance("祖玛教主", "力量戒指"), 0.2 / 3),   // 1/50 ×20 = 40% → 封顶 6.7%
+          near(chance("沃玛教主", "三眼手镯"), 0.2 / 3),   // 1/100 ×20 = 20% → 6.7%
+          near(chance("千年树妖", "绿色项链"), 0.02),      // 1/1000 ×20
+          near(chance("祖玛卫士3", "黑铁头盔"), 20.0 / 9000), // 1/9000 ×20 ≈ 0.22%
+          zumaRows.nonEmpty,
+          zumaRows.forall(_ <= 0.2 / 3 + 1e-12),
+          Rates.dropChance(DropDef(ItemName("裁决之杖"), 1, 5000, 1), catalog.item(ItemName("裁决之杖"))) == 0.2,
+          Rates.dropChance(DropDef(ItemName("魔血项链"), 1, 5000, 1), catalog.item(ItemName("魔血项链"))) == 0.2
+        )
+      },
+      test("一只怪最多掉 10 件：多了留原版爆率最低的，同爆率按表顺序；可叠的一叠算一件（#1241）") {
+        def item(n: String) = catalog.item(ItemName(n)).get
+        def row(n: String, den: Int, amount: Int = 1) = DropDef(ItemName(n), 1, den, amount)
+        val potions = (1 to 12).toList.flatMap(i => DropRules.pieces(row("金创药(中量)", 10 + i), item("金创药(中量)")))
+        val charm   = DropRules.pieces(row("护身符", 10, amount = 50), item("护身符"))
+        val rare    = List(row("力量戒指", 800), row("裁决之杖", 5000), row("绿色项链", 800))
+          .flatMap(r => DropRules.pieces(r, item(r.item.value)))
+        val kept = DropRules.cap(potions ++ charm ++ rare)
+        val few  = potions.take(4) ++ charm
+        assertTrue(
+          charm.map(_.count) == List(50),
+          DropRules.pieces(row("金创药(中量)", 10, amount = 3), item("金创药(中量)")).map(_.count) == List(3),
+          DropRules.pieces(row("木剑", 10, amount = 3), item("木剑")).map(_.count) == List(1, 1, 1),
+          kept.size == 10,
+          kept.take(3).map(_.item.name.value) == List("裁决之杖", "力量戒指", "绿色项链"),
+          // 药按爆率 1/22、1/21、…从低到高留；护身符 1/10 最常见，被截掉
+          kept.drop(3).map(_.row.denominator) == List(22, 21, 20, 19, 18, 17, 16),
+          !kept.exists(_.item.name.value == "护身符"),
+          DropRules.cap(few) == few
+        )
       }
     ),
     suite("说明用的精确上下限与概率（#1165）")(

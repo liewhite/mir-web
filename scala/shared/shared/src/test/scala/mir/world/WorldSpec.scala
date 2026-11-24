@@ -440,6 +440,25 @@ object WorldSpec extends ZIOSpecDefault:
           s.views(a.id).ground.isEmpty, s.views(b.id).ground.isEmpty
         )
       },
+      test("一只怪最多掉 10 件：掷中 13 件时留最稀有的，金币照掉不占名额（#1241）") {
+        def row(n: String, num: Int, den: Int, amount: Int = 1) = DropDef(ItemName(n), num, den, amount)
+        // 12 行药各一叠（必中）+ 裁决之杖（原版 1/20，×20 必中，最稀有）+ 金币
+        val rows = List.fill(12)(row("金创药(小量)", 1, 1)) ++ List(row("裁决之杖", 1, 20), row(DropDef.GoldName.value, 1, 1, 100))
+        val cat  = Catalog(catalog.data.copy(drops = catalog.data.drops + (MonsterName("鸡") -> rows)))
+        val w    = World(cat, testMap, Terrain.open(testMap.width, testMap.height), Rng.seeded(1), UidSource.counter(1_000_000), Millis(0))
+        val p    = join(w, "甲", Cell(20, 30))
+        val hen  = put(w, "鸡", Cell(21, 30))
+        w.vitals.damage(hen, 100_000, Some(p.id))
+        val loot  = w.groundItems.map(_.loot).toList
+        val items = loot.collect { case Loot.Item(it) => it.name.value }
+        assertTrue(
+          hen.dead,
+          items.size == 10,
+          items.count(_ == "裁决之杖") == 1,
+          items.count(_ == "金创药(小量)") == 9,
+          loot.count { case Loot.Coins(_) => true; case _ => false } == 1
+        )
+      },
       test("一人换图后从另一人视野消失") {
         val s = sim()
         val a = join(s.w, "甲", Cell(30, 30))

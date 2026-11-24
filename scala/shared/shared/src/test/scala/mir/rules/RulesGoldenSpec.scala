@@ -28,7 +28,16 @@ object RulesGoldenSpec extends ZIOSpecDefault:
   private final case class DropCase(monster: MonsterName, item: ItemName, chance: Double)
   private given JsonDecoder[DropCase] = DeriveJsonDecoder.gen
 
-  private final case class TsRates(exp: Int, drop: Int, highEquipMin: Double, highEquipLevel: Int, warriorBody: Double, skillTrain: Int)
+  private final case class TsRates(
+      exp: Int,
+      drop: Int,
+      highEquipMin: Double,
+      highEquipLevel: Int,
+      zumaGearDivisor: Int,
+      maxDropsPerKill: Int,
+      warriorBody: Double,
+      skillTrain: Int
+  )
   private given JsonDecoder[TsRates] = DeriveJsonDecoder.gen
 
   private final case class Golden(
@@ -78,7 +87,11 @@ object RulesGoldenSpec extends ZIOSpecDefault:
 
   def spec = suite("规则与 TS 版一致")(
     test("倍率（rates.ts）") {
-      assertTrue(golden.rates == TsRates(Rates.exp, Rates.drop, Rates.highEquipMin, Rates.highEquipLevel, Rates.warriorBody, Rates.skillTrain))
+      val scala = TsRates(
+        Rates.exp, Rates.drop, Rates.highEquipMin, Rates.highEquipLevel,
+        Rates.zumaGearDivisor, Rates.maxDropsPerKill, Rates.warriorBody, Rates.skillTrain
+      )
+      assertTrue(golden.rates == scala)
     },
     test("技能各级熟练度是原表的 1/10（向上取整）") {
       val fire = catalog.data.skills.find(_.name == "火球术").get

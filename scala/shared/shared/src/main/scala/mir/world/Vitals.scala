@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.DropDef
 import mir.model.*
 import mir.protocol.*
-import mir.rules.{Charges, GroupRules, ItemEffects, ItemKind, Leveling, PassiveSkills, PetBody, Progress, RandomUpgrade, Rates, Recovery, Rng, Rules, Skill, SpellRules}
+import mir.rules.{Charges, DropRules, GroupRules, ItemEffects, ItemKind, Leveling, PassiveSkills, PetBody, Progress, RandomUpgrade, Rates, Recovery, Rng, Rules, Skill, SpellRules}
 
 /**
  * 血、蓝与生死：一下攻击的结算、扣血、死亡（经验、掉落）、复活、回血回蓝、属性重算。
@@ -191,23 +191,30 @@ final class Vitals(w: World):
           w.out.notice(p, s"升级了！现在 $lv 级", Tone.Good)
         }
 
-  /** 按爆率表掉落（概率按 Rates 换算；金币数量 amount/2 + Random(amount)；装备照原版可能是极品，见 RandomUpgrade）。 */
-  private def dropLoot(m: Monster): Unit = w.catalog.drops(m.defn.name).foreach { (d: DropDef) =>
+  /**
+   * 按爆率表掉落（概率按 Rates 换算；金币数量 amount/2 + Random(amount)；装备照原版可能是极品，见 RandomUpgrade）。
+   * 先把每行都掷完，物品超过 Rates.maxDropsPerKill 件时只留最稀有的（DropRules.cap，#1241）；金币不占名额。
+   */
+  private def dropLoot(m: Monster): Unit =
     given rng: Rng = w.rngOf
-    val itemDef = if d.isGold then None else w.catalog.item(d.item)
-    val roll    = rng.random(1_000_000) / 1_000_000.0
-    if roll < Rates.dropChance(d, itemDef) then
-      if d.isGold then
-        val g = d.amount / 2 + rng.random(d.amount)
-        if g > 0 then w.dropAt(m.cell, Loot.Coins(Gold(g)))
-      else
-        itemDef.foreach { id =>
-          val n = math.max(1, d.amount)
-          // 可叠的一次掉多个就掉成一叠（#1159）；护身符、药粉的数量是次数（#1213）
-          if ItemKind.stacks(id) then w.dropAt(m.cell, Loot.Item(Charges.settle(id, ItemInstance.fresh(w.newUid(), id).copy(count = n))))
-          else (1 to n).foreach(_ => w.dropAt(m.cell, Loot.Item(RandomUpgrade.monsterDrop(ItemInstance.fresh(w.newUid(), id), id))))
-        }
-  }
+    val hits = w.catalog.drops(m.defn.name).filter { (d: DropDef) =>
+      val itemDef = if d.isGold then None else w.catalog.item(d.item)
+      rng.random(1_000_000) / 1_000_000.0 < Rates.dropChance(d, itemDef)
+    }
+    val (gold, items) = hits.partition(_.isGold)
+    gold.foreach { d =>
+      val g = d.amount / 2 + rng.random(d.amount)
+      if g > 0 then w.dropAt(m.cell, Loot.Coins(Gold(g)))
+    }
+    val pieces = items.flatMap(d => w.catalog.item(d.item).toList.flatMap(DropRules.pieces(d, _)))
+    DropRules.cap(pieces).foreach { p =>
+      val fresh = ItemInstance.fresh(w.newUid(), p.item)
+      // 可叠的一叠（#1159）：护身符、药粉的数量是次数（#1213）；不可叠的装备可能是极品
+      val inst =
+        if ItemKind.stacks(p.item) then Charges.settle(p.item, fresh.copy(count = p.count))
+        else RandomUpgrade.monsterDrop(fresh, p.item)
+      w.dropAt(m.cell, Loot.Item(inst))
+    }
 
   // ---------------- 回血回蓝、血上限 ----------------
 

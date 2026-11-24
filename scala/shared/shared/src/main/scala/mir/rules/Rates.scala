@@ -1,6 +1,6 @@
 package mir.rules
 
-import mir.core.Exp
+import mir.core.{Exp, ItemName}
 import mir.data.{DropDef, ItemDef, SkillDef, Span}
 import mir.model.Job
 
@@ -16,6 +16,17 @@ object Rates:
   /** 高级装备（要求 20 级以上，或要求攻击/魔法/道术）的掉落概率下限 */
   val highEquipMin: Double = 0.2
   val highEquipLevel: Int  = 20
+  /**
+   * 祖玛首饰和头盔（用户 11-24 在 #1241 定「不要一下爆一地」：能爆的怪太多、小怪也爆）：不吃 highEquipMin 保底，
+   * 掉率 = 原版 × drop，封顶 highEquipMin / zumaGearDivisor。按物品生效，哪只怪掉都一样。
+   */
+  val zumaGear: Set[ItemName] = Set(
+    "绿色项链", "恶魔铃铛", "灵魂项链", "骑士手镯", "龙之手镯", "三眼手镯",
+    "力量戒指", "紫碧螺", "泰坦戒指", "心灵手镯", "阎罗手套", "黑铁头盔"
+  ).map(ItemName(_))
+  val zumaGearDivisor: Int = 3
+  /** 打死一只怪最多掉几件物品（金币不算；一叠可叠物算一件；#1241），多了按 DropRules.cap 留最稀有的 */
+  val maxDropsPerKill: Int = 10
   /** 诱惑之光收服概率倍数（用户 11-23 在 #1163 要求提升；原版 3 级技能对低级怪约 5%），最高 100% */
   val tame: Int = 10
   /** 战士的攻击、防御、魔防（上下限都乘，含装备加成，四舍五入）倍数（用户 11-24 在 #1176 定） */
@@ -36,7 +47,10 @@ object Rates:
   /** 一行爆率实际的掉落概率（0..1）。def 为空表示金币。 */
   def dropChance(d: DropDef, item: Option[ItemDef]): Double =
     val scaled = math.min(1.0, d.numerator.toDouble / d.denominator * drop)
-    if item.exists(isHighEquip) then math.max(scaled, highEquipMin) else scaled
+    item match
+      case Some(i) if zumaGear(i.name) => math.min(scaled, highEquipMin / zumaGearDivisor)
+      case Some(i) if isHighEquip(i)   => math.max(scaled, highEquipMin)
+      case _                           => scaled
 
   /** 打死一只怪给的经验：数据表经验 × 复活折扣（复活一次减半），取整后乘经验倍数。 */
   def killExp(baseExp: Int, scale: Double): Exp = Exp(math.floor(baseExp * scale).toLong * exp)
