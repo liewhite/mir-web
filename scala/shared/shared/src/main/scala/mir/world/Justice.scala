@@ -15,7 +15,7 @@ final class Justice(w: World):
   /** 竞技地图（MapFlag.Fight）：打人杀人都不算，死了也不掉东西（原版 boFightZone） */
   private def arena: Boolean = w.mapDef.has(MapFlag.Fight)
 
-  def inSafeZone(a: Actor): Boolean = SafeZone.covers(w.mapId, a.cell)
+  def inSafeZone(a: Actor): Boolean = SafeZone.covers(w.mapDef, a.cell)
 
   /** 对象背后的玩家：玩家自己，或宝宝的主人（主人要在本图上）。 */
   private[world] def ownerOf(a: Actor): Option[Player] = a match
@@ -28,7 +28,7 @@ final class Justice(w: World):
    * 服务端另加一条：双方任一方刚进图、传送 Pk.ArrivalGraceMs 内不算（原版 IsProtectTarget，免得在传送点堵人；客户端不知道别人几时到的，打了也白打）。
    */
   private[world] def duel(a: Actor, b: Actor): Boolean =
-    Look.duel(w.mapId, a.look, a.id, a.cell, b.look, b.cell) && !justArrived(a) && !justArrived(b)
+    Look.duel(w.mapDef, a.look, a.id, a.cell, b.look, b.cell) && !justArrived(a) && !justArrived(b)
 
   private def justArrived(a: Actor): Boolean = a match
     case p: Player => w.now - p.arrivedAt < Pk.ArrivalGraceMs

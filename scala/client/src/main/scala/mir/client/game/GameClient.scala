@@ -178,7 +178,7 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
   def canAttack(a: ActorView): Boolean =
     !a.dead && self.exists { me =>
       me.id != a.id && (Look.attackable(me.look, a.look, catalog.isGuard) ||
-        view.map.exists(Look.duel(_, me.look, me.id, me.cell, a.look, a.cell)))
+        view.map.flatMap(catalog.map).exists(Look.duel(_, me.look, me.id, me.cell, a.look, a.cell)))
     }
 
   /** 自己人（治疗、加防的对象）：活着的别的玩家和宝宝（所有玩家都算；和服务端 SpellCtx.isFriend 同一口径）。 */

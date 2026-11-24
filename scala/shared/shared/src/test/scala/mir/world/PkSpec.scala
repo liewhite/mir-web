@@ -18,8 +18,10 @@ object PkSpec extends ZIOSpecDefault:
 
   /** 不在数据表里的空地（没有安全区、刷怪、守卫） */
   private val open  = MapDef(MapId("T"), "T", "测试", Set.empty, 60, 60)
-  /** 竞技地图 */
-  private val arena = MapDef(MapId("TF"), "TF", "竞技测试", Set(MapFlag.Fight), 60, 60)
+  /** 竞技地图（和竞技场同编号；别的带 FIGHT 的室内图整张算安全区） */
+  private val arena = MapDef(MapId("0137"), "0137", "竞技测试", Set(MapFlag.Fight), 60, 60)
+  /** 城里的店（数据表带 FIGHT） */
+  private val shop  = MapDef(MapId("0108"), "0108", "药店测试", Set(MapFlag.Fight), 60, 60)
   /** 和比奇省同编号：出生点 (330, 266) 横竖 10 格内是安全区 */
   private val bichi = MapDef(MapId("0"), "0", "比奇测试", Set.empty, 700, 700)
 
@@ -76,7 +78,7 @@ object PkSpec extends ZIOSpecDefault:
       pet.master = Some(a.id)
       a.pets += pet.id
       assertTrue(
-        SafeZone.covers(MapId("0"), Cell(340, 276)), !SafeZone.covers(MapId("0"), Cell(341, 266)),
+        SafeZone.covers(bichi, Cell(340, 276)), !SafeZone.covers(bichi, Cell(341, 266)),
         inside, edge,
         s.w.canAttack(a, b), s.w.harms(a, b), !s.w.isEnemy(a, b), hit(s.w, a, b) == StrikeResult.Wounded(10),
         !s.w.harms(a, pet), s.w.harms(b, pet)
@@ -206,6 +208,18 @@ object PkSpec extends ZIOSpecDefault:
       hit(s.w, b, a)
       s.run(1000)
       assertTrue(a.settings.autoFightBack, a.intent == Intent.Idle, b.hp == 100_000)
+    },
+    test("城里的店铺房屋（带 FIGHT、不是竞技场）整张算安全区（#1230）；数据表里只有竞技场还能打") {
+      val s = sim(shop)
+      val a = join(s.w, "甲", Cell(30, 30))
+      val b = join(s.w, "乙", Cell(31, 30))
+      s.run(Pk.ArrivalGraceMs + 100)
+      val fightMaps = catalog.data.maps.filter(_.has(MapFlag.Fight))
+      assertTrue(
+        !s.w.canAttack(a, b), hit(s.w, a, b) == StrikeResult.Ignored, b.hp == b.maxHp,
+        fightMaps.size == 78, fightMaps.filterNot(SafeZone.wholeMap).map(_.id) == List(MapId("0137")),
+        !catalog.data.maps.filterNot(_.has(MapFlag.Fight)).exists(SafeZone.wholeMap)
+      )
     },
     test("竞技地图里打人杀人都不算：不变灰、不涨 PK 值，红名死了也不掉东西") {
       val s = sim(arena)

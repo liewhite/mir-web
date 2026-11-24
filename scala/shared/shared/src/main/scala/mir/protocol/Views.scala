@@ -1,7 +1,7 @@
 package mir.protocol
 
 import mir.core.*
-import mir.data.Span
+import mir.data.{MapDef, Span}
 import mir.model.*
 import mir.rules.{PkStanding, SafeZone, Side, Stats}
 import zio.json.*
@@ -72,7 +72,7 @@ object Look:
    * 不分攻击模式（用户定），队友也打得到；双方都要在安全区外（原版 IsProtectTarget；打宝宝看宝宝站在哪，同原版 IsProperTarget）。
    * 服务端结算（Justice.duel）和客户端锁定攻击（GameClient.canAttack）共用。
    */
-  def duel(map: MapId, a: Look, aId: ActorId, aCell: Cell, b: Look, bCell: Cell): Boolean =
+  def duel(map: MapDef, a: Look, aId: ActorId, aCell: Cell, b: Look, bCell: Cell): Boolean =
     val kinds = (a, b) match
       case (_: Human, _: Human)   => true
       case (_: Human, m: Monster) => m.master.exists(_ != aId)

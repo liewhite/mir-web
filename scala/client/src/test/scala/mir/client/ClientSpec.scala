@@ -58,7 +58,8 @@ object ClientSpec extends ZIOSpecDefault:
     val md    = MapData.parse(testMap.id, "T", mapBin(size, size, blocked)).fold(e => throw new AssertionError(e), identity)
     var now   = 0.0
     val world = World(catalog, mapDef, md.terrain, Rng.seeded(3), UidSource.counter(1), Millis(0))
-    val client = GameClient(catalog, ClientEnv(() => now, _ => Future.successful(md), (_, _, _) => ()))
+    /** 客户端的数据表里也要有这张测试图（安全区看地图标记，PK 判定要查 MapDef） */
+    val client = GameClient(Catalog(catalog.data.copy(maps = mapDef :: catalog.data.maps)), ClientEnv(() => now, _ => Future.successful(md), (_, _, _) => ()))
     val ctl    = Controller(client)
     var me     = ActorId(0)
     val sent   = scala.collection.mutable.ArrayBuffer.empty[ClientCmd]

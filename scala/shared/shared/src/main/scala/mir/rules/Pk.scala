@@ -1,6 +1,7 @@
 package mir.rules
 
 import mir.core.{Cell, EnumCodec, MapId}
+import mir.data.{MapDef, MapFlag}
 import zio.json.JsonCodec
 
 /**
@@ -23,7 +24,7 @@ object PkStanding:
  *    杀灰名的不加（「你受到正当规则保护」），杀红名的什么都不算；宝宝杀的算主人的；
  *  - 打清白的玩家（或他的宝宝）：自己变灰名 FlagMs（原版 SetPKFlag：双方都不是红名、挨打的人自己不是灰名）；
  *  - PK 值在线每 DecayMs 降 1（原版 DecPkPointTime 2 分钟）：杀一个人 200 分钟（3 小时 20 分）降回 0；
- *  - 竞技地图（MapFlag.Fight）里打人、杀人都不算，死了也不掉东西（原版 boFightZone）；
+ *  - 竞技地图（MapFlag.Fight）里打人、杀人都不算，死了也不掉东西（原版 boFightZone；本服只剩竞技场，其余 FIGHT 室内图算安全区，见 SafeZone）；
  *  - 安全区（SafeZone）里不能打人、也不能被人打（原版 IsProtectTarget）。
  * 不做的：监狱、红名复活回红名村（用户 11-24 定不做监狱）、杀人扣幸运（本服没有人物幸运值）。
  */
@@ -68,9 +69,18 @@ object Pk:
 /**
  * 安全区（原版 InSafeZone：地图带 SAFE 标记，或离 StartPoint.txt 里的出生点横竖都不超过 Radius 格）。
  * 1.76 数据表的地图没有带 SAFE 的；出生点照 Mir176 tools/build-classic-content.py 写的 StartPoint.txt。
+ * 本服另加（#1230 用户定「店里算安全」）：数据表带 FIGHT 的除竞技场外都是城里的店铺、客栈、仓库、房屋，整张算安全区。
  */
 object SafeZone:
   val Radius: Int = 10
+
+  /** 真正的竞技场：带 FIGHT 照原版能随便打（不算犯罪、死了不掉东西），不算安全区 */
+  val Arenas: Set[MapId] = Set(MapId("0137"))
+
+  /** 整张图都是安全区：城里的室内图（带 FIGHT、不是竞技场） */
+  def wholeMap(map: MapDef): Boolean = map.has(MapFlag.Fight) && !Arenas.contains(map.id)
+
+  def covers(map: MapDef, c: Cell): Boolean = wholeMap(map) || nearSpawn(map.id, c)
 
   /** 出生点：比奇省（银杏村、边界村、比奇城）、毒蛇山谷、盟重、封魔谷、苍月岛、白日门 */
   val Points: List[(MapId, Cell)] = List(
@@ -84,5 +94,5 @@ object SafeZone:
     MapId("11") -> Cell(178, 326)
   )
 
-  def covers(map: MapId, c: Cell): Boolean =
+  private def nearSpawn(map: MapId, c: Cell): Boolean =
     Points.exists((m, p) => m == map && math.abs(c.x - p.x) <= Radius && math.abs(c.y - p.y) <= Radius)

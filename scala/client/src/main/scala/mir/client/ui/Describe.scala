@@ -227,7 +227,7 @@ object Describe:
       case _                 => Line(s"PK 值 $points")
     List(
       now,
-      Line(s"安全区外玩家之间能互相攻击，队友也会被范围技能误伤；安全区：各城出生点横竖 ${SafeZone.Radius} 格内", Tint.Dim),
+      Line(s"安全区外玩家之间能互相攻击，队友也会被范围技能误伤；安全区：各城出生点横竖 ${SafeZone.Radius} 格内，城里的店铺、客栈、仓库、房屋（竞技场除外）", Tint.Dim),
       Line(s"杀不是红名、不是灰名的玩家 PK 值 +${Pk.KillPoints}；在线每 $decayMin 分钟降 1", Tint.Dim),
       Line(s"先动手打清白的人名字变灰 ${Pk.FlagMs / 1000} 秒：别人还手、杀你都不算犯罪", Tint.Dim),
       Line(
