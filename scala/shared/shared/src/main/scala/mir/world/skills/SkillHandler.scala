@@ -143,22 +143,36 @@ final class SpellCtx(
     if delay > 0 then fx("magic", 1160 + p.cell.dir16(center) * 10, 3, 60, Anchor.OnCell(center), from = Some(p.cell), duration = Some(delay))
     w.afterOn(p, delay)(_ => fx("magic", burst, frames, frameTime, Anchor.OnCell(center)))
 
-  /** 左手镯位上的护符：None 没戴；Some(None) 护身符；Some(Some(毒)) 灰/黄药粉。 */
-  def amulet: Option[Option[PoisonKind]] =
-    p.worn.get(EquipSlot.BraceletL).flatMap(it => w.catalog.item(it.name)).map(ItemKind.of).collect { case ItemKind.Amulet(k) => k }
+  /**
+   * 身上第一份合要求的护符（#1202：不必装备，包裹里有就能用）：左手镯位戴着的优先，再按包裹格子顺序找。
+   * fits 看种类：None 护身符，Some(毒) 灰/黄药粉。
+   */
+  private def findAmulet[K](fits: PartialFunction[Option[PoisonKind], K]): Option[(AmuletAt, K)] =
+    (ItemPlace.Worn(EquipSlot.BraceletL) +: p.bag.indices.map(ItemPlace.Bag(_))).iterator.flatMap { place =>
+      Inventory.at(p, place)
+        .filter(_.dura > 0)
+        .flatMap(it => w.catalog.item(it.name))
+        .map(ItemKind.of)
+        .collect { case ItemKind.Amulet(k) if fits.isDefinedAt(k) => AmuletAt(place) -> fits(k) }
+    }.nextOption()
 
-  /** 用掉一张护身符/一份毒药。 */
-  def consumeAmulet(): Unit =
-    p.worn.get(EquipSlot.BraceletL).foreach { it =>
+  /** 要有护身符 */
+  def charm: Either[Effect, AmuletAt] =
+    findAmulet { case None => () }.map(_._1).toRight(Effect.Fail("身上没有护身符（包裹里或左手镯位都行）"))
+
+  /** 要有灰色或黄色药粉：用哪份、什么毒 */
+  def poisonPowder: Either[Effect, (AmuletAt, PoisonKind)] =
+    findAmulet { case Some(k) => k }.toRight(Effect.Fail("身上没有灰色或黄色药粉（包裹里或左手镯位都行）"))
+
+  /** 用掉找到的那份护符的一次；次数用完就没了。 */
+  def consume(a: AmuletAt): Unit =
+    Inventory.at(p, a.place).foreach { it =>
       val left = it.dura - Durability.PerUse
       if left <= 0 then
-        p.worn.remove(EquipSlot.BraceletL)
+        Inventory.put(p, a.place, None)
         w.out.notice(p, s"${it.name.value} 用完了", Tone.Bad)
-      else p.worn(EquipSlot.BraceletL) = it.copy(dura = left)
+      else Inventory.put(p, a.place, Some(it.copy(dura = left)))
     }
-
-  /** 要戴着护身符 */
-  def charm: Either[Effect, Unit] = Either.cond(amulet.contains(None), (), Effect.Fail("左手镯位要装备护身符"))
 
   def displayName(a: Actor): String = a match
     case m: Monster => w.catalog.displayName(m.defn.name).value
@@ -183,3 +197,6 @@ object SpellCtx:
     case m: Monster => m.defn.level
     case q: Player  => q.level
     case _: Npc     => 0
+
+/** 施法要用的一份护身符/药粉在身上哪一格（SpellCtx.charm / poisonPowder 找到，consume 扣次数）。 */
+final case class AmuletAt(place: ItemPlace)

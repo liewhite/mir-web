@@ -39,8 +39,8 @@ object Taoist:
     def cast(c: SpellCtx)(using Rng): Effect =
       import c.*
       run(enemy.flatMap { t =>
-        amulet.flatten.toRight(Effect.Fail("左手镯位要装备灰色或黄色药粉")).map { kind =>
-          consumeAmulet()
+        poisonPowder.map { (a, kind) =>
+          consume(a)
           val secs = SpellRules.poisonSecs(d, lv, sc, green = kind == PoisonKind.Green)
           w.conditions.poison(t, kind, secs * 1000L, SpellRules.poisonTick(sc), p.id)
           t match
@@ -55,8 +55,8 @@ object Taoist:
     def cast(c: SpellCtx)(using Rng): Effect =
       import c.*
       run(enemy.flatMap { t =>
-        charm.map { _ =>
-          consumeAmulet()
+        charm.map { a =>
+          consume(a)
           val power = SpellRules.scDamage(d, lv, sc)
           val delay = 80 * p.cell.chebyshev(t.cell)
           c.fx("magic", 1160 + p.cell.dir16(t.cell) * 10, 3, 60, Anchor.OnActor(t.id), from = Some(p.cell), duration = Some(delay))
@@ -73,8 +73,8 @@ object Taoist:
   final class DefenceUp(magic: Boolean, burst: Int) extends SkillHandler:
     def cast(c: SpellCtx)(using Rng): Effect =
       import c.*
-      run(charm.map { _ =>
-        consumeAmulet()
+      run(charm.map { a =>
+        consume(a)
         val secs   = SpellRules.defenceUpSecs(d, lv, sc)
         val center = friendCenter
         friendsAround(center, SpellRules.DefenceRadius).foreach { a =>
@@ -91,8 +91,8 @@ object Taoist:
     override val castFx = fx(1380)
     def cast(c: SpellCtx)(using Rng): Effect =
       import c.*
-      run(inReach(aim).flatMap(_ => charm).map { _ =>
-        consumeAmulet()
+      run(inReach(aim).flatMap(_ => charm).map { a =>
+        consume(a)
         val secs   = SpellRules.holyCurtainSecs(d, lv, sc)
         val caught = enemiesAround(aim, SpellRules.GroupRadius).collect {
           case m: Monster if SpellRules.holyCurtainCatches(p.level, m.defn.level) => m
@@ -118,11 +118,11 @@ object Taoist:
         case Left(fail) => fail
         case Right(_) if have >= SpellRules.SummonsEach =>
           Effect.Fail(s"${pet.value}最多 ${SpellRules.SummonsEach} 只")
-        case Right(_) =>
+        case Right(a) =>
           w.catalog.monster(pet) match
             case None => Effect.Fail("召唤失败")
             case Some(md) =>
-              consumeAmulet()
+              consume(a)
               w.spawner.spawnMonster(md, None, p.cell.step(p.dir), 1).foreach { m =>
                 val boost = SpellRules.summonBoost(lv)
                 def scale(v: Int) = math.floor(v * boost + 0.5).toInt
@@ -151,8 +151,8 @@ object Taoist:
     override val keepsInvisible = true
     def cast(c: SpellCtx)(using Rng): Effect =
       import c.*
-      run(charm.map { _ =>
-        consumeAmulet()
+      run(charm.map { a =>
+        consume(a)
         makeInvisible(w, p, SpellRules.invisibleSecs(d, lv, sc))
       })
 
@@ -160,8 +160,8 @@ object Taoist:
   object GroupInvisible extends SkillHandler:
     def cast(c: SpellCtx)(using Rng): Effect =
       import c.*
-      run(charm.map { _ =>
-        consumeAmulet()
+      run(charm.map { a =>
+        consume(a)
         val secs   = SpellRules.invisibleSecs(d, lv, sc)
         val center = friendCenter
         friendsAround(center, SpellRules.GroupRadius).filterNot(_.statuses.has(StatusKind.Invisible)).foreach(makeInvisible(w, _, secs))

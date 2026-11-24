@@ -119,6 +119,55 @@ object SpellSpec extends ZIOSpecDefault:
         count(SpellRules.ShinsuPet) == 2
       )
     },
+    suite("护身符、药粉放包裹里就能用（#1202）")(
+      test("只有包裹里有护身符：灵魂火符照样放，扣包裹里那张的次数；左手镯戴着的毒药不动") {
+        val s      = sim()
+        val p      = caster(s, Job.Taoist, List(13))
+        val powder = ItemInstance(ItemUid(78L), ItemName("黄色药粉(少量)"), 1000, 1000)
+        p.worn(EquipSlot.BraceletL) = powder
+        val slot = p.bag.indexOf(None)
+        p.bag(slot) = Some(ItemInstance(ItemUid(77L), ItemName("护身符"), 1000, 1000))
+        val m = put(s, "蛤蟆", Cell(33, 30))
+        pin(m)
+        m.maxHpNow = 100_000
+        m.hp = 100_000
+        s.cast(p, 13, Some(m), m.cell)
+        s.run(2000)
+        assertTrue(m.hp < 100_000, p.bag(slot).map(_.dura).contains(900), p.worn.get(EquipSlot.BraceletL).contains(powder))
+      },
+      test("左手镯戴着护身符时先用它，包裹里的不动") {
+        val s    = sim()
+        val p    = caster(s, Job.Taoist, List(13), charm = true)
+        val slot = p.bag.indexOf(None)
+        val bagged = ItemInstance(ItemUid(79L), ItemName("护身符"), 1000, 1000)
+        p.bag(slot) = Some(bagged)
+        val m = put(s, "蛤蟆", Cell(33, 30))
+        pin(m)
+        s.cast(p, 13, Some(m), m.cell)
+        assertTrue(p.worn.get(EquipSlot.BraceletL).map(_.dura).contains(100_000 - 100), p.bag(slot).contains(bagged))
+      },
+      test("只有包裹里有药粉：施毒术按那份的颜色下毒，最后一次用完从包裹里拿掉并提示") {
+        val s    = sim()
+        val p    = caster(s, Job.Taoist, List(6))
+        val slot = p.bag.indexOf(None)
+        p.bag(slot) = Some(ItemInstance(ItemUid(80L), ItemName("黄色药粉(少量)"), 100, 100))
+        val m = put(s, "蛤蟆", Cell(33, 30))
+        pin(m)
+        s.cast(p, 6, Some(m), m.cell)
+        val red = m.statuses.find { case Status.Poisoned(k, _, _, _) => k }.contains(PoisonKind.Red)
+        assertTrue(red, p.bag(slot).isEmpty, s.notices.exists(_.contains("用完了")), s.view.bag(slot).isEmpty)
+      },
+      test("包裹和左手镯都没有：放不了，提示缺什么，不扣蓝") {
+        val s  = sim()
+        val p  = caster(s, Job.Taoist, List(6, 13))
+        val m  = put(s, "蛤蟆", Cell(33, 30))
+        val mp = p.mp
+        s.cast(p, 13, Some(m), m.cell)
+        s.run(2000)
+        s.cast(p, 6, Some(m), m.cell)
+        assertTrue(p.mp == mp, s.notices.exists(_.contains("没有护身符")), s.notices.exists(_.contains("没有灰色或黄色药粉")))
+      }
+    ),
     test("火墙：5 格火，怪站在上面掉血，火灭了格子也消失，视野副本跟着出现消失") {
       val s = sim()
       val p = caster(s, Job.Wizard, List(22))

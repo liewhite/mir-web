@@ -32,7 +32,7 @@ enum ItemKind:
   /** 捆装：拆成 6 个 Ani 等于 of 的物品 */
   case Bundle(of: Int)
   case Equip(slots: List[EquipSlot])
-  /** 护身符（poison 为空）、灰色药粉（绿毒）、黄色药粉（红毒）：戴在左手镯位 */
+  /** 护身符（poison 为空）、灰色药粉（绿毒）、黄色药粉（红毒）：可戴左手镯位，放包裹里也能用（#1202） */
   case Amulet(poison: Option[PoisonKind])
   case Material
   case Other

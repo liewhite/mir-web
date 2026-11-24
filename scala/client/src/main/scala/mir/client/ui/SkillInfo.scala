@@ -183,7 +183,7 @@ object SkillInfo:
         List(s"选中的自己人（没选就是自己）周围 ${w}×$w 格的自己人每人回血 ${heal(l)}")
       case Skill.Poisoning =>
         List(
-          "左手镯位放灰色药粉（绿毒）或黄色药粉（红毒），每次用 1 份",
+          "用灰色药粉（绿毒）或黄色药粉（红毒），放包裹里就行（左手镯位戴着的先用），每次用 1 份",
           s"绿毒：持续 ${span(r => SpellRules.poisonSecs(d, l, sc, green = true)(using r))} 秒，每 2 秒掉 ${span(r => SpellRules.poisonTick(sc)(using r))} 血",
           s"红毒：持续 ${span(r => SpellRules.poisonSecs(d, l, sc, green = false)(using r))} 秒，期间挨打伤害 ×${SpellRules.redPoisonDamage(100) / 100.0}"
         )

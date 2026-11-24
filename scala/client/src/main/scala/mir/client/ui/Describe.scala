@@ -69,7 +69,7 @@ object Describe:
         case Some(PoisonKind.Green) => "施毒术用：绿毒，中毒期间持续掉血（数值见施毒术说明）"
         case Some(PoisonKind.Red)   => s"施毒术用：红毒，中毒期间挨打伤害 ×${SpellRules.redPoisonDamage(100) / 100.0}（持续时间见施毒术说明）"
       )),
-      Some(Line("装备在左手镯位置才能用", Tint.Dim)),
+      Some(Line("放包裹里就能用（左手镯位戴着的先用）", Tint.Dim)),
       inst.map(i => Line(s"剩余 ${Durability.usesLeft(i.dura)} 次", Tint.Dim))
     ).flatten
 
