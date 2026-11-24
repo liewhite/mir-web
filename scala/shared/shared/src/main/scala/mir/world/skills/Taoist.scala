@@ -53,7 +53,7 @@ object Taoist:
         }
       })
 
-  /** 灵魂火符：要护身符。 */
+  /** 灵魂火符：要护身符。飞符 1160 起每方向 10 帧取 3 帧，命中炸开 1360 起 10 帧（PlayScn.pas mtExploBujauk 10 号；1320 是幽灵盾的落地光）。 */
   object SoulFireBall extends SkillHandler:
     def cast(c: SpellCtx)(using Rng): Effect =
       import c.*
@@ -67,7 +67,7 @@ object Taoist:
           w.afterOn(t, delay) { t =>
             sound(t.cell, SpellPhase.Burst)
             hitMagic(t, power)
-            c.fx("magic", 1320, 10, 50, Anchor.OnActor(t.id))
+            c.fx("magic", SoulFireBurst, 10, 50, Anchor.OnActor(t.id))
           }
         }
       })
@@ -85,6 +85,9 @@ object Taoist:
         }
         charmFly(center, burst, 16, 50)
       })
+
+  /** 灵魂火符命中的炸开帧（原版 MagExplosionBase 1360） */
+  val SoulFireBurst = 1360
 
   val SoulShield = DefenceUp(magic = true, burst = 1320)
   val HolyArmor  = DefenceUp(magic = false, burst = 1340)

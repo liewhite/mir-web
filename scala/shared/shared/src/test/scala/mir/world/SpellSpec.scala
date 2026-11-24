@@ -21,6 +21,8 @@ object SpellSpec extends ZIOSpecDefault:
   private final class Sim(val w: World):
     var view = ViewState()
     var notices = Vector.empty[String]
+    /** 收到的特效（图库、起始帧） */
+    var effects = Vector.empty[(String, Int)]
     var me: Option[ActorId] = None
 
     def flush(): Unit =
@@ -29,6 +31,7 @@ object SpellSpec extends ZIOSpecDefault:
         val got = out.messages.getOrElse(id, Vector.empty)
         view = view.applyAll(got)
         notices ++= got.collect { case ServerMsg.Notice(t, _) => t; case ServerMsg.Refused(t) => t }
+        effects ++= got.collect { case ServerMsg.Effect(e) => (e.lib, e.start) }
       }
 
     def run(ms: Int): Unit = (0 until ms by 50).foreach { _ =>
@@ -124,6 +127,17 @@ object SpellSpec extends ZIOSpecDefault:
         count(SpellRules.SkeletonPet) == 3,
         count(SpellRules.ShinsuPet) == 2
       )
+    },
+    test("灵魂火符命中炸开用原版 1360 起的帧，不是幽灵盾的 1320（PlayScn.pas mtExploBujauk）") {
+      val s = sim()
+      val p = caster(s, Job.Taoist, List(13), charm = true)
+      val m = put(s, "蛤蟆", Cell(33, 30))
+      pin(m)
+      m.maxHpNow = 100_000
+      m.hp = 100_000
+      s.cast(p, 13, Some(m), m.cell)
+      s.run(2000)
+      assertTrue(s.effects.contains(("magic", 1360)), !s.effects.contains(("magic", 1320)))
     },
     suite("护身符、药粉放包裹里就能用（#1202）")(
       test("只有包裹里有护身符：灵魂火符照样放，扣包裹里那张的次数；左手镯戴着的毒药不动") {
