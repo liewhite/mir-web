@@ -74,6 +74,37 @@ object ServerSpec extends ZIOSpecDefault:
         http.post("/api/login", """{"account":"carol","password":"secret1"}""").statusCode
       }.map(code => assertTrue(code == 429))
     },
+    test("自助注册：成功即登录、重名（不分大小写）、格式不对、限频；登录画面的素材不登录也给") {
+      val cfg = tempConfig()
+      cli(cfg, "account", "add", "alice")("secret1"): Unit
+      def reg(http: Http, a: String, p: String) = http.post("/api/register", s"""{"account":"$a","password":"$p"}""")
+      withServer(cfg) { http =>
+        val ok       = reg(http, "dave_01", "secret1")
+        val cookie   = ok.headers.firstValue("set-cookie").get.split(';').head
+        val me       = http.get("/api/me", "Cookie" -> cookie).body
+        val login    = http.login("DAVE_01", "secret1").isDefined
+        val taken    = reg(http, "Alice", "secret9")
+        val badName  = reg(http, "a!", "secret1")
+        val badPw    = reg(http, "frank", "123")
+        val longPw   = reg(http, "frank", "x" * 65)
+        val garbage  = http.post("/api/register", "nope").statusCode
+        val public   = List("/assets/version.json", "/assets/img/chrsel/0.json", "/assets/img/prguse/0_0.png", "/assets/sound/100.m4a").map(http.get(_).statusCode)
+        val private_ = List("/assets/img/chrsel/1.json", "/assets/img/hum/0.json", "/assets/sound/101.m4a", "/assets/data/game.json").map(http.get(_).statusCode)
+        // 上面已试 5 次（请求体解析不了的那次不算），再 5 次满 10 次，第 11 次挡住
+        val more     = (1 to 5).map(i => reg(http, s"spam$i", "secret1").statusCode)
+        val blocked  = reg(http, "spam9", "secret1").statusCode
+        (ok.statusCode, me, login, taken, badName, badPw, longPw.statusCode, garbage, public, private_, more, blocked)
+      }.map { case (ok, me, login, taken, badName, badPw, longPw, garbage, public, private_, more, blocked) =>
+        assertTrue(
+          ok == 200, me.contains("dave_01"), login,
+          taken.statusCode == 409, taken.body.contains("已被注册"),
+          badName.statusCode == 400, badName.body.contains("账号名"),
+          badPw.statusCode == 400, badPw.body.contains("密码"), longPw == 400, garbage == 400,
+          public == List(200, 200, 200, 200), private_ == List(401, 401, 401, 401),
+          more == Vector(200, 200, 200, 200, 200), blocked == 429
+        )
+      }
+    },
     test("两个机器人：建角色规则、同图互相看见、走和打对方看得到、断线重连状态不丢、重复登录踢旧连接") {
       val cfg = tempConfig()
       cli(cfg, "account", "add", "alice")("secret1"): Unit

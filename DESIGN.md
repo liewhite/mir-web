@@ -11,7 +11,7 @@
 ## 部署（用户 11-23 定）
 - 不放 muliao 页面（sandbox 无存储），做成独立 B/S：小服务端（静态+素材长缓存、登录、存档读写）。
 - 部署到 kaojiang 服务器（(服务器地址)，k3s + Traefik + cert-manager letsencrypt，admin@kaojiang，ssh 证书要用户批），域名 mir.leeliewhite.com（DNS 由 muliao 加）。
-- 公网域名 → 必须登录（只给用户一个账号），素材和存档都要登录后才能取。
+- 公网域名 → 必须登录，素材和存档都要登录后才能取（登录画面本身用的几张图和开门声除外）；11-24 起完全开放自助注册（用户定，不加邀请码，#1197），拿到网址的人都能注册。
 - kaojiang 服务器同时是 muliao 公网入口：不动 Traefik 本身，只加 Ingress；改网络前先问用户。
 
 ## 架构（领域划分）
@@ -47,12 +47,12 @@
       - 守卫按 Race 认（11/12/20/112），不再按名字（TS 版把沃玛卫士、祖玛卫士当成了守卫）。
     - `mir.view.ViewState`：客户端的视野副本，`apply(ServerMsg)` 纯函数折叠；测试里每一步都和世界对照。
   - `server/`（JVM，#1154；包 `mir.server`）：
-    - `http/HttpServer`（zio-http）：`POST api/login {account,password}` 设 cookie `mir_sess`（HMAC 签名、90 天，换 MIR_SESSION_SECRET 全部失效；同 IP 10 分钟失败 10 次 429）、`GET api/me`、`POST api/logout`、`GET ws`（cookie 有效才升级，一帧一条 JSON：客户端 ClientCmd、服务端 ServerMsg；连上先发 LoggedIn）；`assets/…` 登录后才给（缓存一周，version.json 除外），其余路径是 WEB_DIR 的客户端页面；ETag/304、文本类 gzip。
+    - `http/HttpServer`（zio-http）：`POST api/login {account,password}` 设 cookie `mir_sess`（HMAC 签名、90 天，换 MIR_SESSION_SECRET 全部失效；同 IP 10 分钟失败 10 次 429）、`POST api/register {account,password}`（#1197：自助注册，账号/密码格式同开号命令，重名 409、格式错 400，`{error}` 是给玩家看的中文；同 IP 1 小时试 10 次 429；成功即设 cookie）、`GET api/me`、`POST api/logout`、`GET ws`（cookie 有效才升级，一帧一条 JSON：客户端 ClientCmd、服务端 ServerMsg；连上先发 LoggedIn）；`assets/…` 登录后才给（`LoginScreenAssets` 白名单除外：version.json、chrsel 和 prguse 图集第 0 块、开门声 100；缓存一周，version.json 除外），其余路径是 WEB_DIR 的客户端页面；ETag/304、文本类 gzip。
     - `game/GameServer`：一个游戏线程每 50ms 一步（网络线程只投事件）：会话指令（列/建/删角色、进游戏、对时）自己办，游戏指令交给角色所在图的 World；推进有人的图 → flush → 按对象编号发给连接 → 换图的人交给目的地图（`game/Maps` 按需开图，开过的留着）。同一角色再登录踢旧连接（Kicked）、接着用在线状态；断线、换图、升级、每 30 秒、停服时存档；进不了存档里的图就回城、再不行回新手村。
     - `store/`：SQLite（DATA_DIR/mir.db，WAL）：accounts（scrypt，与旧 Node 版同参数）、characters（存档是 CharacterData JSON；每号最多 2 个，名字全服唯一、GBK 不超过 14 字节，删除只做标记）、counters（全服物品编号按 1000 一块领，服务端和命令行同时发也不撞）；每天备份 backup/mir-日期.db 留 30 份。
     - 命令行（`Main`）：`account add|passwd <账号>`（密码从标准输入读）、`account list`、`migrate <账号> <save.json> [角色名]`（旧单机存档导成角色，物品重新编号）。
     - 环境变量：PORT、HOST、ASSETS_DIR（public/assets）、WEB_DIR（scala/client/web）、DATA_DIR、MIR_SESSION_SECRET。本机：`cd scala && ASSETS_DIR=../public/assets WEB_DIR=client/web DATA_DIR=/tmp/mir-data MIR_SESSION_SECRET=<16位以上> sbt "server/run account add 名字"` 再 `sbt server/run`。
-    - 测试 `ServerSpec`：真起服务，两个机器人账号 HTTP 登录 + WebSocket：开号命令、素材要登录、建角色规则、互相看见、走和打、断线重连、踢旧连接、换图（含图上只剩一人时传走）、迁移命令。
+    - 测试 `ServerSpec`：真起服务，两个机器人账号 HTTP 登录 + WebSocket：开号命令、素材要登录、自助注册（成功即登录、重名、格式错、限频、登录画面素材免登录）、建角色规则、互相看见、走和打、断线重连、踢旧连接、换图（含图上只剩一人时传走）、迁移命令。
     - 部署 `deploy/jvm/deploy.sh`（sbt-assembly 打成 mir176.jar；JRE 21 放 /opt/mir176/jre；systemd 单元仍叫 mir176、端口和 Ingress 不变；服务器上命令行 `/opt/mir176/bin/mir176ctl`）。从 Node 版切过来在 #1148 做。
   - `client/`（Scala.js，#1155；照 TS 版 assets/render/audio/input/joystick/viewport 移植，画面与 TS 版逐像素对得上）：
     - 构建：`sbt client/fastLinkJS`（开发）/ `client/fullLinkJS`（发布，约 5MB）产物在 `client/web/js/main.js`（不进 git）；`client/web/` 是服务端在 `/` 提供的静态目录（index.html、style.css、图标）。
@@ -62,7 +62,7 @@
     - `net`：`Transport`（WsTransport / LocalServer）、`ServerClock`（进图粗定、Ping/Pong 按往返一半校正，只采信快的）。
     - `game`：`GameClient`（视野副本 + 一次性画面 + 发指令，不碰 DOM，测试里直接接 World 跑）、`SelfMotion`（本地先走：发 Walk/Run 同时本地走，MoveOk 才发下一步，MoveDenied 丢掉本地的回到服务端位置）、`Controller`（意图：摇杆走跑、点 NPC 走过去对话、点物品去捡、锁定攻击；自动喝药捡物还手烈火在服务端 AutoPlay）、`UiEvents`（给界面的一次性事件）。
     - `assets`（素材版本、图集块、地图格子 MapData、重试下载）、`render`（Frames 动作表、Renderer、Scene、Transients 特效飘字气泡）、`audio`、`input`（Joystick、Input：界面 Overlay 先接触摸和按键）。
-    - `ui`（#1156，照 TS 版 ui/classic 移植，外观操作一致）：`ClassicUi`（实现 UiEvents + Overlay；画面 Lobby/Select/Game、点击登记 `Hits`、悬停说明）、窗口统一管理（#1174）：每个窗口实现 `Window`（isOpen/draw/close，可选 itemAt/hover 给悬停说明），`ClassicUi.windows` 按从下到上排好，绘制、点击叠放、悬停、closeAll 都遍历它——新加窗口只写一个实现、在列表里排位置；底栏按钮和键盘共用 `UiAction`（键位表 `UiAction.Keys` 是数据）。窗口：`MerchantPanel`（买卖存取）、`BagWindow`、`StateWindow`（4 页 `StatePage`）、`SettingsWindow`、`TeleportPanel`、`KeyDialog`（技能快捷键）、`QuantityPanel`、`ItemMenuWindow`（触屏说明+操作弹框，最上层）；常驻 HUD：`Board`（原版底栏 + 叠在上方的摇杆/攻击键/F1–F8 技能环/锁定怪信息 + 传送键）、`MiniMap`、`CharSelect`（原版选人/建角色画面，ChrSel 图库）、`ChatInput`（回车或点聊天框弹网页输入框，「!」开头喊话）、`Describe`/`SkillInfo`（物品/属性/技能说明，纯函数；#1165 数值全部调 shared 规则现算：区间用 `Rng.lowest/highest`，概率用 `Odds` 枚举随机分支，规则常量在 Rules/Recovery/PotionRules/Durability/Pricing/SpellRules/SwordRules，不在说明里抄公式；技能环长按看说明）、`Hand`（拖物品：只是界面状态，放下时发 MoveItem/UseItem/DropItem，结果以服务端为准）、`SettingRow`（设置分两类：玩法类发 UpdateSettings 存角色上，画面声音类存 localStorage）、`Lobby`（加载页、登录网页表单）。所有改状态的操作都发 GameCmd，画的永远是视野副本。触屏设备（pointer: coarse）点物品弹说明+操作菜单（按触屏倍数放大），电脑点一下拿起、再点放下、双击使用。
+    - `ui`（#1156，照 TS 版 ui/classic 移植，外观操作一致）：`ClassicUi`（实现 UiEvents + Overlay；画面 Lobby/Select/Game、点击登记 `Hits`、悬停说明）、窗口统一管理（#1174）：每个窗口实现 `Window`（isOpen/draw/close，可选 itemAt/hover 给悬停说明），`ClassicUi.windows` 按从下到上排好，绘制、点击叠放、悬停、closeAll 都遍历它——新加窗口只写一个实现、在列表里排位置；底栏按钮和键盘共用 `UiAction`（键位表 `UiAction.Keys` 是数据）。窗口：`MerchantPanel`（买卖存取）、`BagWindow`、`StateWindow`（4 页 `StatePage`）、`SettingsWindow`、`TeleportPanel`、`KeyDialog`（技能快捷键）、`QuantityPanel`、`ItemMenuWindow`（触屏说明+操作弹框，最上层）；常驻 HUD：`Board`（原版底栏 + 叠在上方的摇杆/攻击键/F1–F8 技能环/锁定怪信息 + 传送键）、`MiniMap`、`CharSelect`（原版选人/建角色画面，ChrSel 图库）、`ChatInput`（回车或点聊天框弹网页输入框，「!」开头喊话）、`Describe`/`SkillInfo`（物品/属性/技能说明，纯函数；#1165 数值全部调 shared 规则现算：区间用 `Rng.lowest/highest`，概率用 `Odds` 枚举随机分支，规则常量在 Rules/Recovery/PotionRules/Durability/Pricing/SpellRules/SwordRules，不在说明里抄公式；技能环长按看说明）、`Hand`（拖物品：只是界面状态，放下时发 MoveItem/UseItem/DropItem，结果以服务端为准）、`SettingRow`（设置分两类：玩法类发 UpdateSettings 存角色上，画面声音类存 localStorage）、`Lobby`（加载页；没登录先进 `LoginScene`）、`LoginScene`（#1197，原版登录画面：石门 ChrSel 22 + 登录框 prguse 60，账号密码是盖在框上的网页表单；「提交」登录、「新用户」用框里的账号密码注册，成功后石门打开 ChrSel 23-32 再淡出进选人；不经 ClassicUi，自己管画布和监听，调 `net.AccountApi`）。所有改状态的操作都发 GameCmd，画的永远是视野副本。触屏设备（pointer: coarse）点物品弹说明+操作菜单（按触屏倍数放大），电脑点一下拿起、再点放下、双击使用。
     - `window.__mir` 另有 `screen()`、`chat()`、`bag()`、`worn()`、`gold()`、`sent()`（最近发出的游戏指令）、`goTo(x,y)`。
 - 测试：怪物行为（TS 版 7 项）、多人（互相看见、各打各的、掉落、换图消失、60 秒随机操作每步副本与世界一致、比奇省满图性能）、非法指令；game.json 完整解码与引用检查；规则与 TS 版逐条对照（`scala/testdata/ts-golden.json`，TS 规则改了就跑 `scala/testdata/gen-golden.sh` 重算）；协议每种消息往返（新加消息必须补样例，测试会查）。
 

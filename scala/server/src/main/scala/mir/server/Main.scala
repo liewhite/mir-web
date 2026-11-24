@@ -97,7 +97,7 @@ object Main:
   private def account(store: Store, args: List[String], readPw: () => Option[String]): Either[String, String] =
     def pw = readPw().map(_.trim).filter(_.nonEmpty).toRight("没有读到密码（从标准输入给一行）")
     args match
-      case List("add", name)    => pw.flatMap(store.accounts.add(name, _)).map(a => s"已开号 ${a.name}")
+      case List("add", name)    => pw.flatMap(store.accounts.add(name, _).left.map(_.message)).map(a => s"已开号 ${a.name}")
       case List("passwd", name) => pw.flatMap(store.accounts.setPassword(name, _)).map(a => s"已改密码 ${a.name}")
       case List("list") => Right(store.accounts.list().map((a, n) => s"${a.name}\t$n 个角色").mkString("\n"))
       case _            => Left("用法：account add|passwd <账号> | account list")

@@ -20,14 +20,14 @@
   <div class="box">
     <h1>热血传奇 1.76</h1>
     <div id="status">加载中…</div>
-    <form id="login" class="hidden">
-      <input id="account" name="account" placeholder="账号" autocomplete="username" autocapitalize="off">
-      <input id="password" type="password" placeholder="密码" autocomplete="current-password">
-      <button type="submit">登录</button>
-      <div id="login-error" class="err"></div>
-    </form>
   </div>
 </div>
+<!-- 原版登录画面（ui.LoginScene）上的账号、密码框：网页表单，手机能弹键盘、浏览器能记密码 -->
+<form id="login" class="hidden" autocomplete="on">
+  <input id="account" name="account" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="16">
+  <input id="password" name="password" type="password" autocomplete="current-password" maxlength="64">
+  <button type="submit" hidden></button>
+</form>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>

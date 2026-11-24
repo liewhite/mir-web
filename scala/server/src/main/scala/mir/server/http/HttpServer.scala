@@ -2,7 +2,7 @@ package mir.server.http
 
 import mir.protocol.{ClientCmd, SessionCmd}
 import mir.server.{Account, LinkId}
-import mir.server.auth.{LoginLimiter, SessionTokens}
+import mir.server.auth.{RateLimiter, SessionTokens}
 import mir.server.game.{GameServer, LinkEvent}
 import mir.server.store.Accounts
 import zio.*
@@ -16,12 +16,16 @@ import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
 /**
  * HTTP 与 WebSocket（接管旧 server/server.mjs 的职责）：
  * - `POST api/login {account,password}` 设会话 cookie（失败 401，同一 IP 10 分钟失败 10 次后 429）；`GET api/me`；`POST api/logout`。
+ * - `POST api/register {account,password}`：自助注册（完全开放，#1197），成功就已登录（设 cookie）；格式不对 400、重名 409，
+ *   正文 `{error}` 是给玩家看的中文；同一 IP 1 小时试 10 次后 429。
  * - `GET ws`：登录了才升级；一帧一条 JSON（客户端发 ClientCmd，服务端发 ServerMsg）。
- * - `assets/…`：素材，登录后才能取，浏览器缓存一周（version.json 除外）；其余路径是客户端页面（WEB_DIR），不用登录。
+ * - `assets/…`：素材，登录后才能取（登录画面本身要用的几个文件除外，见 `LoginScreenAssets`），
+ *   浏览器缓存一周（version.json 除外）；其余路径是客户端页面（WEB_DIR），不用登录。
  * - 都带 ETag（304），文本类大于 1KB 的 gzip。
  */
 final class HttpServer(accounts: Accounts, tokens: SessionTokens, game: GameServer, assetsDir: Path, webDir: Path):
-  private val limiter = LoginLimiter()
+  private val loginLimiter    = RateLimiter.login()
+  private val registerLimiter = RateLimiter.register()
   private val linkIds = AtomicLong(0)
 
   val routes: Routes[Any, Nothing] =
@@ -31,16 +35,17 @@ final class HttpServer(accounts: Accounts, tokens: SessionTokens, game: GameServ
     val p = req.path.encode
     val m = req.method
     val result: Task[Response] = (m, p) match
-      case (Method.POST, "/api/login")  => login(req)
+      case (Method.POST, "/api/login")    => login(req)
+      case (Method.POST, "/api/register") => register(req)
       case (Method.POST, "/api/logout") => ZIO.succeed(json(Status.Ok, """{"ok":true}""").addHeader("set-cookie", s"${SessionTokens.Cookie}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"))
       case (Method.GET, "/healthz")     => ZIO.succeed(json(Status.Ok, """{"ok":true}"""))
       case (Method.GET, "/api/me") =>
         account(req).map(_.fold(unauthorized)(a => json(Status.Ok, Map("account" -> a.name).toJson)))
       case (Method.GET, "/ws") => account(req).flatMap(_.fold(ZIO.succeed(unauthorized))(webSocket))
       case (Method.GET | Method.HEAD, _) if p == "/assets" || p.startsWith("/assets/") =>
-        if session(req).isEmpty then ZIO.succeed(unauthorized)
+        val rel = req.path.segments.drop(1)
+        if session(req).isEmpty && !LoginScreenAssets.allows(rel) then ZIO.succeed(unauthorized)
         else
-          val rel = req.path.segments.drop(1)
           val cache = if rel == Chunk("version.json") then "private, no-cache" else "private, max-age=604800"
           StaticFiles.serve(req, assetsDir, rel, cache)
       case (Method.GET | Method.HEAD, _) =>
@@ -53,28 +58,51 @@ final class HttpServer(accounts: Accounts, tokens: SessionTokens, game: GameServ
 
   // ---------------- 登录 ----------------
 
-  private final case class LoginReq(account: String, password: String)
-  private given JsonDecoder[LoginReq] = DeriveJsonDecoder.gen
+  /** 登录和注册的请求体 */
+  private final case class Credentials(account: String, password: String)
+  private given JsonDecoder[Credentials] = DeriveJsonDecoder.gen
 
   private def login(req: Request): Task[Response] =
+    limited(req, loginLimiter) { (ip, now, c) =>
+      ZIO.attemptBlocking(accounts.authenticate(c.account, c.password)).map {
+        case None =>
+          loginLimiter.hit(ip, now)
+          json(Status.Unauthorized, """{"error":"bad account or password"}""")
+        case Some(acc) => signedIn(req, acc, now)
+      }
+    }
+
+  /** 注册：每次尝试都记一次限频（不管成不成），成功直接登录。 */
+  private def register(req: Request): Task[Response] =
+    limited(req, registerLimiter) { (ip, now, c) =>
+      registerLimiter.hit(ip, now)
+      ZIO.attemptBlocking(accounts.add(c.account.trim, c.password)).flatMap {
+        case Right(acc) => ZIO.logInfo(s"注册账号 ${acc.name}（$ip）").as(signedIn(req, acc, now))
+        case Left(r) =>
+          val status = r match
+            case Accounts.Rejected.Taken(_)                                => Status.Conflict
+            case Accounts.Rejected.BadName | Accounts.Rejected.BadPassword => Status.BadRequest
+          ZIO.succeed(json(status, Map("error" -> r.message).toJson))
+      }
+    }
+
+  /** 先看这个 IP 有没有被限频、请求体对不对，再办事。 */
+  private def limited(req: Request, limiter: RateLimiter)(f: (String, Long, Credentials) => Task[Response]): Task[Response] =
     val ip  = clientIp(req)
     val now = java.lang.System.currentTimeMillis()
     if limiter.blocked(ip, now) then ZIO.succeed(json(Status.TooManyRequests, """{"error":"too many attempts"}"""))
     else
       req.body.asString.flatMap { body =>
-        body.fromJson[LoginReq] match
-          case Left(_) => ZIO.succeed(json(Status.BadRequest, """{"error":"bad request"}"""))
-          case Right(r) =>
-            ZIO.attemptBlocking(accounts.authenticate(r.account, r.password)).map {
-              case None =>
-                limiter.failed(ip, now)
-                json(Status.Unauthorized, """{"error":"bad account or password"}""")
-              case Some(acc) =>
-                val secure = if req.rawHeader("x-forwarded-proto").contains("https") then "; Secure" else ""
-                val cookie = s"${SessionTokens.Cookie}=${tokens.issue(acc.id, now)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SessionTokens.Days * 86400}$secure"
-                json(Status.Ok, Map("account" -> acc.name).toJson).addHeader("set-cookie", cookie)
-            }
+        body.fromJson[Credentials] match
+          case Left(_)  => ZIO.succeed(json(Status.BadRequest, """{"error":"bad request"}"""))
+          case Right(c) => f(ip, now, c)
       }
+
+  /** 登录成功：发会话 cookie。 */
+  private def signedIn(req: Request, acc: Account, now: Long): Response =
+    val secure = if req.rawHeader("x-forwarded-proto").contains("https") then "; Secure" else ""
+    val cookie = s"${SessionTokens.Cookie}=${tokens.issue(acc.id, now)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SessionTokens.Days * 86400}$secure"
+    json(Status.Ok, Map("account" -> acc.name).toJson).addHeader("set-cookie", cookie)
 
   private def session(req: Request) =
     req.cookie(SessionTokens.Cookie).flatMap(c => tokens.verify(c.content, java.lang.System.currentTimeMillis()))
@@ -120,6 +148,21 @@ final class HttpServer(accounts: Accounts, tokens: SessionTokens, game: GameServ
       .addHeader("cache-control", "no-store")
 
   private def unauthorized = json(Status.Unauthorized, """{"error":"login required"}""")
+
+/**
+ * 不登录也给的素材：原版登录画面要用的图和声音（#1197）——
+ * 素材版本号、ChrSel 图库第 0 块（石门背景 22、开门 23-32）、prguse 第 0 块（登录框 60、按钮 53/61/62/64）、开门声 100。
+ * 图集是整块下载的（SpriteStore），所以放开的是这两块的全部页。
+ */
+object LoginScreenAssets:
+  private val Blocks = Set("chrsel", "prguse")
+  private val Page   = "0_[0-9]+\\.png".r
+
+  def allows(rel: Chunk[String]): Boolean = rel.toList match
+    case List("version.json")                           => true
+    case List("sound", "100.m4a")                       => true
+    case List("img", lib, file) if Blocks.contains(lib) => file == "0.json" || Page.matches(file)
+    case _                                              => false
 
 /** 静态文件：ETag、304、gzip、缓存头。 */
 object StaticFiles:

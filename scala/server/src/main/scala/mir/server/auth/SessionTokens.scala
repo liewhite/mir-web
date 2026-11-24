@@ -42,15 +42,24 @@ object SessionTokens:
   val DefaultTtlMs: Long = Days * 86_400_000L
   val Cookie: String     = "mir_sess"
 
-/** 登录失败限流：每个 IP 10 分钟内最多失败 10 次（与旧服务端一样）。 */
-final class LoginLimiter(maxFails: Int = 10, windowMs: Long = 600_000L):
-  private val fails = mutable.Map.empty[String, List[Long]]
+/**
+ * 按 IP 限次数：窗口内记满 max 次就挡住，直到最早那次滑出窗口。
+ * 登录记失败次数（10 分钟 10 次，与旧服务端一样）、注册记尝试次数（RateLimiter.register）。
+ */
+final class RateLimiter(max: Int, windowMs: Long):
+  private val hits = mutable.Map.empty[String, List[Long]]
 
   private def recent(ip: String, now: Long): List[Long] =
-    val l = fails.getOrElse(ip, Nil).filter(now - _ < windowMs)
-    if l.isEmpty then fails.remove(ip) else fails(ip) = l
+    val l = hits.getOrElse(ip, Nil).filter(now - _ < windowMs)
+    if l.isEmpty then hits.remove(ip) else hits(ip) = l
     l
 
-  def blocked(ip: String, now: Long): Boolean = synchronized(recent(ip, now).size >= maxFails)
+  def blocked(ip: String, now: Long): Boolean = synchronized(recent(ip, now).size >= max)
 
-  def failed(ip: String, now: Long): Unit = synchronized(fails(ip) = now :: recent(ip, now))
+  def hit(ip: String, now: Long): Unit = synchronized(hits(ip) = now :: recent(ip, now))
+
+object RateLimiter:
+  /** 登录：10 分钟内失败 10 次 */
+  def login(): RateLimiter = RateLimiter(10, 600_000L)
+  /** 注册：1 小时内试 10 次（成功失败都算），挡住脚本批量开号 */
+  def register(): RateLimiter = RateLimiter(10, 3_600_000L)
