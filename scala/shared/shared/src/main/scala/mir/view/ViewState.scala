@@ -68,7 +68,7 @@ final case class ViewState(
     case ServerMsg.LoggedIn(_, _) | ServerMsg.CharList(_) | ServerMsg.Kicked(_) | ServerMsg.Effect(_) | ServerMsg.Sound(_, _) |
         ServerMsg.Damage(_, _, _) | ServerMsg.Miss(_) | ServerMsg.Heal(_, _) | ServerMsg.MoveOk | ServerMsg.MoveDenied(_, _) |
         ServerMsg.Refused(_) | ServerMsg.Notice(_, _) | ServerMsg.LevelUp(_) | ServerMsg.Died | ServerMsg.NpcOpened(_, _) |
-        ServerMsg.Chat(_, _, _) | ServerMsg.Whisper(_, _, _) =>
+        ServerMsg.Chat(_, _, _) | ServerMsg.Whisper(_, _, _) | ServerMsg.Announce(_) =>
       this
 
   def applyAll(msgs: Iterable[ServerMsg]): ViewState = msgs.foldLeft(this)(_.apply(_))

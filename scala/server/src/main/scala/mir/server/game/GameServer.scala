@@ -6,9 +6,10 @@ import mir.protocol.*
 import mir.server.{Account, LinkId}
 import mir.server.store.{Backups, Characters, StoredChar}
 import mir.social.{Directory, Letter, Seen, Social}
+import mir.server.admin.{AdminCmd, AdminReply}
 import mir.world.{Carried, CharacterData, Place, UidSource}
 
-import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.{CompletableFuture, ConcurrentLinkedQueue, TimeUnit, TimeoutException}
 import scala.collection.mutable
 import scala.util.control.NonFatal
 
@@ -59,10 +60,20 @@ final class GameServer(
 ):
   import GameServer.*
 
-  private val inbox = ConcurrentLinkedQueue[LinkEvent]()
+  private val inbox = ConcurrentLinkedQueue[LinkEvent | AdminRequest]()
 
   /** 任何线程都可以调用。 */
   def post(e: LinkEvent): Unit = inbox.add(e): Unit
+
+  /** 管理指令（#1243，管理入口 AdminSocket 来的）：任何线程都可以调用，游戏线程下一步执行后调 reply。 */
+  def admin(cmd: AdminCmd, reply: AdminReply => Unit): Unit = inbox.add(AdminRequest(cmd, reply)): Unit
+
+  /** 同上，等游戏线程回话（管理入口的连接线程用）；游戏线程 5 秒没回就当它卡住了。 */
+  def adminAndWait(cmd: AdminCmd): AdminReply =
+    val done = CompletableFuture[AdminReply]()
+    admin(cmd, done.complete(_): Unit)
+    try done.get(5, TimeUnit.SECONDS)
+    catch case _: TimeoutException => AdminReply.Failed("游戏线程 5 秒没有回应")
 
   // ---------------- 以下只在游戏线程里用 ----------------
 
@@ -118,7 +129,8 @@ final class GameServer(
     step()
     online.values.toVector.foreach(o => guard(s"停服存档 ${o.id}")(logout(o)))
 
-  private def handle(e: LinkEvent, now: Millis): Unit = e match
+  private def handle(e: LinkEvent | AdminRequest, now: Millis): Unit = e match
+    case AdminRequest(cmd, reply) => reply(execute(cmd))
     case LinkEvent.Opened(link) =>
       conns(link.id) = Conn(link, None, now)
       link.send(ServerMsg.LoggedIn(link.account.name, Build.commit))
@@ -142,6 +154,16 @@ final class GameServer(
               case Some(o) => post(social.handle(o.name, s, directory))
               case None    => c.link.send(ServerMsg.Refused("还没进入游戏"))
       }
+
+  /** 全服公告发给全部连接（含还在选人的），回话里列出游戏里在线的角色（部署前看有没有人在玩）。 */
+  private def execute(cmd: AdminCmd): AdminReply = cmd match
+    case AdminCmd.Announce(text) =>
+      conns.values.foreach(_.link.send(ServerMsg.Announce(text)))
+      val names = online.values.map(_.name).toVector.sorted
+      val who   = if names.isEmpty then "" else names.mkString("：", "、", "")
+      val sent  = s"发给 ${conns.size} 个连接，游戏里在线 ${online.size} 人$who"
+      System.err.println(s"公告：$text（$sent）")
+      AdminReply.Done(s"已$sent")
 
   private def session(c: Conn, cmd: SessionCmd): Unit =
     val account = c.link.account
@@ -249,6 +271,9 @@ final class GameServer(
 
 object GameServer:
   val StepMs: Long = 50
+
+  /** 一条管理指令和回话的去处（在游戏线程里调） */
+  private final case class AdminRequest(cmd: AdminCmd, reply: AdminReply => Unit)
 
   def summary(sc: StoredChar): CharSummary = CharSummary(sc.id, sc.data.name, sc.data.job, sc.data.sex, sc.data.level)
 

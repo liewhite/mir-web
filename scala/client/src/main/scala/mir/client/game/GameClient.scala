@@ -112,6 +112,7 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
         ui.chat(from, text, kind)
       // 私聊照原版只进聊天框，不在头上冒字
       case ServerMsg.Whisper(peer, text, way) => ui.whisper(peer, text, way)
+      case ServerMsg.Announce(text)         => ui.announce(text)
       case ServerMsg.Notice(text, tone)     => ui.notice(text, tone)
       case ServerMsg.Refused(why)           => ui.notice(why, Tone.Bad)
       case ServerMsg.LevelUp(lv)            => ui.levelUp(lv)

@@ -237,6 +237,11 @@ enum ServerMsg:
   case Whisper(peer: String, text: String, way: WhisperWay)
   /** 好友名单和各自在线与否（进游戏、增删、好友上下线时发整份） */
   case Friends(friends: List[FriendView])
+  /**
+   * 全服公告（#1243）：管理员在服务器本机发（mir176ctl announce，如部署重启前通知），发给全部连接（选人画面的也发）。
+   * 照原版 TUserEngine.SendBroadCastMsg(…, t_Notice)：聊天框里「〖公告〗内容」白字红底（调色板 $FF、$38）。
+   */
+  case Announce(text: String)
 
   /** 对时回应：带回客户端的 clientMs 和服务器此刻的时钟 */
   case Pong(clientMs: Long, server: Millis)

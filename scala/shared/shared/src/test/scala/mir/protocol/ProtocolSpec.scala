@@ -132,6 +132,7 @@ object ProtocolSpec extends ZIOSpecDefault:
     ServerMsg.Whisper("小红", "在吗", WhisperWay.Received),
     ServerMsg.Whisper("小红", "在", WhisperWay.Sent),
     ServerMsg.Friends(List(FriendView("小红", true), FriendView("小刚", false))),
+    ServerMsg.Announce("5 分钟后重启更新"),
     ServerMsg.Pong(1700000000000L, t0)
   )
 

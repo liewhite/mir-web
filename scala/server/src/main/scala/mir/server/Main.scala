@@ -2,6 +2,7 @@ package mir.server
 
 import mir.core.Millis
 import mir.data.Catalog
+import mir.server.admin.{AdminCmd, AdminReply, AdminSocket}
 import mir.server.auth.SessionTokens
 import mir.server.game.{GameServer, Maps}
 import mir.server.http.HttpServer
@@ -36,6 +37,7 @@ object Boot:
       game     = GameServer(catalog, maps, store.chars, store.uids, Some(Backups(store.db, cfg.backupDir)), clock,
                    idleTimeoutMs = cfg.liveness.idleTimeoutMs, social = social)
       _       <- ZIO.acquireRelease(ZIO.succeed(GameServer.run(game)))(stop => ZIO.attemptBlocking(stop()).orDie)
+      _       <- AdminSocket.serve(cfg.adminSocket, game.adminAndWait)
       http     = HttpServer(store.accounts, tokens, game, cfg.assetsDir, cfg.webDir, cfg.liveness.pingEveryMs)
       env     <- (ZLayer.succeed(Server.Config.default.binding(cfg.host, cfg.port)) >>> Server.live).build
       server   = env.get[Server]
@@ -52,20 +54,32 @@ object Boot:
  *   account passwd <账号>              改密码，同上
  *   account list                       列出账号和角色数
  *   migrate <账号> <save.json> [角色名]  把旧单机版存档导成这个账号下的一个角色
+ *   announce [内容]                    给正在跑的服务发全服公告（#1243）；不给内容就读标准输入
  */
 object Main:
   def main(args: Array[String]): Unit =
     val code = run(args.toList, ServerConfig.fromEnv(), () => readPassword())
     if code != 0 then sys.exit(code)
 
-  /** 执行一条命令，返回退出码。readPw：读一行密码（测试里换掉）。 */
-  def run(args: List[String], cfg: ServerConfig, readPw: () => Option[String]): Int = args match
+  /** 执行一条命令，返回退出码。readPw：读一行密码（测试里换掉）；readAll：读完标准输入（公告内容）。 */
+  def run(
+      args: List[String],
+      cfg: ServerConfig,
+      readPw: () => Option[String],
+      readAll: () => String = () => String(java.lang.System.in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+  ): Int = args match
     case Nil | List("serve") => serve(cfg)
     case "account" :: rest   => withStore(cfg)(account(_, rest, readPw))
     case List("migrate", acc, file)       => withStore(cfg)(migrate(_, acc, file, None))
     case List("migrate", acc, file, name) => withStore(cfg)(migrate(_, acc, file, Some(name)))
+    case "announce" :: words =>
+      val text = if words.isEmpty then readAll() else words.mkString(" ")
+      report(AdminCmd.announce(text).flatMap(AdminSocket.request(cfg.adminSocket, _)).flatMap {
+        case AdminReply.Done(out)    => Right(out)
+        case AdminReply.Failed(why)  => Left(why)
+      })
     case _ =>
-      java.lang.System.err.println("用法：serve | account add|passwd <账号> | account list | migrate <账号> <save.json> [角色名]")
+      java.lang.System.err.println("用法：serve | account add|passwd <账号> | account list | migrate <账号> <save.json> [角色名] | announce [内容]")
       2
 
   /** 一直跑到进程收到 SIGTERM（systemctl stop）：钩子里中断服务，走完 Scope 的收尾（在线角色存档、关库）再退出。 */
@@ -82,15 +96,17 @@ object Main:
 
   private def withStore(cfg: ServerConfig)(f: Store => Either[String, String]): Int =
     val store = Store(Db.open(cfg.dbFile))
-    try
-      f(store) match
-        case Right(out) =>
-          println(out)
-          0
-        case Left(err) =>
-          java.lang.System.err.println(err)
-          1
+    try report(f(store))
     finally store.db.close()
+
+  /** 成功打印到标准输出、退出码 0；失败打印到标准错误、退出码 1。 */
+  private def report(result: Either[String, String]): Int = result match
+    case Right(out) =>
+      println(out)
+      0
+    case Left(err) =>
+      java.lang.System.err.println(err)
+      1
 
   /** 终端里不回显；管道里读标准输入一行。 */
   private def readPassword(): Option[String] =

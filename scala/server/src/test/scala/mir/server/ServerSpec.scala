@@ -284,6 +284,41 @@ object ServerSpec extends ZIOSpecDefault:
         )
       }
     },
+    test("全服公告（#1243）：命令行经管理入口发给全部连接（游戏里的和选人的），回话列出在线角色；空的、太长的不发；服务没跑时报错") {
+      val cfg = tempConfig()
+      cli(cfg, "account", "add", "gina")("secret1"): Unit
+      cli(cfg, "account", "add", "hank")("secret1"): Unit
+      val before = cli(cfg, "announce", "没开服")()
+      def announce(stdin: String, words: String*): (Int, String) =
+        val out = java.io.ByteArrayOutputStream()
+        val code = scala.Console.withOut(out)(Main.run("announce" :: words.toList, cfg, () => None, () => stdin))
+        (code, out.toString("UTF-8").trim)
+      withServer(cfg) { http =>
+        val g = Bot(http, http.login("gina", "secret1").get)
+        enter(g, "公告甲", Job.Warrior)
+        val h = Bot(http, http.login("hank", "secret1").get) // 停在选人
+        h.await("LoggedIn") { case ServerMsg.LoggedIn(_, _) => () }
+        val perms = java.nio.file.Files.getPosixFilePermissions(cfg.adminSocket)
+        val sent  = announce("", "5 分钟后", "重启更新")
+        val inGame = g.await("游戏里收到公告") { case ServerMsg.Announce(t) => t }
+        val lobby  = h.await("选人画面收到公告") { case ServerMsg.Announce(t) => t }
+        val piped  = announce("  从标准输入读\n")
+        val viaIn  = g.await("标准输入的公告") { case ServerMsg.Announce(t) => t }
+        val empty  = announce("  \n")._1
+        val tooLong = announce("", "长" * (mir.server.admin.AdminCmd.MaxAnnounce + 1))._1
+        (perms, sent, inGame, lobby, piped, viaIn, empty, tooLong)
+      }.map { case (perms, sent, inGame, lobby, piped, viaIn, empty, tooLong) =>
+        assertTrue(
+          before == 1,
+          perms == java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"),
+          sent._1 == 0, sent._2 == "已发给 2 个连接，游戏里在线 1 人：公告甲",
+          inGame == "5 分钟后 重启更新", lobby == "5 分钟后 重启更新",
+          piped._1 == 0, viaIn == "从标准输入读",
+          empty == 1, tooLong == 1,
+          !java.nio.file.Files.exists(cfg.adminSocket) // 停服时删掉
+        )
+      }
+    },
     test("迁移旧单机存档") {
       val cfg  = tempConfig()
       val save = Files.createTempFile("save", ".json")

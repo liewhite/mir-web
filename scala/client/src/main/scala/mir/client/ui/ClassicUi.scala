@@ -152,6 +152,16 @@ final class ClassicUi(
     way match
       case WhisperWay.Received => push(ChatLine(s"$peer=> $text", "#0000ff", "#fff", Some(peer)))
       case WhisperWay.Sent     => push(ChatLine(s"${Speech.whisperTo(peer)}$text", "#104ade", "#fff", Some(peer)))
+  /**
+   * 全服公告（#1243）：照原版 SendBroadCastMsg(…, t_Notice)，前缀〖公告〗、白字红底（调色板 $FF、$38 = 220,0,0）。
+   * 进聊天框记录；在选人画面也在那里提示一下（进游戏后聊天框里还看得到）。
+   */
+  def announce(text: String): Unit =
+    val line = s"${ClassicUi.AnnouncePrefix}$text"
+    push(ChatLine(line, "#fff", "#dc0000"))
+    screen match
+      case Screen.Select(s) => s.notice(line)
+      case _                => ()
   def npcOpened(npc: ActorId, ref: MerchantRef): Unit = catalog.merchant(ref).foreach { d =>
     merchant.open(npc, d)
     bag.show()
@@ -433,6 +443,8 @@ final class ClassicUi(
 object ClassicUi:
   /** 聊天框留多少行 */
   val ChatKeep      = 200
+  /** 原版 M2Server 的 sLineNoticePreFix */
+  val AnnouncePrefix = "〖公告〗"
   val DoubleClickMs = 400.0
   /** 点按钮的音效（原版 s_glass_button_click） */
   val ButtonSound   = 105

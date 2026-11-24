@@ -18,6 +18,8 @@ trait UiEvents:
   def chat(from: String, text: String, kind: ChatKind): Unit
   /** 私聊（#1221）：peer 是对方 */
   def whisper(peer: String, text: String, way: WhisperWay): Unit
+  /** 全服公告（#1243） */
+  def announce(text: String): Unit
   def npcOpened(npc: ActorId, merchant: MerchantRef): Unit
   /** 交易窗口打开了（#1222） */
   def dealOpened(partner: String): Unit
@@ -35,6 +37,7 @@ object UiEvents:
     def notice(text: String, tone: Tone): Unit                 = ()
     def chat(from: String, text: String, kind: ChatKind): Unit = ()
     def whisper(peer: String, text: String, way: WhisperWay): Unit = ()
+    def announce(text: String): Unit                           = ()
     def npcOpened(npc: ActorId, merchant: MerchantRef): Unit   = ()
     def dealOpened(partner: String): Unit                      = ()
     def levelUp(level: Int): Unit                              = ()

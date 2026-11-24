@@ -21,6 +21,8 @@ final case class ServerConfig(
 ):
   def dbFile: Path    = dataDir.resolve("mir.db")
   def backupDir: Path = dataDir.resolve("backup")
+  /** 管理入口（#1243，mir.server.admin.AdminSocket）：只有服务账号连得上的 unix socket */
+  def adminSocket: Path = dataDir.resolve("admin.sock")
   def gameJson: Path  = assetsDir.resolve("data").resolve("game.json")
 
 /**
