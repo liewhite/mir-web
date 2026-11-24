@@ -29,9 +29,11 @@ final class Roster(w: World):
     p.longHitOn = data.longHitOn
     p.wideHitOn = data.wideHitOn
     p.social = data.social
+    p.pkPoints = math.max(0, data.pkPoints)
     carried.statuses.foreach(t => p.statuses.put(t.status, t.until))
     p.statuses.until(StatusKind.Paralyzed).foreach(p.busyUntil = _)
     p.potions = carried.potions
+    carried.pkDecayAt.foreach(p.pkDecayAt = _)
     w.vitals.restore(p, data.hp, data.mp)
     w.enter(p)
     w.out.tell(p, ServerMsg.EnterMap(p.id, w.mapId, p.cell, p.dir, w.now))
@@ -64,7 +66,7 @@ final class Roster(w: World):
       hp = Hp(p.hp), mp = Mp(p.mp), place = Place(w.mapId, p.cell), dir = p.dir, home = p.home,
       bag = p.bag.toVector, belt = p.belt.toVector, worn = p.worn.toMap, storage = p.storage.toList,
       skills = p.skills.toList, settings = p.settings, longHitOn = p.longHitOn, wideHitOn = p.wideHitOn,
-      social = p.social
+      social = p.social, pkPoints = p.pkPoints
     )
 
   /** 把玩家送到某处：同图直接挪过去（像重新进图），别的图交给服务端。 */
@@ -73,6 +75,7 @@ final class Roster(w: World):
     if to.map == w.mapId then
       val c = w.freeCellNear(to.cell).getOrElse(p.cell)
       w.grid.teleportActor(p, c)
+      p.arrivedAt = w.now
       p.pets.flatMap(w.actor).foreach(pet => w.freeCellNear(c).foreach(w.grid.teleportActor(pet, _)))
       w.resetView(p)
       w.out.tell(p, ServerMsg.EnterMap(p.id, w.mapId, p.cell, p.dir, w.now))
@@ -87,6 +90,6 @@ final class Roster(w: World):
         case Timed(q: Status.Poisoned, until) => Timed(q.copy(by = None), until)
         case t                                 => t
       }
-      w.out.depart(Departure(p.id, snapshot(p).copy(place = to), Carried(pets, statuses, p.potions)))
+      w.out.depart(Departure(p.id, snapshot(p).copy(place = to), Carried(pets, statuses, p.potions, Some(p.pkDecayAt))))
       w.remove(p)
       p.pets.flatMap(w.actor).foreach(w.remove)

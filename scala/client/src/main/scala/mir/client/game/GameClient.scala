@@ -169,11 +169,18 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
   def isEnemy(a: ActorView): Boolean =
     !a.dead && self.exists(me => me.id != a.id && Look.hostile(me.look, a.look, catalog.isGuard))
 
-  /** 锁定了能亲手打的：敌人，加上守卫（#1205，同原版；服务端同一条规则 Look.attackable）。自动找怪仍只找 isEnemy。 */
+  /**
+   * 锁定了能亲手打的：敌人，加上守卫（#1205，同原版；服务端同一条规则 Look.attackable），
+   * 加上安全区外的别的玩家和别人的宝宝（PK，#1225，服务端 Justice.duel 同一条 Look.duel + SafeZone）。
+   * 自动找怪仍只找 isEnemy，不会自己挑上人。
+   */
   def canAttack(a: ActorView): Boolean =
-    !a.dead && self.exists(me => me.id != a.id && Look.attackable(me.look, a.look, catalog.isGuard))
+    !a.dead && self.exists { me =>
+      me.id != a.id && (Look.attackable(me.look, a.look, catalog.isGuard) ||
+        view.map.exists(Look.duel(_, me.look, me.id, me.cell, a.look, a.cell)))
+    }
 
-  /** 自己人：活着的别的玩家和宝宝（不做组队和 PK，所有玩家都算；和服务端 SpellCtx.isFriend 同一口径）。 */
+  /** 自己人（治疗、加防的对象）：活着的别的玩家和宝宝（所有玩家都算；和服务端 SpellCtx.isFriend 同一口径）。 */
   def isFriend(a: ActorView): Boolean =
     !a.dead && self.exists(_.id != a.id) && a.look.side(catalog.isGuard).contains(mir.rules.Side.Players)
 

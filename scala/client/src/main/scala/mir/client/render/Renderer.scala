@@ -6,7 +6,7 @@ import mir.core.*
 import mir.data.Catalog
 import mir.model.{ActKind, Affliction, BodyTint, Cover, FieldKind, Mood}
 import mir.protocol.*
-import mir.rules.ItemKind
+import mir.rules.{ItemKind, PkStanding}
 import org.scalajs.dom
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits.*
 
@@ -397,7 +397,7 @@ final class Renderer(canvas: dom.HTMLCanvasElement, sprites: SpriteStore, assets
     }
 
   private def nameOf(a: ActorView, targeted: Boolean, o: ViewOptions): Option[(String, String)] = a.look match
-    case h: Look.Human => Some(h.name -> "#ffffff")
+    case h: Look.Human => Some(h.name -> Renderer.pkColor(h.pk))
     case Look.Npc(ref) => catalog.merchant(ref).map(_.name -> "#7fdcff")
     case Look.Monster(kind, _, master, mood) =>
       // 名字颜色：宝宝绿、发狂红（原版 0xF9）、被定住蓝紫（原版 0x7D，MonsterObject.GetChrColor）
@@ -434,5 +434,12 @@ object Renderer:
   val SpecialItemColor = "#3cf0ff"
   /** 比身上同部位那件强的装备（#1200）：粉紫色；既是极品又是提升时用它（更值得捡） */
   val UpgradeItemColor = "#ff7cf5"
+
+  /** 玩家名字颜色按 PK 身份（#1225，原版 btPKFlagNameColor $2F 灰、btPKLevel1NameColor $FB 黄、btPKLevel2NameColor $F9 红） */
+  def pkColor(s: PkStanding): String = s match
+    case PkStanding.Clean   => "#ffffff"
+    case PkStanding.Brawler => "#a8a8a8"
+    case PkStanding.Yellow  => "#ffff00"
+    case PkStanding.Red     => "#ff4040"
 
   private final case class Hit(id: ActorId, x: Double, y: Double, w: Double, h: Double, row: Int)

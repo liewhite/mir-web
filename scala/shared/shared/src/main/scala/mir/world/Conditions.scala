@@ -36,6 +36,8 @@ final class Conditions(w: World):
     val fresh = old.fold(Status.Poisoned(kind, power, w.now + SpellRules.PoisonTickMs, Some(by)))(o =>
       o.copy(power = math.max(o.power, power), by = Some(by)))
     addStatus(a, fresh, ms)
+    // 给人下毒也算动手（原版 RM_POISON → SetPKFlag）
+    w.actor(by).foreach(w.justice.assaulted(a, _))
 
   /** 麻痹（原版 STONE 状态）：这段时间不能动；不会把还没到期的缩短。 */
   private[world] def paralyze(a: Actor, ms: Long): Unit =

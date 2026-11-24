@@ -178,8 +178,8 @@ object ServerSpec extends ZIOSpecDefault:
       }.map { case (dupName, tooMany, delOnline, aSeesB, bSeesA, dest, walked, hit, back, kicked, again, oldClosed, moved, stillThere, home) =>
         assertTrue(
           dupName.contains("已被使用"), tooMany.contains("最多"), delOnline.contains("在线"),
-          aSeesB match { case Look.Human(n, Job.Taoist, _, _, _, _) => n == "小波"; case _ => false },
-          bSeesA match { case Look.Human(n, Job.Warrior, _, _, _, _) => n == "阿狸"; case _ => false },
+          aSeesB match { case Look.Human(n, Job.Taoist, _, _, _, _, _) => n == "小波"; case _ => false },
+          bSeesA match { case Look.Human(n, Job.Warrior, _, _, _, _, _) => n == "阿狸"; case _ => false },
           walked == dest, hit == ActKind.Attack, back == dest, kicked.nonEmpty, again == dest, oldClosed,
           moved == MapId("3"), stillThere == MapId("3"), home == MapId("0")
         )

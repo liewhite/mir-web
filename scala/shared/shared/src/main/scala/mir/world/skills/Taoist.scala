@@ -100,7 +100,8 @@ object Taoist:
         consume(a)
         val secs   = SpellRules.holyCurtainSecs(d, lv, sc)
         val caught = enemiesAround(aim, SpellRules.GroupRadius).collect {
-          case m: Monster if SpellRules.holyCurtainCatches(p.level, m.defn.level) => m
+          // 只困野怪（原版 MagMakeHolyCurtain：m_Master = nil）
+          case m: Monster if m.master.isEmpty && SpellRules.holyCurtainCatches(p.level, m.defn.level) => m
         }
         caught.foreach(w.conditions.seize(_, secs))
         if caught.nonEmpty then

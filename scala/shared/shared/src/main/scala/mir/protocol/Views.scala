@@ -2,15 +2,23 @@ package mir.protocol
 
 import mir.core.*
 import mir.model.*
-import mir.rules.{Side, Stats}
+import mir.rules.{PkStanding, SafeZone, Side, Stats}
 import zio.json.*
 
 /** 协议里用到的「看到的东西」：服务端只发客户端画面和界面需要的，不发怪物的内部状态。 */
 
 /** 一个对象长什么样。 */
 enum Look:
-  /** 玩家：名字、职业、性别、发型，武器和衣服（物品名，客户端查数据表取外观图号） */
-  case Human(name: String, job: Job, sex: Sex, hair: Int, weapon: Option[ItemName], dress: Option[ItemName])
+  /** 玩家：名字、职业、性别、发型，武器和衣服（物品名，客户端查数据表取外观图号），PK 身份（名字颜色，#1225） */
+  case Human(
+      name: String,
+      job: Job,
+      sex: Sex,
+      hair: Int,
+      weapon: Option[ItemName],
+      dress: Option[ItemName],
+      pk: PkStanding = PkStanding.Clean
+  )
   /** 怪物（含守卫、宝宝）：种类、藏身状态；master 是宝宝的主人；mood 是被定住/发狂（名字变色） */
   case Monster(kind: MonsterName, cover: Cover, master: Option[ActorId], mood: Mood = Mood.Calm)
   /** NPC：merchant 是 game.json merchants 里的下标（客户端据此取名字、外观、商品） */
@@ -38,9 +46,23 @@ object Look:
    * 服务端结算和客户端选目标共用；死活、是不是同一个由调用方看（外观里没有）。
    */
   def hostile(a: Look, b: Look, isGuard: MonsterName => Boolean): Boolean =
-    b.exposed && ((a.side(isGuard), b.side(isGuard)) match
-      case (Some(x), Some(y)) => Side.attacks(x, y)
-      case _                  => false)
+    b.exposed && ((a.side(isGuard), b) match
+      // 守卫见了红名就砍（#1225，原版 SuperGuard.Run / GuardUnit.IsProperTarget：PKLevel >= 2）
+      case (Some(Side.Guards), h: Human) => h.pk == PkStanding.Red
+      case (Some(x), _)                  => b.side(isGuard).exists(Side.attacks(x, _))
+      case _                             => false)
+
+  /**
+   * PK（#1225）：编号 aId、长这样的 a 能不能打 b——a 是玩家，b 是别的玩家或别人的宝宝（自己的宝宝不打）。
+   * 不分攻击模式（用户定），队友也打得到；双方都要在安全区外（原版 IsProtectTarget；打宝宝看宝宝站在哪，同原版 IsProperTarget）。
+   * 服务端结算（Justice.duel）和客户端锁定攻击（GameClient.canAttack）共用。
+   */
+  def duel(map: MapId, a: Look, aId: ActorId, aCell: Cell, b: Look, bCell: Cell): Boolean =
+    val kinds = (a, b) match
+      case (_: Human, _: Human)   => true
+      case (_: Human, m: Monster) => m.master.exists(_ != aId)
+      case _                      => false
+    kinds && !SafeZone.covers(map, aCell) && !SafeZone.covers(map, bCell)
 
   /**
    * 长这样的 a 能不能亲手打长这样的 b：敌对的，或者是玩家打守卫（#1205，同原版：守卫能选中来打，挨了打会还手）。
@@ -183,7 +205,9 @@ final case class SelfStats(
     hp: Hp,
     mp: Mp,
     gold: Gold,
-    stats: Stats
+    stats: Stats,
+    /** PK 值（#1225，Pk 规则） */
+    pkPoints: Int = 0
 )
 
 object SelfStats:

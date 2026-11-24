@@ -22,14 +22,27 @@ final class Hostility(w: World):
    * a 会不会打 b（自动找目标、范围攻击、挨打还手都按它，有方向）：都活着、不是同一个、a 的阵营打 b 的阵营
    * （Side.attacks：野怪不打守卫，所以挨了守卫的打也不还手，同原版 AnimalObject.Struck → IsProperTarget），埋着的、石像打不到；
    * 守卫和玩家平时不互打，但守卫被谁打了，Grudge.Ms 内把他当敌人（原版 GuardUnit.IsProperTarget 认 LastHiter）；
-   * 守卫和宝宝之间另看 guardVsPet（#1216）。
+   * 守卫和宝宝之间另看 guardVsPet（#1216）；守卫砍红名在 Look.hostile；宝宝护主打别的玩家和他的宝宝看 Justice.petDefends（#1225）。
+   * 玩家之间不算敌人（自动还手、自动找怪不会去打人），PK 算在 harms 里。
    */
   def isEnemy(a: Actor, b: Actor): Boolean =
-    alive(a, b) && (Look.hostile(a.look, b.look, w.catalog.isGuard) || grudge(a, b) || guardVsPet(a, b))
+    alive(a, b) && (Look.hostile(a.look, b.look, w.catalog.isGuard) || grudge(a, b) || guardVsPet(a, b) || petDefends(a, b))
 
-  /** a 能不能亲手打选中的 b：敌人，或者是玩家打守卫（Look.attackable）。所有攻击最终都过这一关（Vitals.strike）。 */
+  /**
+   * a 的攻击会不会伤到 b：敌人，加上 PK（#1225，Justice.duel：玩家打别的玩家、别人的宝宝，双方都在安全区外）。
+   * 范围攻击（半月、火墙、冰咆哮……）按它筛，所以队友也会被误伤。
+   */
+  def harms(a: Actor, b: Actor): Boolean =
+    isEnemy(a, b) || (alive(a, b) && w.justice.duel(a, b))
+
+  /** a 能不能亲手打选中的 b：harms，或者是玩家打守卫（Look.attackable）。所有攻击最终都过这一关（Vitals.strike）。 */
   def canAttack(a: Actor, b: Actor): Boolean =
-    isEnemy(a, b) || (alive(a, b) && Look.attackable(a.look, b.look, w.catalog.isGuard))
+    harms(a, b) || (alive(a, b) && Look.attackable(a.look, b.look, w.catalog.isGuard))
+
+  /** 宝宝护主（Justice.petDefends）：a 是玩家的宝宝 */
+  private def petDefends(a: Actor, b: Actor): Boolean = a match
+    case pet: Monster if pet.master.isDefined => w.justice.petDefends(pet, b)
+    case _                                    => false
 
   private def alive(a: Actor, b: Actor): Boolean = !a.dead && !b.dead && a.id != b.id
 

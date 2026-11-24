@@ -115,7 +115,7 @@ final class SpellCtx(
   val aimDir: Dir   = if aim == p.cell then p.dir else p.cell.dirTo(aim)
   val aimDir16: Int = if aim == p.cell then p.dir.code * 2 else p.cell.dir16(aim)
 
-  /** 自己人：活着的玩家和宝宝（不做组队和 PK，所有玩家都算）。 */
+  /** 自己人（治疗、加防的对象）：活着的玩家和宝宝，所有玩家都算（PK 时也能给别人加血）。 */
   def isFriend(a: Actor): Boolean =
     !a.dead && !w.isEnemy(p, a) && (a match
       case _: Player  => true
@@ -128,7 +128,8 @@ final class SpellCtx(
   /** 选中的够得着的自己人，没有就是自己 */
   def friendOrSelf: Actor = target.filter(a => isFriend(a) && a.cell.chebyshev(p.cell) <= SpellRules.CastRange).getOrElse(p)
 
-  def enemiesAround(c: Cell, r: Int): Vector[Actor] = w.actorsNow.filter(a => w.isEnemy(p, a) && a.cell.chebyshev(c) <= r)
+  /** 范围内打得到的（敌人，加上安全区外的别的玩家和他们的宝宝，#1225 w.harms） */
+  def enemiesAround(c: Cell, r: Int): Vector[Actor] = w.actorsNow.filter(a => w.harms(p, a) && a.cell.chebyshev(c) <= r)
   def friendsAround(c: Cell, r: Int): Vector[Actor] = w.actorsNow.filter(a => isFriend(a) && a.cell.chebyshev(c) <= r)
 
   /** 魔法打一下：必中，扣魔防。 */

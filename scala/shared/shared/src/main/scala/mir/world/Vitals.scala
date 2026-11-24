@@ -18,7 +18,7 @@ final class Vitals(w: World):
 
   /**
    * 一下攻击的完整结算（所有攻击都走这里）：是不是敌人 → 命中 → 扣防/魔防 → damage（红毒、魔法盾、扣血）。
-   * by 是攻击方，要还在这张图上、活着、打得了目标（canAttack：敌人，或玩家亲手打守卫；范围攻击在调用方先按 isEnemy 筛）；
+   * by 是攻击方，要还在这张图上、活着、打得了目标（canAttack：敌人、PK，或玩家亲手打守卫；范围攻击在调用方先按 harms 筛）；
    * None 是没有攻击方的伤害（冲撞撞墙自己挨的），不看敌我。
    */
   private[world] def strike(by: Option[Actor], target: Actor, blow: Blow): StrikeResult =
@@ -59,6 +59,7 @@ final class Vitals(w: World):
         target.lastHitBy = source
         source.foreach(provokeGuard(target, _))
         val src = source.flatMap(w.actor)
+        src.foreach(w.justice.assaulted(target, _))
         target match
           case m: Monster =>
             val shape = src.collect { case p: Player => p }.flatMap(weaponShape)
@@ -136,6 +137,7 @@ final class Vitals(w: World):
         p.potions = Nil
         w.out.tell(p, ServerMsg.Died)
         w.out.notice(p, "你死了。点「回城复活」回到城里。", Tone.Bad)
+        w.justice.died(p, killer)
       case _: Npc => ()
 
   /** 不给经验、不掉东西的死（自爆）。 */

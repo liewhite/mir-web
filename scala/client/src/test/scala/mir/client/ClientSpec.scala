@@ -247,6 +247,22 @@ object ClientSpec extends ZIOSpecDefault:
         onSelf.exists(c => c.target.isEmpty && c.cell == Cell(10, 10))
       )
     },
+    test("PK（#1225）：锁定别的玩家按攻击键就走过去打他，自己名字变灰；没锁定时攻击键只找怪") {
+      val r = Rig()
+      r.join(Cell(10, 10))
+      val d     = CharacterData.newbie(catalog, "乙", Job.Taoist, Sex.Male, UidSource.counter(5000))
+      val other = r.world.join(d.copy(place = Place(r.mapDef.id, Cell(13, 10))))
+      r.run(3000) // 过了进图保护（Pk.ArrivalGraceMs）
+      r.ctl.attack()
+      val noMonster = r.client.locked.isEmpty
+      r.ctl.tapActor(other)
+      val attackable = r.client.actor(other).exists(r.client.canAttack)
+      r.ctl.attack()
+      r.run(3000)
+      val hurt = r.world.actor(other).exists(a => a.isDead || a.currentHp < a.maxHp)
+      val gray = r.client.self.map(_.look).collect { case h: Look.Human => h.pk }.contains(mir.rules.PkStanding.Brawler)
+      assertTrue(noMonster, attackable, !r.client.isEnemy(r.client.actor(other).get), hurt, gray)
+    },
     test("点全景地图走过去：寻路走到那一格停下") {
       val r = Rig(blocked = (8 to 14).map(y => Cell(12, y)).toSet)
       r.join(Cell(10, 10))

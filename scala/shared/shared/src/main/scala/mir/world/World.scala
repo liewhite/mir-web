@@ -21,8 +21,16 @@ final case class Outbox(
 final case class Departure(player: ActorId, data: CharacterData, carried: Carried):
   def to: Place = data.place
 
-/** 换图时跟着人走、但不进存档的东西：宝宝、身上的限时状态、还没回完的药（时刻都是服务端统一的时钟）。 */
-final case class Carried(pets: List[PetData] = Nil, statuses: List[Timed] = Nil, potions: List[PotionCourse] = Nil)
+/**
+ * 换图时跟着人走、但不进存档的东西：宝宝、身上的限时状态（含灰名）、还没回完的药、下一次降 PK 值的时刻
+ * （时刻都是服务端统一的时钟；没有就从进图时重新计）。
+ */
+final case class Carried(
+    pets: List[PetData] = Nil,
+    statuses: List[Timed] = Nil,
+    potions: List[PotionCourse] = Nil,
+    pkDecayAt: Option[Millis] = None
+)
 
 /**
  * 组队（#1220）在世界这边的样子：队伍本身跨地图、归服务端（mir.social.Social），世界只问「这个人和谁一队」来分打怪经验。
@@ -50,7 +58,7 @@ object World:
  * - 随机数和时钟从外面传入（测试可固定）；没人的图 tick 什么也不做。
  * - 这里只放对象表、时钟、定时器和每次推进的顺序；各管一摊的部分在各自的类里，只对 world 包开放：
  *   Mailbox（要发的消息）、Placement（占位与移动：格子、朝向、动作只由它改）、Vitals（血蓝与生死：血量蓝量只由它改）、
- *   Conditions（身上状态、地上法术）、Hostility（敌我）、Roster（进出图）、Spawner（开图放 NPC 守卫、刷怪）、
+ *   Conditions（身上状态、地上法术）、Hostility（敌我）、Justice（PK：灰名、PK 值、红名掉东西）、Roster（进出图）、Spawner（开图放 NPC 守卫、刷怪）、
  *   Visibility（按视野算出每个玩家要收的消息）。
  */
 final class World(
@@ -81,6 +89,7 @@ final class World(
   private[world] val vitals: Vitals             = Vitals(this)
   private[world] val conditions: Conditions     = Conditions(this)
   private[world] val hostility: Hostility       = Hostility(this)
+  private[world] val justice: Justice           = Justice(this)
   private[world] val roster: Roster             = Roster(this)
   private[world] val spawner: Spawner           = Spawner(this, start)
   private[world] val visibility: Visibility     = Visibility(this)
@@ -88,7 +97,7 @@ final class World(
   // 对外（服务端、测试）开放的查询和进出图
   export grid.{occupant, canEnter, freeCellNear, randomSpot}
   export conditions.activeFields
-  export hostility.{canAttack, isEnemy}
+  export hostility.{canAttack, harms, isEnemy}
   export roster.{join, leave, snapshot}
   export visibility.{viewOf, visibleTo, fieldsVisibleTo}
 
@@ -151,7 +160,10 @@ final class World(
       val due = timers.filter(_.at <= clock).sortBy(t => (t.at.value, t.seq))
       timers.filterInPlace(_.at > clock)
       due.foreach(_.run())
-      players.toVector.foreach(vitals.drinkPotions)
+      players.toVector.foreach { p =>
+        vitals.drinkPotions(p)
+        justice.decay(p)
+      }
       spawner.run()
       actorsNow.foreach { a =>
         if actors.contains(a.id) then

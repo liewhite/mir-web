@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.{MerchantDef, MonsterDef, MonsterLook, Span}
 import mir.model.*
 import mir.protocol.{ActionView, FieldView, GroundThing, GroundView, Look}
-import mir.rules.{PetBody, Skill, Stats}
+import mir.rules.{PetBody, Pk, Skill, Stats}
 
 import scala.collection.mutable
 
@@ -102,12 +102,23 @@ final class Player(id: ActorId, val charName: String, val job: Job, val sex: Sex
   private[world] var lastPotion: Millis  = Millis.zero
   /** 还在回血回蓝的普通药（可以叠着喝） */
   private[world] var potions: List[PotionCourse] = Nil
+  // PK（#1225，规则见 mir.rules.Pk，由 Justice 改）
+  /** PK 值（存档） */
+  private[world] var pkPoints: Int = 0
+  /** 下一次在线降 PK 值的时刻 */
+  private[world] var pkDecayAt: Millis = now + Pk.DecayMs
+  /** 最近打了我的玩家和时刻（宝宝护主用，原版 Master.LastHiter） */
+  private[world] var assailant: Option[Grudge] = None
+  /** 进图（含同图传送）的时刻：刚到的 Pk.ArrivalGraceMs 内不能打人、不挨人打（原版 m_dwMapMoveTick） */
+  private[world] var arrivedAt: Millis = now
 
   def maxHp: Int   = stats.maxHp
   def ac: Span     = stats.ac
   def mac: Span    = stats.mac
   def agility: Int = stats.agility
-  def look: Look   = Look.Human(charName, job, sex, hair, worn.get(EquipSlot.Weapon).map(_.name), worn.get(EquipSlot.Dress).map(_.name))
+  def brawler: Boolean = statuses.has(StatusKind.Brawler)
+  def look: Look   =
+    Look.Human(charName, job, sex, hair, worn.get(EquipSlot.Weapon).map(_.name), worn.get(EquipSlot.Dress).map(_.name), Pk.standing(pkPoints, brawler))
 
   def skill(id: SkillId): Option[LearnedSkill] = skills.find(_.id == id)
   def knows(s: Skill): Boolean                 = skill(s.id).isDefined
@@ -176,7 +187,7 @@ final class Monster(id: ActorId, val defn: MonsterDef, val behavior: Behavior, i
     else Mood.Calm
   def look: Look   = Look.Monster(defn.name, cover, master, mood)
 
-/** 守卫记的仇：谁、最后一次打它的时刻。 */
+/** 记的仇：谁、最后一次打它的时刻（守卫记打它的人；玩家记打他的玩家，给宝宝护主用）。 */
 final case class Grudge(by: ActorId, at: Millis)
 
 object Grudge:

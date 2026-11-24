@@ -90,7 +90,7 @@ object Combat:
     if style == HitStyle.Long then
       // 刺杀：隔一格的目标威力按等级打折、不扣防御（SkillAttackDamage + AttackDirect）
       val lp = SwordRules.longPower(power, p.skillLevel(Skill.LongHit))
-      w.occupant(p.cell.step(dir, 2)).filter(w.isEnemy(p, _)).foreach { t2 =>
+      w.occupant(p.cell.step(dir, 2)).filter(w.harms(p, _)).foreach { t2 =>
         if lp > 0 then physicalHit(w, p, t2, lp, ignoreArmor = true)
         train(w, p, Skill.LongHit.id, 1)
       }
@@ -98,7 +98,7 @@ object Combat:
       // 半月：身边一圈（除了正前方）都打到
       val pw = SwordRules.widePower(power, p.skillLevel(Skill.WideHit))
       List(1, 2, 6, 7, 3, 5, 4).foreach { k =>
-        w.occupant(p.cell.step(dir.turn(k))).filter(w.isEnemy(p, _)).foreach(physicalHit(w, p, _, pw, ignoreArmor = false))
+        w.occupant(p.cell.step(dir.turn(k))).filter(w.harms(p, _)).foreach(physicalHit(w, p, _, pw, ignoreArmor = false))
       }
       train(w, p, Skill.WideHit.id, 1)
     // 练剑术、攻杀计数（PlayObject.Attack.cs:360、943）

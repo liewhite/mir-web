@@ -30,7 +30,7 @@ private[world] object Rush:
       val rooted = a match
         case m: Monster => m.behavior.rooted
         case _          => false
-      w.isEnemy(p, a) && !rooted && SpellRules.rushPushes(p.level, skills.SpellCtx.levelOf(a), level)
+      w.harms(p, a) && !rooted && SpellRules.rushPushes(p.level, skills.SpellCtx.levelOf(a), level)
 
     /** 面前有人时：每一步先推它、再跟进。返回（推成功几次、自己走了几格、最后推的对象）。 */
     @tailrec def shoveAlong(i: Int, pushes: Int, moved: Int, victim: Option[Actor]): (Int, Int, Option[Actor]) =

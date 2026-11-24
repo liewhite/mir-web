@@ -39,7 +39,9 @@ final case class CharacterData(
     longHitOn: Boolean,
     wideHitOn: Boolean,
     /** 社交偏好（#1220）：世界只原样带着（进图时的值），在线时的当前值归服务端 mir.social，存档时由服务端填上 */
-    social: SocialPrefs = SocialPrefs()
+    social: SocialPrefs = SocialPrefs(),
+    /** PK 值（#1225；旧存档没有这个字段算 0） */
+    pkPoints: Int = 0
 ):
   /** 身上和仓库里全部物品（找最大编号、查重用）。 */
   def allItems: List[ItemInstance] = bag.flatten.toList ++ belt.flatten ++ worn.values ++ storage

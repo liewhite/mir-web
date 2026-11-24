@@ -8,7 +8,7 @@ import scala.collection.mutable
 /** 身上限时状态的种类：同一种身上只有一个，再上一次覆盖或续上。 */
 enum StatusKind:
   /** 绿毒、红毒各算一种，身上可以同时有（原版 POISON_DECHEALTH / POISON_DAMAGEARMOR 两个状态位） */
-  case GreenPoison, RedPoison, Shield, Invisible, Paralyzed, ArmorUp, MagicArmorUp, Seized, Crazy
+  case GreenPoison, RedPoison, Shield, Invisible, Paralyzed, ArmorUp, MagicArmorUp, Seized, Crazy, Brawler
 
 object StatusKind:
   def poison(k: PoisonKind): StatusKind = k match
@@ -41,6 +41,8 @@ enum Status(val kind: StatusKind):
   case Seized extends Status(StatusKind.Seized)
   /** 怪发狂（诱惑之光失败）：见谁打谁；宝宝不会发狂 */
   case Crazy extends Status(StatusKind.Crazy)
+  /** 玩家灰名（#1225，原版 PKFlag）：刚动手打了清白的人，见 mir.rules.Pk */
+  case Brawler extends Status(StatusKind.Brawler)
 
 /** 一个状态和它的到期时刻。 */
 final case class Timed(status: Status, until: Millis)

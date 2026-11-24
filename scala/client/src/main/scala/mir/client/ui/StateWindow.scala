@@ -96,7 +96,8 @@ final class StateWindow(ui: ClassicUi) extends Window:
       ("毒物躲避", s"${s.poisonAvoid}", false),
       ("攻击间隔", s"${s.hitInterval}ms", false),
       ("体力恢复", s"${Recovery.hpPerTick(s)}/${Recovery.IntervalMs / 1000}秒", false),
-      ("魔法恢复", s"${Recovery.mpPerTick(s)}/${Recovery.IntervalMs / 1000}秒", false)
+      ("魔法恢复", s"${Recovery.mpPerTick(s)}/${Recovery.IntervalMs / 1000}秒", false),
+      ("PK 值", st.pkPoints.toString, mir.rules.Pk.level(st.pkPoints) > 0)
     )
     rows.zipWithIndex.foreach { case ((k, v, bad), i) =>
       g.text(k, bx, by + 14 * i, "#c0c0c0")

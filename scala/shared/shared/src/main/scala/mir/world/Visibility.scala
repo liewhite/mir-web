@@ -52,7 +52,7 @@ final class Visibility(w: World):
   /** 自己的全部界面状态。 */
   private[world] def selfView(p: Player): SelfView =
     SelfView(
-      stats = SelfStats(p.level, p.exp, w.catalog.expToNext(p.level), Hp(p.hp), Mp(p.mp), p.gold, p.stats),
+      stats = SelfStats(p.level, p.exp, w.catalog.expToNext(p.level), Hp(p.hp), Mp(p.mp), p.gold, p.stats, p.pkPoints),
       bag = p.bag.toVector, belt = p.belt.toVector, worn = p.worn.toMap, storage = p.storage.toList, skills = p.skills.toList,
       cooldowns = p.cooldown.toMap,
       status = selfStatus(p),

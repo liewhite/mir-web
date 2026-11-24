@@ -176,8 +176,8 @@ final class Board(ui: ClassicUi):
   // ---------------- 触屏操作件（用户 #1140） ----------------
 
   /**
-   * 锁定对象的信息卡：怪是名字、等级、攻防、经验（倍率后），中了毒或麻痹再加一行；宝宝绿框；别的玩家只有名字、职业，
-   * 下面一排键：组队（#1220：没组队「组队」、自己是队长时「加入小组」/「踢出小组」，队员没有）、
+   * 锁定对象的信息卡：怪是名字、等级、攻防、经验（倍率后），中了毒或麻痹再加一行；宝宝绿框；别的玩家是名字、职业、灰/黄/红名
+   * （#1225；安全区外打得到时红框，提醒攻击键会打他），下面一排键：组队（#1220：没组队「组队」、自己是队长时「加入小组」/「踢出小组」，队员没有）、
    * 「私聊」（聊天框填好「/名字 」）、「加好友」/「删好友」（#1221）。都有血条，右上角 × 取消锁定。
    */
   private def drawTarget(m: Me, top: Double): Unit =
@@ -186,7 +186,10 @@ final class Board(ui: ClassicUi):
       a    <- ui.client.actor(id)
       base <- targetCard(a.look)
     do
-      val card = base.copy(lines = base.lines ++ afflictionLine(a.afflictions))
+      val side = a.look match
+        case _: Look.Human => base.copy(friend = !ui.client.canAttack(a))
+        case _             => base
+      val card = side.copy(lines = side.lines ++ afflictionLine(a.afflictions))
       val sickColor = Affliction.tint(a.afflictions).map(tintColor)
       val x = math.round((ui.W - TargetW) / 2).toDouble
       val r = Rect(x, top, TargetW, 37 + 15 * card.lines.size)
@@ -252,7 +255,7 @@ final class Board(ui: ClassicUi):
     case BodyTint.Gray  => "#d0d0d0"
 
   private def targetCard(look: Look): Option[TargetCard] = look match
-    case h: Look.Human => Some(TargetCard(s"${h.name}  ${h.job.label}", friend = true, Nil))
+    case h: Look.Human => Some(TargetCard(s"${h.name}  ${h.job.label}", friend = true, Describe.pkStandingLine(h.pk).toList))
     case m: Look.Monster =>
       ui.catalog.monster(m.kind).map { d =>
         val pet = m.master.isDefined

@@ -3,7 +3,7 @@ package mir.client.ui
 import mir.data.{Catalog, ItemDef, SkillDef, Span}
 import mir.model.{EquipSlot, ItemBonus, ItemInstance, Job, LearnedSkill, PoisonKind}
 import mir.protocol.SelfStats
-import mir.rules.{Upgrade, Charges, Durability, Rates, ItemEffects, ItemKind, PotionRules, Pricing, Recovery, Requirement, Rules, ScrollEffect, dressSex}
+import mir.rules.{Pk, PkStanding, SafeZone, Upgrade, Charges, Durability, Rates, ItemEffects, ItemKind, PotionRules, Pricing, Recovery, Requirement, Rules, ScrollEffect, dressSex}
 
 /**
  * 把物品、属性、技能讲成可量化的说明（用户 #1165：所有效果给精确数值）。纯函数，只出文字。
@@ -212,7 +212,36 @@ object Describe:
       Option.when(s.magicAvoid != 0)(Line(s"魔法躲避 ${s.magicAvoid}$notYet", Tint.Dim)),
       Option.when(s.poisonAvoid != 0)(Line(s"毒物躲避 ${s.poisonAvoid}$notYet", Tint.Dim)),
       Some(Line("包裹、穿戴、武器都不限重量，包裹只看格子", Tint.Dim))
-    ).flatten
+    ).flatten ++ pkLines(me.pkPoints)
+
+  /**
+   * PK 值和它的后果（#1225，数值都取自 mir.rules.Pk）。
+   */
+  def pkLines(points: Int): List[Line] =
+    val red      = Pk.deathDrop(Pk.pointsFor(2)).fold(0)(_.wornOdds)
+    val deepRed  = Pk.deathDrop(Pk.pointsFor(3)).fold(0)(_.wornOdds)
+    val decayMin = Pk.DecayMs / 60_000
+    val now = Pk.standing(points, brawler = false) match
+      case PkStanding.Red    => Line(s"PK 值 $points：红名", Tint.Bad)
+      case PkStanding.Yellow => Line(s"PK 值 $points：黄名", Tint.Bad)
+      case _                 => Line(s"PK 值 $points")
+    List(
+      now,
+      Line(s"安全区外玩家之间能互相攻击，队友也会被范围技能误伤；安全区：各城出生点横竖 ${SafeZone.Radius} 格内", Tint.Dim),
+      Line(s"杀不是红名、不是灰名的玩家 PK 值 +${Pk.KillPoints}；在线每 $decayMin 分钟降 1", Tint.Dim),
+      Line(s"先动手打清白的人名字变灰 ${Pk.FlagMs / 1000} 秒：别人还手、杀你都不算犯罪", Tint.Dim),
+      Line(
+        s"PK 值 ${Pk.pointsFor(1)}+ 黄名，${Pk.pointsFor(2)}+ 红名：守卫见了就砍，死了包裹全掉、身上每件 1/$red 掉（${Pk.pointsFor(3)}+ 是 1/$deepRed）；不是红名死了不掉东西",
+        Tint.Dim
+      )
+    )
+
+  /** 锁定别的玩家时信息卡上的灰/黄/红名说明（清白的不写） */
+  def pkStandingLine(s: PkStanding): Option[String] = s match
+    case PkStanding.Clean   => None
+    case PkStanding.Brawler => Some("灰名：刚动手打了人，杀他不算犯罪")
+    case PkStanding.Yellow  => Some("黄名：杀过人")
+    case PkStanding.Red     => Some("红名：杀他不算犯罪，守卫见了就砍")
 
   /** 技能说明（每级精确数值，见 SkillInfo）。 */
   def skillLines(catalog: Catalog, d: SkillDef, ls: LearnedSkill, me: SelfStats): List[Line] = SkillInfo.lines(catalog, d, ls, me)
