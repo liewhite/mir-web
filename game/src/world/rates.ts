@@ -15,6 +15,8 @@ export const RATES = {
   highEquipLevel: 20,
   /** 打死一只怪最多掉几件物品（金币不算，#1241；只在 Scala 版实现） */
   maxDropsPerKill: 10,
+  /** boss（BOSSES）刷新间隔最长几分钟，刷怪表里更短的不变（用户 11-25 在 #1262 定；只在 Scala 版实现） */
+  bossRespawnMaxMinutes: 120,
   /** 战士的攻击、防御、魔防（上下限都乘，含装备加成，四舍五入）倍数（用户 11-24 在 #1176 定） */
   warriorBody: 1.5,
   /** 技能每级要的熟练度除以这个数（向上取整、至少 1；用户 11-24 在 #1179 定） */

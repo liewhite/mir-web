@@ -2,6 +2,7 @@ package mir.world
 
 import mir.core.*
 import mir.data.{MonsterDef, SpawnDef}
+import mir.rules.Rates
 
 import scala.collection.mutable
 
@@ -32,7 +33,7 @@ final class Spawner(w: World, start: Millis):
             case _          => false
           }
           (alive until math.min(s.count, alive + 40)).foreach(_ => spawnMonster(d, Some(i), s.at, s.radius))
-          due(i) = w.now + math.max(1, s.minutes) * 60_000L
+          due(i) = w.now + math.max(1, Rates.respawnMinutes(s.monster, s.minutes)) * 60_000L
   }
 
   /** 在 at 周围 radius 格内找空格放一只怪（找不到就扩大范围找）。 */

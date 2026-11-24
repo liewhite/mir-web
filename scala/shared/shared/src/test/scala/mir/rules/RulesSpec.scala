@@ -146,6 +146,19 @@ object RulesSpec extends ZIOSpecDefault:
           Rates.dropChance(MonsterRank.Boss, DropDef(DropDef.GoldName, 1, 100, 50), None) == 0.2
         )
       },
+      test("boss 刷新最长 2 小时，表里更短的和普通怪照表（#1262）") {
+        def minutesOf(name: String) =
+          val m = MonsterName(name)
+          catalog.data.spawns.filter(_.monster == m).map(s => Rates.respawnMinutes(m, s.minutes)).toSet
+        val bossMax = catalog.data.spawns.filter(s => Rates.bosses(s.monster)).map(s => Rates.respawnMinutes(s.monster, s.minutes)).max
+        assertTrue(
+          minutesOf("赤月恶魔") == Set(120), // 表里 360
+          minutesOf("祖玛教主") == Set(120), // 表里 180
+          minutesOf("石墓尸王") == Set(60),  // 表里 60，不变
+          bossMax == 120,
+          Rates.respawnMinutes(MonsterName("祖玛卫士3"), 360) == 360
+        )
+      },
       test("一只怪最多掉 10 件：多了留原版爆率最低的，同爆率按表顺序；可叠的一叠算一件（#1241）") {
         def item(n: String) = catalog.item(ItemName(n)).get
         def row(n: String, den: Int, amount: Int = 1) = DropDef(ItemName(n), 1, den, amount)

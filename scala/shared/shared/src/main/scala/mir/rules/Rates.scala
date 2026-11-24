@@ -29,6 +29,13 @@ object Rates:
     "暗之沃玛教主", "暗之牛魔王", "暗之双头金刚", "暗之双头血魔", "暗之黄泉教主", "暗之虹魔教主"
   ).map(MonsterName(_))
   def rankOf(m: MonsterName): MonsterRank = if bosses(m) then MonsterRank.Boss else MonsterRank.Common
+  /** boss 刷新间隔最长几分钟（用户 11-25 在 #1262 定：最长 2 小时）；刷怪表里更短的不变，普通怪不变 */
+  val bossRespawnMaxMinutes: Int = 120
+
+  /** 刷怪点实际的补怪间隔（分钟）：刷怪表的分钟数，boss 再封顶 bossRespawnMaxMinutes。 */
+  def respawnMinutes(m: MonsterName, tableMinutes: Int): Int = rankOf(m) match
+    case MonsterRank.Boss   => math.min(tableMinutes, bossRespawnMaxMinutes)
+    case MonsterRank.Common => tableMinutes
   /** 打死一只怪最多掉几件物品（金币不算；一叠可叠物算一件；#1241），多了按 DropRules.cap 留最稀有的 */
   val maxDropsPerKill: Int = 10
   /** 诱惑之光收服概率倍数（用户 11-23 在 #1163 要求提升；原版 3 级技能对低级怪约 5%），最高 100% */
