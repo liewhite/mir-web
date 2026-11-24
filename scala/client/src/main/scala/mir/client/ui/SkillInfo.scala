@@ -128,7 +128,7 @@ object SkillInfo:
       case Skill.Rush => Some(l => s"冲 ${SpellRules.rushSteps(l)} 格，撞 ${span(r => SpellRules.rushImpact(l, 0)(using r))}")
       case Skill.WideHit => Some(l => s"旁边 ${melee(SwordRules.widePower(_, l))}")
       case Skill.FireSword => Some(l => s"${melee(SwordRules.firePower(_, l))}")
-      case Skill.LongHit => None
+      case Skill.LongHit => Some(l => s"隔一格 ${pct(SwordRules.longPower(100, l) / 100.0)}")
 
     def effect(skill: Skill, l: Int): List[String] = skill match
       case Skill.FireBall | Skill.GreatFireBall => List(s"打一个目标（最远 $R 格），威力 ${mcDmg(l)}$armor", s"威力 = 技能基础 + 你的魔法 ${mc.lo}-${mc.hi}")
@@ -224,7 +224,11 @@ object SkillInfo:
           s"准确 +${SwordRules.powerHitHit(l)}",
           s"拿武器每砍 ${SwordRules.powerHitEvery(l)} 刀随机一刀是攻杀，威力 +${SwordRules.powerHitPower(0, l)}（你的攻杀 ${melee(SwordRules.powerHitPower(_, l))}，再减防御）"
         )
-      case Skill.LongHit => List("开着时，普攻同时打到正前方隔一格的敌人，威力相同、无视防御（等级不影响威力）")
+      case Skill.LongHit =>
+        List(
+          s"开着时，普攻同时打到正前方隔一格的敌人，那下威力是这一刀的 ${pct(SwordRules.longPower(100, l) / 100.0)}（0 级 40%，每级 +20%，3 级 100%）",
+          s"隔一格那下你是 ${melee(SwordRules.longPower(_, l))}，不扣对方防御，但可能被躲开"
+        )
       case Skill.WideHit =>
         List(
           s"开着时每刀耗魔法 ${SwordRules.WideHitMp}，魔法不够就是普通一刀",

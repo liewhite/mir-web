@@ -154,6 +154,13 @@ object RulesSpec extends ZIOSpecDefault:
           Odds.of(limit = 10)(r => r.random(100)).isEmpty
         )
       },
+      test("刺杀隔一格威力：0 级 40%，每级 +20%，3 级 100%") {
+        assertTrue(
+          (0 to 3).map(SwordRules.longPower(100, _)) == Vector(40, 60, 80, 100),
+          SwordRules.longPower(7, 0) == 3, // 2.8 四舍五入
+          SwordRules.longPower(1, 0) == 0
+        )
+      },
       test("诱惑之光原版流程各结果概率和为 1") {
         val m = Odds.of()(r => SpellRules.tameOriginal(20, 1, SpellRules.TameTarget(20, 200, false))(using r)).get
         assertTrue(math.abs(m.values.sum - 1.0) < 1e-9, m.keySet.contains(SpellRules.TameOutcome.Tamed))

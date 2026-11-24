@@ -22,6 +22,12 @@ object SwordRules:
   /** 攻杀那一刀的威力：+ (5 + 等级)（HitPlus）。 */
   def powerHitPower(power: Int, level: Int): Int = power + 5 + level
 
+  /** 刺杀剑术最高等级（原版 TrainLv）。 */
+  val LongHitMaxLevel = 3
+
+  /** 刺杀隔一格那下的威力 = 这一刀 ÷(最高等级+2)×(等级+2)：0 级 40%、3 级 100%（PlayObject.Attack.cs:150）。 */
+  def longPower(power: Int, level: Int): Int = round(power / (LongHitMaxLevel + 2.0) * (level + 2))
+
   /** 半月弯刀每刀耗的魔法。 */
   val WideHitMp = 3
 

@@ -88,9 +88,10 @@ object Combat:
       case _             => ()
     target.foreach(physicalHit(w, p, _, power, ignoreArmor = false))
     if style == HitStyle.Long then
-      // 刺杀：隔一格的目标无视防御（AttackDirect）
+      // 刺杀：隔一格的目标威力按等级打折、不扣防御（SkillAttackDamage + AttackDirect）
+      val lp = SwordRules.longPower(power, p.skillLevel(Skill.LongHit))
       w.occupant(p.cell.step(dir, 2)).filter(w.isEnemy(p, _)).foreach { t2 =>
-        physicalHit(w, p, t2, power, ignoreArmor = true)
+        if lp > 0 then physicalHit(w, p, t2, lp, ignoreArmor = true)
         train(w, p, Skill.LongHit.id, 1)
       }
     if style == HitStyle.Wide then
