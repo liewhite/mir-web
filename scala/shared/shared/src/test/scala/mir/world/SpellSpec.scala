@@ -740,5 +740,29 @@ object SpellSpec extends ZIOSpecDefault:
         s.run(2000)
         assertTrue(p.cell == Cell(30, 30), p.mp == 100_000, s.notices.contains("这张地图不能瞬息移动"))
       }
+    ),
+    suite("刺杀站位（#1264）")(
+      test("开着刺杀：走到隔一格就停下出刀") {
+        val (at, dmg) = longHitHunt(longHit = true)
+        assertTrue(at.chebyshev(Cell(35, 30)) == 2, at.x == 33, dmg > 0)
+      },
+      test("关着刺杀：照旧走到贴身") {
+        val (at, dmg) = longHitHunt(longHit = false)
+        assertTrue(at.chebyshev(Cell(35, 30)) == 1, dmg > 0)
+      }
     )
   )
+
+  /** 学了刺杀的战士按住攻击去打 5 格外钉住的怪，跑 3 秒后站在哪、怪挨了多少 */
+  private def longHitHunt(longHit: Boolean): (Cell, Int) =
+    val s = sim()
+    val p = caster(s, Job.Warrior, List(12))
+    p.longHitOn = longHit
+    p.settings = p.settings.copy(autoPickup = false)
+    val m = put(s, "半兽人", Cell(35, 30))
+    pin(m)
+    m.maxHpNow = 1_000_000
+    m.hp = 1_000_000
+    p.intent = Intent.Hunt(m.id, once = false)
+    s.run(3000)
+    (p.cell, 1_000_000 - m.hp)

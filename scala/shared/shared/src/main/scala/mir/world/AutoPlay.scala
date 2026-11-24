@@ -3,7 +3,7 @@ package mir.world
 import mir.core.*
 import mir.model.PickupKind
 import mir.rules.{ItemKind, Skill, SpellRules}
-import mir.terrain.Path
+import mir.terrain.{MeleeReach, Path, Reach}
 
 /**
  * 玩家的自动功能，按角色设置（CharSettings）在服务端执行：自动喝药、按住攻击（打到死）、被打还手、自动烈火、自动捡物、法师自动魔法盾、道士自动召唤。
@@ -27,14 +27,14 @@ object AutoPlay:
     w.actor(id).filter(t => !t.dead && w.canAttack(p, t)) match
       case None => p.intent = Intent.Idle
       case Some(t) =>
-        val d = p.cell.chebyshev(t.cell)
-        val longOk = p.longHitOn && p.knows(Skill.LongHit) && d == 2 && inLine(p.cell, t.cell) &&
-          w.occupant(p.cell.step(p.cell.dirTo(t.cell))).isEmpty
-        if d == 1 || longOk then
+        // 贴身，或开着刺杀时隔一格直线，就地出刀；都不是才走（#1264）
+        val reach = Reach.of(p.longHitOn, p.knows(Skill.LongHit))
+        if MeleeReach.canStrike(reach, p.cell, t.cell, w.terrain.walkable) then
           maybeFire(w, p)
           Combat.attack(w, p, p.cell.dirTo(t.cell))
           if once then p.intent = Intent.Idle
-        else if free(w, p) then approach(w, p, t.cell, adjacent = true)
+        else if free(w, p) then
+          walk(w, p, t.cell, MeleeReach.path(reach, w.walkableFor(p), w.terrain.walkable, p.cell, t.cell, PathNodes))
 
   private def fetch(w: World, p: Player, id: GroundId): Unit =
     w.groundItem(id) match
@@ -43,7 +43,7 @@ object AutoPlay:
         // 同一格常叠着别的掉落，只捡勾了的种类（#1235）
         PlayerOps.pickUp(w, p, worth(w, p, _))
         p.intent = Intent.Idle
-      case Some(g) => if free(w, p) then approach(w, p, g.cell, adjacent = false)
+      case Some(g) => if free(w, p) then walk(w, p, g.cell, Path.find(w.walkableFor(p), p.cell, g.cell, PathNodes, adjacent = false))
 
   private def idle(w: World, p: Player): Unit =
     if free(w, p) then
@@ -55,17 +55,14 @@ object AutoPlay:
         case None =>
           if p.settings.autoPickup then nearestLoot(w, p, 6).foreach(g => p.intent = Intent.Fetch(g.id))
 
-  /** 走到目标旁边（或站上去）；走不了就转过去等一下。 */
-  private def approach(w: World, p: Player, target: Cell, adjacent: Boolean): Unit =
-    val moved = Path.find(w.walkableFor(p), p.cell, target, 3000, adjacent).flatMap(_.headOption).exists(w.grid.move(p, _, run = false))
+  private val PathNodes = 3000
+
+  /** 沿算好的路朝 target 走一步；走不了就转过去等一下。 */
+  private def walk(w: World, p: Player, target: Cell, path: Option[List[Dir]]): Unit =
+    val moved = path.flatMap(_.headOption).exists(w.grid.move(p, _, run = false))
     if !moved then
       w.grid.face(p, p.cell.dirTo(target))
       p.busyUntil = w.now + 200
-
-  private def inLine(a: Cell, b: Cell): Boolean =
-    val dx = b.x - a.x
-    val dy = b.y - a.y
-    dx == 0 || dy == 0 || math.abs(dx) == math.abs(dy)
 
   private def maybeFire(w: World, p: Player): Unit =
     val id = Skill.FireSword.id

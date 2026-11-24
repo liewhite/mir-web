@@ -4,7 +4,7 @@ import mir.core.*
 import mir.protocol.{ActorView, GameCmd, GroundView, Look, Tone}
 import mir.model.LearnedSkill
 import mir.rules.{Pace, Skill, SkillAim}
-import mir.terrain.Path
+import mir.terrain.{MeleeReach, Path, Reach}
 
 /** 玩家想做的事：输入只改意图，每帧在自己空闲时推进一步。 */
 enum Intent:
@@ -141,13 +141,14 @@ final class Controller(client: GameClient):
       case Intent.Fight(t) =>
         client.actor(t).filter(client.canAttack) match
           case None => intent = Intent.Idle
-          case Some(a) if a.cell.chebyshev(me.cell) == 1 =>
+          // 贴身，或开着刺杀时隔一格直线，就地出刀；都不是才走到最近能出刀的格子（#1264）
+          case Some(a) if MeleeReach.canStrike(reach, me.cell, a.cell, ground) =>
             if now >= nextAttack && client.motion.ready(now) && client.actionDone(me, now) then
               client.send(GameCmd.Attack(me.cell.dirTo(a.cell), Some(t)))
               nextAttack = now + Pace.HitAnimMs + AttackGapMs
               // 服务端「按住攻击」关着时只打一下
               if !client.view.settings.stickyAttack then intent = Intent.Idle
-          case Some(a) => approach(me.cell, a.cell, adjacent = true)
+          case Some(a) => follow(me.cell, a.cell, MeleeReach.path(reach, client.passable, ground, me.cell, a.cell, PathNodes))
       case Intent.GoTo(route) =>
         Travel.follow(route, me.cell) match
           case Travel.Step.Arrived => intent = Intent.Idle
@@ -157,9 +158,20 @@ final class Controller(client: GameClient):
             approach(me.cell, toward, adjacent = false)
   }
 
+  /** 自己近身能打多远：刺杀学了且开着就是贴身或隔一格直线。 */
+  private def reach: Reach =
+    Reach.of(client.view.sword.longHitOn, client.view.skills.exists(_.id == Skill.LongHit.id))
+
+  /** 地形能走（刺杀隔的那格不能是墙） */
+  private def ground: Cell => Boolean = c => client.map.exists(_.terrain.walkable(c))
+
   /** 朝目标走一步（寻路绕开障碍，远就跑）。 */
   private def approach(from: Cell, to: Cell, adjacent: Boolean): Unit =
-    Path.find(client.passable, from, to, PathNodes, adjacent) match
+    follow(from, to, Path.find(client.passable, from, to, PathNodes, adjacent))
+
+  /** 沿算好的路走一步；离 to 还远且前两步同向就跑；没路就停。 */
+  private def follow(from: Cell, to: Cell, path: Option[List[Dir]]): Unit =
+    path match
       case Some(d1 :: d2 :: _) if d1 == d2 && from.chebyshev(to) > 3 => client.walk(d1, run = true): Unit
       case Some(d :: _)                                               => client.walk(d, run = false): Unit
       case _                                                          => intent = Intent.Idle
