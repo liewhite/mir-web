@@ -272,25 +272,8 @@ object SpellRules:
   /** 魔法盾挡掉的伤害比例：技能 0–3 级 30%/40%/50%/60%（挨打至少还掉 1 点）。 */
   def shieldAbsorb(level: Int): Double = Vector(0.3, 0.4, 0.5, 0.6).lift(level).getOrElse(0.3)
 
-  /** 召唤技能等级加成：×(1 + 技能等级×0.35)。乘哪几项看 LevelBoost。 */
+  /** 召唤骷髅、神兽：血量和攻击 ×(1 + 技能等级×0.35)。 */
   def summonBoost(level: Int): Double = 1 + level * 0.35
-
-  /** 技能等级加成乘哪几项：骷髅乘血和攻击；神兽（含大神兽）只乘血（用户 11-24 嫌神兽太强，#1258）。 */
-  enum LevelBoost(val hp: Boolean, val attack: Boolean):
-    case HpAndAttack extends LevelBoost(hp = true, attack = true)
-    case HpOnly      extends LevelBoost(hp = true, attack = false)
-
-    def hpK(level: Int): Double     = if hp then summonBoost(level) else 1.0
-    def attackK(level: Int): Double = if attack then summonBoost(level) else 1.0
-    /** 技能说明用：「血、攻」/「血」 */
-    def label: String = List(Option.when(hp)("血"), Option.when(attack)("攻")).flatten.mkString("、")
-
-  /** 每种召唤的技能等级加成（按召唤种类，大神兽算神兽）。 */
-  private val levelBoosts: Map[MonsterName, LevelBoost] =
-    Map(SkeletonPet -> LevelBoost.HpAndAttack, ShinsuPet -> LevelBoost.HpOnly)
-
-  def levelBoostOf(pet: MonsterName): LevelBoost =
-    summonedAs(pet).flatMap(levelBoosts.get).getOrElse(LevelBoost.HpAndAttack)
 
   /** 道术加成（#1209，本服加的）：召唤那一刻主人道术上限每点 +2%，最多 +60%。 */
   val SummonScPctPerPoint = 2
@@ -300,16 +283,11 @@ object SpellRules:
   def summonScBoost(scMax: Int): Double =
     1 + math.min(math.max(scMax, 0) * SummonScPctPerPoint, SummonScPctCap) / 100.0
 
-  /** 召唤出来的宝宝：技能等级加成按种类乘血量（和攻击，见 levelBoostOf），道术加成乘血量、攻击、防御、魔防。 */
+  /** 召唤出来的宝宝：技能等级加成乘血量和攻击，道术加成乘血量、攻击、防御、魔防。 */
   def summonedBody(base: MonsterDef, level: Int, scMax: Int): PetBody =
-    val sc    = summonScBoost(scMax)
-    val boost = levelBoostOf(base.name)
-    PetBody(
-      scaled(base.hp, boost.hpK(level) * sc),
-      scaled(base.dc, boost.attackK(level) * sc),
-      scaled(base.ac, sc),
-      scaled(base.mac, sc)
-    )
+    val sc   = summonScBoost(scMax)
+    val both = summonBoost(level) * sc
+    PetBody(scaled(base.hp, both), scaled(base.dc, both), scaled(base.ac, sc), scaled(base.mac, sc))
 
   private def scaled(v: Int, k: Double): Int    = math.floor(v * k + 0.5).toInt
   private def scaled(s: Span, k: Double): Span = Span(scaled(s.lo, k), scaled(s.hi, k))

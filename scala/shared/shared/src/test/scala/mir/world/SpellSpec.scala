@@ -265,21 +265,6 @@ object SpellSpec extends ZIOSpecDefault:
         body(40) == body(30)
       )
     },
-    test("神兽（含大神兽）技能等级只乘血、不乘攻击，道术加成照乘（#1258）") {
-      def x(v: Int, k: Double) = math.floor(v * k + 0.5).toInt
-      val lv3 = SpellRules.summonBoost(3)
-      def check(name: mir.core.MonsterName) =
-        val md = catalog.monster(name).get
-        val b  = SpellRules.summonedBody(md, 3, 30)
-        b.hp == x(md.hp, lv3 * 1.6) && b.dc == Span(x(md.dc.lo, 1.6), x(md.dc.hi, 1.6)) &&
-        b.ac == Span(x(md.ac.lo, 1.6), x(md.ac.hi, 1.6))
-      assertTrue(
-        check(SpellRules.ShinsuPet),
-        check(SpellRules.ShinsuWarrior),
-        SpellRules.levelBoostOf(SpellRules.SkeletonPet) == SpellRules.LevelBoost.HpAndAttack,
-        SpellRules.levelBoostOf(SpellRules.ShinsuWarrior) == SpellRules.LevelBoost.HpOnly
-      )
-    },
     test("召唤时按主人道术上限定下宝宝身板，之后道术变了也不变（#1209）") {
       val s = sim()
       val p = caster(s, Job.Taoist, List(17), charm = true)

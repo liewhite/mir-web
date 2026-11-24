@@ -111,14 +111,9 @@ object SkillInfo:
         val b = SpellRules.summonedBody(md, l, sc.hi)
         List(
           s"$name 血 ${b.hp}、攻击 ${b.dc.lo}-${b.dc.hi}、防御 ${b.ac.lo}-${b.ac.hi}、魔防 ${b.mac.lo}-${b.mac.hi}",
-          s"（基础 血 ${md.hp}、攻击 ${md.dc.lo}-${md.dc.hi}、防御 ${md.ac.lo}-${md.ac.hi}、魔防 ${md.mac.lo}-${md.mac.hi}；${boostText(md.name, l)}）"
+          s"（基础 血 ${md.hp}、攻击 ${md.dc.lo}-${md.dc.hi}、防御 ${md.ac.lo}-${md.ac.hi}、魔防 ${md.mac.lo}-${md.mac.hi}；血和攻击再×技能等级加成 ${SpellRules.summonBoost(l)}）"
         )
       }
-
-    private def boostText(pet: MonsterName, l: Int): String =
-      val b = SpellRules.levelBoostOf(pet)
-      val k = SpellRules.summonBoost(l)
-      if b.attack then s"血和攻击再×技能等级加成 $k" else s"血再×技能等级加成 $k，攻击不随技能等级涨"
 
     def headline(skill: Skill): Option[Int => String] = skill match
       case Skill.FireBall | Skill.GreatFireBall | Skill.HellFire | Skill.FireBang | Skill.IceStorm => Some(l => s"威力 ${mcDmg(l)}")
@@ -134,8 +129,7 @@ object SkillInfo:
       case Skill.Poisoning  => Some(l => s"绿毒 ${poisonSecs(l, PoisonKind.Green)} 秒、红毒 ${poisonSecs(l, PoisonKind.Red)} 秒")
       case Skill.SoulShield | Skill.HolyArmor => Some(l => s"${span(r => SpellRules.defenceUpSecs(d, l, sc)(using r))} 秒")
       case Skill.HolyCurtain => Some(l => s"${span(r => SpellRules.holyCurtainSecs(d, l, sc)(using r))} 秒")
-      case Skill.SummonSkeleton => Some(l => s"×${SpellRules.summonBoost(l)}（${SpellRules.levelBoostOf(SpellRules.SkeletonPet).label}）")
-      case Skill.SummonShinsu   => Some(l => s"×${SpellRules.summonBoost(l)}（${SpellRules.levelBoostOf(SpellRules.ShinsuPet).label}）")
+      case Skill.SummonSkeleton | Skill.SummonShinsu => Some(l => s"×${SpellRules.summonBoost(l)}（血、攻）")
       case Skill.Invisible | Skill.GroupInvisible => Some(l => s"${span(r => SpellRules.invisibleSecs(d, l, sc)(using r))} 秒")
       case Skill.ShowHp => Some(l => s"成功 ${chance(r => SpellRules.showHpWorks(l)(using r))}")
       case Skill.TurnUndead => Some(l => s"低 2 级的 ${turnUndead(l, 2)}")
