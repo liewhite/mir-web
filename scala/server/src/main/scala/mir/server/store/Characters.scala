@@ -24,6 +24,10 @@ final class Characters(db: Db):
   def get(id: CharId): Option[StoredChar] =
     rows("SELECT id, account_id, data FROM characters WHERE id = ? AND deleted_at IS NULL", id.value).headOption
 
+  /** 按名字（不分大小写）找没删的角色，给出它的真名字；加好友用（#1221）。 */
+  def canonicalName(name: String): Option[String] =
+    db.run(Db.query(_, "SELECT name FROM characters WHERE name = ? COLLATE NOCASE AND deleted_at IS NULL", name.trim)(_.getString(1))).headOption
+
   /** 建角色：名字合法、没人用、这个号还有空位。 */
   def create(account: AccountId, data: CharacterData): Either[String, StoredChar] =
     validName(data.name).flatMap { name =>

@@ -176,7 +176,8 @@ object DebugHandle:
       worn = () => js.Array(client.view.worn.toSeq.map((s, i) => s"${s.key}=${i.name.value}")*),
       gold = () => client.view.stats.fold(0L)(_.gold.value),
       sent = () => js.Array(client.recent.filterNot(_.isInstanceOf[mir.protocol.SessionCmd]).map(_.toString)*),
-      group = () => ui.run(mir.client.ui.UiAction.Group)
+      group = () => ui.run(mir.client.ui.UiAction.Group),
+      friends = () => ui.run(mir.client.ui.UiAction.Friends)
     )
     dom.window.asInstanceOf[js.Dynamic].__mir = handle
 

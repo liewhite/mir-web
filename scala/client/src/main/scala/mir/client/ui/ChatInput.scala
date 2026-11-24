@@ -4,7 +4,7 @@ import org.scalajs.dom
 
 /**
  * 聊天输入框：画布上打不了字（手机要弹系统键盘），用一个网页输入框盖在底栏聊天区上。
- * 回车发出（「!」开头是全图喊话，「!!」开头队伍聊天）并收起；Esc 或点别处收起。
+ * 回车发出（「!」开头是全图喊话，「!!」开头队伍聊天，「/名字 」开头私聊）并收起；Esc 或点别处收起。
  * 也用来问别的一行字（组队输名字）：open 时给提示、预填和回车后做什么。
  */
 final class ChatInput(say: String => Unit):
@@ -51,13 +51,14 @@ final class ChatInput(say: String => Unit):
     input.value = prefill
     input.classList.remove("hidden")
     input.focus()
+    input.setSelectionRange(prefill.length, prefill.length) // 光标放到预填的字后面（Safari 聚焦时会放到最前）
 
   def close(): Unit =
     input.classList.add("hidden")
     input.blur()
 
 object ChatInput:
-  val ChatHint  = "说话（回车发送，! 开头全图喊话，!! 开头队伍聊天）"
+  val ChatHint  = "说话（回车发送，! 开头全图喊话，!! 队伍聊天，/名字 空格 私聊）"
   val MaxLength = 100
   /** 手机上底栏缩得很小，输入框至少这么高才点得到、看得清 */
   val MinHeightCss = 28.0

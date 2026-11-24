@@ -17,6 +17,10 @@ enum UiAction:
   case Teleport
   /** 组队窗口（#1220） */
   case Group
+  /** 好友窗口（#1221） */
+  case Friends
+  /** 私聊：聊天框预填「/最近私聊的人 」（原版按「/」键） */
+  case Whisper
   case CloseAll
 
 object UiAction:
@@ -32,7 +36,9 @@ object UiAction:
       all(WorldMap, "m", "M") ++
       all(Teleport, "t", "T") ++
       all(Group, "p", "P") ++
+      all(Friends, "f", "F") ++
+      all(Whisper, "/") ++
       all(CloseAll, "Escape")).toMap
 
   /** 设置窗底部的键位说明 */
-  val Help = "WASD 跑(按住Shift走)  F1-F8 技能  1-6 快捷栏  空格 捡取  回车 说话  T 传送  M 全景地图  P 组队  Esc 关闭"
+  val Help = "WASD 跑(按住Shift走)  F1-F8 技能  1-6 快捷栏  空格 捡取  回车 说话  / 私聊  T 传送  M 全景地图  P 组队  F 好友  Esc 关闭"

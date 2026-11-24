@@ -62,6 +62,9 @@ object ProtocolSpec extends ZIOSpecDefault:
     SocialCmd.AddMember("小刚"),
     SocialCmd.RemoveMember("小刚"),
     SocialCmd.GroupSay("集合"),
+    SocialCmd.Whisper("小红", "在吗"),
+    SocialCmd.AddFriend("小红"),
+    SocialCmd.RemoveFriend("小红"),
     SessionCmd.Ping(1700000000000L)
   )
 
@@ -116,6 +119,9 @@ object ProtocolSpec extends ZIOSpecDefault:
     ServerMsg.Chat("小明", "集合", ChatKind.Group),
     ServerMsg.Group(GroupView(allowGroup = true, members = List("小明", "小红"))),
     ServerMsg.Group(GroupView()),
+    ServerMsg.Whisper("小红", "在吗", WhisperWay.Received),
+    ServerMsg.Whisper("小红", "在", WhisperWay.Sent),
+    ServerMsg.Friends(List(FriendView("小红", true), FriendView("小刚", false))),
     ServerMsg.Pong(1700000000000L, t0)
   )
 
@@ -158,8 +164,20 @@ object ProtocolSpec extends ZIOSpecDefault:
         Speech.command("你好") == GameCmd.Say("你好")
       )
     },
+    test("聊天框：「/名字 内容」是私聊，名字到第一个空白为止（#1221）") {
+      assertTrue(
+        Speech.command("/小红 你好 呀") == SocialCmd.Whisper("小红", "你好 呀"),
+        Speech.command("/ 小红  在吗 ") == SocialCmd.Whisper("小红", "在吗"),
+        Speech.command("/小红") == SocialCmd.Whisper("小红", ""),
+        Speech.command(Speech.whisperTo("小红") + "嗨") == SocialCmd.Whisper("小红", "嗨")
+      )
+    },
     test("旧存档没有社交偏好时按默认（不允许组队）") {
-      assertTrue("{}".fromJson[SocialPrefs] == Right(SocialPrefs()), !SocialPrefs().allowGroup)
+      assertTrue(
+        "{}".fromJson[SocialPrefs] == Right(SocialPrefs()), !SocialPrefs().allowGroup,
+        // #1220 的存档没有好友名单
+        """{"allowGroup":true}""".fromJson[SocialPrefs] == Right(SocialPrefs(allowGroup = true, friends = Nil))
+      )
     },
     test("坏消息解码失败而不是抛异常") {
       assertTrue(

@@ -31,9 +31,9 @@ object Boot:
       catalog <- ZIO.fromEither(Catalog.decode(json)).mapError(e => Exception(s"${cfg.gameJson} 解码失败：$e"))
       store   <- Store.open(cfg)
       clock    = () => Millis(java.lang.System.currentTimeMillis())
-      groups   = mir.social.Groups()
-      maps     = Maps(catalog, cfg.assetsDir, store.uids, clock, groups)
-      game     = GameServer(catalog, maps, store.chars, store.uids, Some(Backups(store.db, cfg.backupDir)), clock, groups = groups)
+      social   = mir.social.Social()
+      maps     = Maps(catalog, cfg.assetsDir, store.uids, clock, social)
+      game     = GameServer(catalog, maps, store.chars, store.uids, Some(Backups(store.db, cfg.backupDir)), clock, social = social)
       _       <- ZIO.acquireRelease(ZIO.succeed(GameServer.run(game)))(stop => ZIO.attemptBlocking(stop()).orDie)
       http     = HttpServer(store.accounts, tokens, game, cfg.assetsDir, cfg.webDir)
       env     <- (ZLayer.succeed(Server.Config.default.binding(cfg.host, cfg.port)) >>> Server.live).build

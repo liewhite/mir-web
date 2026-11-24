@@ -155,6 +155,19 @@ final case class GroupView(allowGroup: Boolean = false, members: List[String] = 
 object GroupView:
   given JsonCodec[GroupView] = DeriveJsonCodec.gen
 
+/** 好友名单上的一个人（#1221）：名字、现在在不在线。 */
+final case class FriendView(name: String, online: Boolean)
+
+object FriendView:
+  given JsonCodec[FriendView] = DeriveJsonCodec.gen
+
+/** 一句私聊是别人发给我的，还是我发出去的（服务端确认送到后回给发的人）。 */
+enum WhisperWay:
+  case Received, Sent
+
+object WhisperWay:
+  given JsonCodec[WhisperWay] = EnumCodec.byName(values, _.toString)
+
 /** 选人界面的一个角色。 */
 final case class CharSummary(id: CharId, name: String, job: Job, sex: Sex, level: Int)
 

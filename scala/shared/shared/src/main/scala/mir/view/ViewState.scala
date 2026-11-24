@@ -28,6 +28,8 @@ final case class ViewState(
     settings: CharSettings = CharSettings(),
     /** 组队状态（#1220；换图不清） */
     group: GroupView = GroupView(),
+    /** 好友名单（#1221） */
+    friends: List[FriendView] = Nil,
     /** 服务端时钟与本地时钟之差（EnterMap / Pong 时更新由客户端算，这里只记服务端给的时刻） */
     serverNow: Option[Millis] = None
 ):
@@ -57,12 +59,13 @@ final case class ViewState(
     case ServerMsg.Sword(s)                 => copy(sword = s)
     case ServerMsg.Settings(s)              => copy(settings = s)
     case ServerMsg.Group(g)                 => copy(group = g)
+    case ServerMsg.Friends(f)               => copy(friends = f)
     case ServerMsg.Pong(_, server)          => copy(serverNow = Some(server))
     // 一次性的事、会话消息：不改状态
     case ServerMsg.LoggedIn(_) | ServerMsg.CharList(_) | ServerMsg.Kicked(_) | ServerMsg.Effect(_) | ServerMsg.Sound(_, _) |
         ServerMsg.Damage(_, _, _) | ServerMsg.Miss(_) | ServerMsg.Heal(_, _) | ServerMsg.MoveOk | ServerMsg.MoveDenied(_, _) |
         ServerMsg.Refused(_) | ServerMsg.Notice(_, _) | ServerMsg.LevelUp(_) | ServerMsg.Died | ServerMsg.NpcOpened(_, _) |
-        ServerMsg.Chat(_, _, _) =>
+        ServerMsg.Chat(_, _, _) | ServerMsg.Whisper(_, _, _) =>
       this
 
   def applyAll(msgs: Iterable[ServerMsg]): ViewState = msgs.foldLeft(this)(_.apply(_))

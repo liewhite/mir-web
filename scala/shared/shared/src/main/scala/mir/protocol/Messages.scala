@@ -113,17 +113,32 @@ enum SocialCmd:
   case RemoveMember(name: String)
   /** 队伍聊天（原版「!!」开头）：发给全队 */
   case GroupSay(text: String)
+  /** 私聊（#1221，原版「/名字 内容」）：对方不在线时回一句提示 */
+  case Whisper(to: String, text: String)
+  /** 加好友（#1221）：名字是已有的角色就行，不用在线、不用对方同意 */
+  case AddFriend(name: String)
+  case RemoveFriend(name: String)
 
 object SocialCmd:
   given JsonCodec[SocialCmd] = DeriveJsonCodec.gen
 
-/** 聊天框里打的一行字发成什么指令：「!!」开头是队伍聊天，其余交给世界（「!」开头全图喊话由世界认）。 */
+/**
+ * 聊天框里打的一行字发成什么指令（原版 M2Server TPlayObject.ProcessUserLineMsg）：
+ * 「/名字 内容」私聊，「!!」开头是队伍聊天，其余交给世界（「!」开头全图喊话由世界认）。
+ */
 object Speech:
-  val GroupPrefix = "!!"
+  val GroupPrefix   = "!!"
+  val WhisperPrefix = "/"
 
   def command(text: String): ClientCmd =
-    if text.startsWith(GroupPrefix) then SocialCmd.GroupSay(text.drop(GroupPrefix.length).trim)
+    if text.startsWith(WhisperPrefix) then
+      val (to, rest) = text.drop(WhisperPrefix.length).trim.span(!_.isWhitespace)
+      SocialCmd.Whisper(to, rest.trim)
+    else if text.startsWith(GroupPrefix) then SocialCmd.GroupSay(text.drop(GroupPrefix.length).trim)
     else GameCmd.Say(text)
+
+  /** 私聊某人时聊天框里预填的字 */
+  def whisperTo(name: String): String = s"$WhisperPrefix$name "
 
 /**
  * 服务端 → 客户端的事件。视野类消息只发给看得见的人；「自己」类消息变了才发。
@@ -198,6 +213,10 @@ enum ServerMsg:
   case Chat(from: String, text: String, kind: ChatKind)
   /** 自己的组队状态变了（进游戏时也发一次，换图不变） */
   case Group(group: GroupView)
+  /** 私聊（#1221）：peer 是对方（收到时是发的人，发出时是收的人） */
+  case Whisper(peer: String, text: String, way: WhisperWay)
+  /** 好友名单和各自在线与否（进游戏、增删、好友上下线时发整份） */
+  case Friends(friends: List[FriendView])
 
   /** 对时回应：带回客户端的 clientMs 和服务器此刻的时钟 */
   case Pong(clientMs: Long, server: Millis)

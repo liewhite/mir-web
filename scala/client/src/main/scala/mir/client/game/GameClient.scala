@@ -102,6 +102,8 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
         // 队伍聊天照原版只进聊天框（系统消息），不在头上冒字
         if kind != ChatKind.Group then speaker(from).foreach(id => fx = fx.say(Bubble(id, text, local)))
         ui.chat(from, text, kind)
+      // 私聊照原版只进聊天框，不在头上冒字
+      case ServerMsg.Whisper(peer, text, way) => ui.whisper(peer, text, way)
       case ServerMsg.Notice(text, tone)     => ui.notice(text, tone)
       case ServerMsg.Refused(why)           => ui.notice(why, Tone.Bad)
       case ServerMsg.LevelUp(lv)            => ui.levelUp(lv)

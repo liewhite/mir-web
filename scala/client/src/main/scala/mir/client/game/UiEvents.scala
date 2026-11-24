@@ -1,7 +1,7 @@
 package mir.client.game
 
 import mir.core.*
-import mir.protocol.{ChatKind, CharSummary, Tone}
+import mir.protocol.{ChatKind, CharSummary, Tone, WhisperWay}
 
 /**
  * 客户端核心告诉界面的事（界面 ui.ClassicUi 实现它）。
@@ -16,6 +16,8 @@ trait UiEvents:
   def entered(map: MapId): Unit
   def notice(text: String, tone: Tone): Unit
   def chat(from: String, text: String, kind: ChatKind): Unit
+  /** 私聊（#1221）：peer 是对方 */
+  def whisper(peer: String, text: String, way: WhisperWay): Unit
   def npcOpened(npc: ActorId, merchant: MerchantRef): Unit
   def levelUp(level: Int): Unit
   def died(): Unit
@@ -30,6 +32,7 @@ object UiEvents:
     def entered(map: MapId): Unit                              = ()
     def notice(text: String, tone: Tone): Unit                 = ()
     def chat(from: String, text: String, kind: ChatKind): Unit = ()
+    def whisper(peer: String, text: String, way: WhisperWay): Unit = ()
     def npcOpened(npc: ActorId, merchant: MerchantRef): Unit   = ()
     def levelUp(level: Int): Unit                              = ()
     def died(): Unit                                           = ()

@@ -25,7 +25,7 @@ final case class Departure(player: ActorId, data: CharacterData, carried: Carrie
 final case class Carried(pets: List[PetData] = Nil, statuses: List[Timed] = Nil, potions: List[PotionCourse] = Nil)
 
 /**
- * 组队（#1220）在世界这边的样子：队伍本身跨地图、归服务端（mir.social.Groups），世界只问「这个人和谁一队」来分打怪经验。
+ * 组队（#1220）在世界这边的样子：队伍本身跨地图、归服务端（mir.social.Social），世界只问「这个人和谁一队」来分打怪经验。
  */
 trait Company:
   /** 和这个角色同队的全部人名（含他自己）；没组队为空 */

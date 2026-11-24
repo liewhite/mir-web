@@ -73,14 +73,15 @@ final class Board(ui: ClassicUi):
       g.imgPart(Gfx.Main, 7, bx + 666, ui.H - 73, 0, 0, math.round(bw * math.min(1, er)).toDouble, bh)
       // 原版这里还有一条负重条；不限重量后不画
     }
-    // 聊天、系统消息；点聊天框说话
+    // 聊天、系统消息；点聊天框说话，点私聊那行就私聊回对方（原版点聊天行填「/名字 」）
     val cr = chatRect
     val lines = ui.chat.takeRight(ChatLines).flatMap(l => wrap(l.text, cr.w).map(t => l.copy(text = t))).takeRight(ChatLines)
+    ui.hit(cr)(ui.openChat())
     lines.zipWithIndex.foreach { (l, i) =>
       if l.bg != "transparent" then g.rect(cr.x, cr.y + i * 12, g.width(l.text), 12, l.bg)
       g.text(l.text, cr.x, cr.y + i * 12, l.fg)
+      l.replyTo.foreach(peer => ui.hit(Rect(cr.x, cr.y + i * 12, cr.w, 12))(ui.whisperTo(peer)))
     }
-    ui.hit(cr)(ui.openChat())
     // 功能按钮：状态、包裹、技能、设置
     ui.button(Button(Rect(bx + 643, by + 61, 24, 24), () => ui.run(UiAction.State(StatePage.Equip)), img = Some(8)))
     ui.button(Button(Rect(bx + 682, by + 41, 24, 22), () => ui.run(UiAction.Bag), img = Some(9)))
@@ -94,9 +95,10 @@ final class Board(ui: ClassicUi):
       g.text((i + 1).toString, r.x + 13, r.y + 19, "#fff", bold = true)
       ui.hit(r)(beltClicked(i, r))
     }
-    // 底栏小按钮：小地图、交易、行会（交易、行会还没做，只画样子）、组队、退出
+    // 底栏小按钮：小地图、交易、行会（交易、行会还没做，只画样子）、组队、好友、退出
     ui.button(Button(Rect(bx + 219, by + 104, 28, 13), () => ui.run(UiAction.MiniMap), img = Some(130), always = true))
     ui.button(Button(Rect(bx + 309, by + 104, 28, 13), () => ui.run(UiAction.Group), img = Some(128), always = true))
+    friendsButton(Rect(bx + 339, by + 104, 28, 13))
     List(132 -> 249, 134 -> 279).foreach { (img, dx) =>
       ui.button(Button(Rect(bx + dx, by + 104, 28, 13), () => ui.message("还没有这个功能"), img = Some(img), always = true))
     }
@@ -113,6 +115,16 @@ final class Board(ui: ClassicUi):
     val (cx, cy)   = (r.x + 12.5, r.y + 11.5)
     g.circle(cx, cy, 9.5, if down then "#104284" else "#0c2142")
     g.gear(cx, cy, 7.5, if down then "#fffbf0" else "#6070a8")
+
+  /**
+   * 好友按钮（#1221）：后来的原版客户端把好友键放在组队键右边第二格（DBotFriend），1.76 素材里没有这张图；
+   * 放在组队键紧右边，照旁边小按钮的颜色画一个写「友」的键。
+   */
+  private def friendsButton(r: Rect): Unit =
+    ui.button(Button(r, () => ui.run(UiAction.Friends)))
+    val down = ui.isPressed(r)
+    g.frame(r, if down then "#104284" else "#0c2142", "#3a4a78")
+    g.text("友", r.x + (r.w - g.width("友")) / 2, r.y + 0.5, if down then "#fffbf0" else "#8090c0")
 
   /** 折好的行（每帧都画，量字宽不便宜，记住） */
   private val wrapped = scala.collection.mutable.HashMap.empty[String, Vector[String]]
@@ -165,7 +177,8 @@ final class Board(ui: ClassicUi):
 
   /**
    * 锁定对象的信息卡：怪是名字、等级、攻防、经验（倍率后），中了毒或麻痹再加一行；宝宝绿框；别的玩家只有名字、职业，
-   * 下面一个组队键（#1220：没组队「组队」、自己是队长时「加入小组」/「踢出小组」）。都有血条，右上角 × 取消锁定。
+   * 下面一排键：组队（#1220：没组队「组队」、自己是队长时「加入小组」/「踢出小组」，队员没有）、
+   * 「私聊」（聊天框填好「/名字 」）、「加好友」/「删好友」（#1221）。都有血条，右上角 × 取消锁定。
    */
   private def drawTarget(m: Me, top: Double): Unit =
     for
@@ -194,9 +207,22 @@ final class Board(ui: ClassicUi):
       g.text("×", close.x + 11, close.y + 4, "#f88", bold = true)
       ui.button(Button(close, () => ui.ctl.unlock()))
       a.look match
-        case h: Look.Human if h.name != m.name =>
-          groupAction(m.view.group, m.name, h.name).foreach((label, cmd) => drawGroupKey(Rect(x, r.y + r.h + 2, TargetW, 24), label, cmd))
-        case _ => ()
+        case h: Look.Human if h.name != m.name => drawPlayerKeys(m, h.name, Rect(x, r.y + r.h + 2, TargetW, 24))
+        case _                                 => ()
+
+  /** 锁定别的玩家时信息卡下面的一排键，平分 row 的宽。 */
+  private def drawPlayerKeys(m: Me, other: String, row: Rect): Unit =
+    val isFriend = m.view.friends.exists(_.name == other)
+    val keys =
+      groupAction(m.view.group, m.name, other).map((label, cmd) => label -> (() => ui.social(cmd))).toList ++
+        List(
+          "私聊" -> (() => ui.whisperTo(other)),
+          (if isFriend then "删好友" -> (() => ui.social(SocialCmd.RemoveFriend(other)))
+           else "加好友" -> (() => ui.social(SocialCmd.AddFriend(other))))
+        )
+    val gap = 3.0
+    val w   = (row.w - gap * (keys.size - 1)) / keys.size
+    keys.zipWithIndex.foreach { case ((label, act), i) => drawCardKey(Rect(row.x + i * (w + gap), row.y, w, row.h), label, act) }
 
   /** 锁定玩家时信息卡下面的组队键：能做什么由自己的组队状态决定（队员不能拉人踢人，没有键）。 */
   private def groupAction(group: GroupView, me: String, other: String): Option[(String, SocialCmd)] =
@@ -205,11 +231,11 @@ final class Board(ui: ClassicUi):
     else if group.has(other) then Some("踢出小组" -> SocialCmd.RemoveMember(other))
     else Some("加入小组" -> SocialCmd.AddMember(other))
 
-  private def drawGroupKey(r: Rect, label: String, cmd: SocialCmd): Unit =
+  private def drawCardKey(r: Rect, label: String, act: () => Unit): Unit =
     ui.area(r)
     g.frame(r, if ui.isPressed(r) then "rgba(90,70,30,.9)" else "rgba(10,7,3,.8)", "#c9a060")
     g.text(label, r.x + (r.w - g.width(label)) / 2, r.y + 6, "#ffe08a", bold = true)
-    ui.button(Button(r, () => ui.social(cmd)))
+    ui.button(Button(r, act))
 
   /** 锁定卡上中毒、麻痹那一行（没有就不加） */
   private def afflictionLine(as: Set[Affliction]): List[String] =

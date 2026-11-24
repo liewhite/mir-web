@@ -17,8 +17,8 @@ final case class Insets(left: Double = 0, right: Double = 0, top: Double = 0, bo
 /** 这一帧的「我」：进了游戏、收到属性后才有，界面各窗口都读它。 */
 final case class Me(actor: ActorView, name: String, job: Job, sex: Sex, hair: Int, stats: SelfStats, view: ViewState)
 
-/** 聊天框一行：系统消息（按颜色）或谁说的话。 */
-final case class ChatLine(text: String, fg: String, bg: String)
+/** 聊天框一行：系统消息（按颜色）或谁说的话；replyTo 是私聊行的对方（点这行就私聊回他）。 */
+final case class ChatLine(text: String, fg: String, bg: String, replyTo: Option[String] = None)
 
 /** 现在在哪个画面：网页表单（加载、登录）、选人、游戏里。 */
 enum Screen:
@@ -74,6 +74,8 @@ final class ClassicUi(
   private var lastClick  = (0.0, "")
   private var problem    = Option.empty[String]
   private var dead       = false
+  /** 最近私聊过的人（收到或发出）：按「/」键时预填（原版 WhisperName） */
+  private var lastWhisper = Option.empty[String]
 
   /** 手上拿着的物品（电脑拖物品） */
   var hand: Option[Hand] = None
@@ -94,12 +96,13 @@ final class ClassicUi(
   val quantity = QuantityPanel(this)
   val itemMenu = ItemMenuWindow(this)
   val group    = GroupWindow(this)
+  val friends  = FriendWindow(this)
 
   /**
    * 全部窗口，从下到上：绘制顺序、点击叠放（后画的盖住先画的）、悬停说明、全部关闭都按它。
    * 新加窗口只要写一个 Window 实现、在这里排好位置。
    */
-  val windows: List[Window] = List(worldMap, merchant, bag, state, settings, teleport, group, keyDlg, quantity, itemMenu)
+  val windows: List[Window] = List(worldMap, merchant, bag, state, settings, teleport, group, friends, keyDlg, quantity, itemMenu)
 
   def options: ViewOptions = client.options
 
@@ -139,6 +142,15 @@ final class ClassicUi(
     case ChatKind.Shout => push(ChatLine(s"(!)$from：$text", "#ff0", "#00007b"))
     // 原版组队消息：前缀〖组队〗，字色 $C4、底色 $FF（调色板 196 号暗橄榄、255 号白）
     case ChatKind.Group => push(ChatLine(s"〖组队〗$from：$text", "#424a00", "#fff"))
+  /**
+   * 私聊（#1221）：照原版，收到的是「名字=> 内容」蓝字白底（调色板 $FC、$FF），
+   * 发出的是自己打的「/名字 内容」浅蓝字白底（调色板 180 号）。点这行就私聊回对方。
+   */
+  def whisper(peer: String, text: String, way: WhisperWay): Unit =
+    lastWhisper = Some(peer)
+    way match
+      case WhisperWay.Received => push(ChatLine(s"$peer=> $text", "#0000ff", "#fff", Some(peer)))
+      case WhisperWay.Sent     => push(ChatLine(s"${Speech.whisperTo(peer)}$text", "#104ade", "#fff", Some(peer)))
   def npcOpened(npc: ActorId, ref: MerchantRef): Unit = catalog.merchant(ref).foreach { d =>
     merchant.open(npc, d)
     bag.show()
@@ -182,13 +194,21 @@ final class ClassicUi(
     case UiAction.Settings       => itemMenu.close(); settings.toggle()
     case UiAction.Teleport       => itemMenu.close(); teleport.toggle()
     case UiAction.Group          => itemMenu.close(); group.toggle()
+    case UiAction.Friends        => itemMenu.close(); friends.toggle()
+    case UiAction.Whisper        => lastWhisper.fold(openChat(Speech.WhisperPrefix))(whisperTo)
     case UiAction.MiniMap        => miniMap.cycle()
     case UiAction.WorldMap       => itemMenu.close(); worldMap.toggle()
     case UiAction.CloseAll       => closeAll()
 
   def logout(): Unit = env.logout()
 
-  def openChat(): Unit = ask(ChatInput.ChatHint, "")(text => client.send(Speech.command(text)))
+  /** 打开聊天框（可预填），回车按开头的符号发成说话、喊话、队伍聊天或私聊。 */
+  def openChat(prefill: String = ""): Unit = ask(ChatInput.ChatHint, prefill)(text => client.send(Speech.command(text)))
+
+  /** 打开聊天框并填好「/名字 」，接着打内容就是私聊他。 */
+  def whisperTo(name: String): Unit =
+    itemMenu.close()
+    openChat(Speech.whisperTo(name))
 
   /** 在聊天框位置弹输入框问一行字（说话、组队输名字）；回车且不空才调 done。 */
   def ask(hint: String, prefill: String)(done: String => Unit): Unit =

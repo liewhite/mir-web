@@ -12,7 +12,7 @@ import scala.collection.mutable
 /**
  * 按需开图：第一次有人去某张图时读数据表里的地图和格子文件（ASSETS_DIR/map/<素材名>.bin）建一个世界。
  * 开过的图一直留着（怪物、地上的东西都在，没人时世界自己不动）。只在游戏线程里用。
- * company 是全服的组队（mir.social.Groups，和 GameServer 用同一个），世界经它查队友分经验。
+ * company 是全服的社交（mir.social.Social，和 GameServer 用同一个），世界经它查队友分经验。
  */
 final class Maps(catalog: Catalog, assetsDir: Path, uids: UidSource, clock: () => Millis, company: Company = Company.Alone):
   private val worlds = mutable.LinkedHashMap.empty[MapId, World]

@@ -87,7 +87,9 @@ object CharSettings:
  */
 final case class SocialPrefs(
     /** 允许别人拉我进组（原版 m_boAllowGroup，默认关） */
-    allowGroup: Boolean = false
+    allowGroup: Boolean = false,
+    /** 好友名单（#1221，角色名，按加入先后；单向，不用对方同意） */
+    friends: List[String] = Nil
 )
 
 object SocialPrefs:

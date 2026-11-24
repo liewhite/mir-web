@@ -226,6 +226,51 @@ object ServerSpec extends ZIOSpecDefault:
         )
       }
     },
+    test("私聊、好友（#1221）：私聊送到、不在线提示；加不在线的好友、上线提示、名单存档") {
+      val cfg = tempConfig()
+      cli(cfg, "account", "add", "erin")("secret1"): Unit
+      cli(cfg, "account", "add", "fred")("secret1"): Unit
+      withServer(cfg) { http =>
+        val ce = http.login("erin", "secret1").get
+        val cf = http.login("fred", "secret1").get
+        val e  = Bot(http, ce)
+        val f  = Bot(http, cf)
+        val (eChar, _, _) = enter(e, "小甲", Job.Taoist)
+        val (fChar, _, _) = enter(f, "小乙", Job.Wizard)
+        e.await("进游戏时的好友名单") { case ServerMsg.Friends(l) => l }
+        e.send(SocialCmd.Whisper("小乙", "在吗"))
+        val heard = f.await("收到私聊") { case ServerMsg.Whisper(p, t, WhisperWay.Received) => s"$p:$t" }
+        val sent  = e.await("私聊已送到") { case ServerMsg.Whisper(p, t, WhisperWay.Sent) => s"$p:$t" }
+        // 小乙下线后：私聊提示不在线，但能加好友（角色存在）
+        f.drop()
+        Thread.sleep(300)
+        e.send(SocialCmd.Whisper("小乙", "在吗"))
+        val offline = e.await("不在线") { case ServerMsg.Refused(r) => r }
+        e.send(SocialCmd.AddFriend("小乙"))
+        val added = e.await("加好友") { case ServerMsg.Friends(l) if l.nonEmpty => l }
+        e.send(SocialCmd.AddFriend("没这人"))
+        val nobody = e.await("查无此人") { case ServerMsg.Refused(r) => r }
+        // 小乙上线：小甲收到提示和新名单
+        val f2 = Bot(http, cf)
+        f2.await("LoggedIn") { case ServerMsg.LoggedIn(_) => () }
+        f2.send(SessionCmd.EnterGame(fChar))
+        val up = e.await("好友上线") { case ServerMsg.Friends(l) if l.exists(_.online) => l }
+        // 小甲下线再上线：名单还在（存档）
+        e.drop()
+        Thread.sleep(300)
+        val e2 = Bot(http, ce)
+        e2.await("LoggedIn") { case ServerMsg.LoggedIn(_) => () }
+        e2.send(SessionCmd.EnterGame(eChar))
+        val back = e2.await("重新上线的好友名单") { case ServerMsg.Friends(l) => l }
+        (heard, sent, offline, added, nobody, up, back)
+      }.map { case (heard, sent, offline, added, nobody, up, back) =>
+        assertTrue(
+          heard == "小甲:在吗", sent == "小乙:在吗", offline.contains("没有在线"),
+          added == List(FriendView("小乙", false)), nobody.contains("没有叫"),
+          up == List(FriendView("小乙", true)), back == List(FriendView("小乙", true))
+        )
+      }
+    },
     test("迁移旧单机存档") {
       val cfg  = tempConfig()
       val save = Files.createTempFile("save", ".json")
