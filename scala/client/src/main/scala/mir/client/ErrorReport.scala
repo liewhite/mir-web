@@ -54,6 +54,11 @@ object ErrorReport:
   /** 其他值得服务端知道的怪事（如看不懂的服务端消息）；按 message 去重，detail 只附在后面。 */
   def notice(message: String, detail: String): Unit = send(s"$message ｜ $detail", "", Some(message))
 
+  /** 素材（图集块、地面块）重试几次仍下载失败：控制台警告，并上报一次（本页只报第一块，#1251）。 */
+  def assetFailed(key: String, e: Throwable): Unit =
+    dom.console.warn("素材下载失败", key, e.getMessage)
+    notice("素材下载失败（过几秒会重下）", s"$key：${e.getMessage}")
+
   private def loadFailure(target: dom.EventTarget): Unit = target match
     case s: dom.HTMLScriptElement => send(s"脚本加载失败：${s.src}", "")
     case l: dom.HTMLLinkElement   => send(s"样式加载失败：${l.href}", "")

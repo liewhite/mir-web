@@ -51,8 +51,8 @@ object Main:
 
   private def start(catalog: Catalog, assets: Assets, audio: Audio, local: Boolean): Unit =
     val canvas   = dom.document.querySelector("#game").asInstanceOf[dom.HTMLCanvasElement]
-    val sprites  = SpriteStore(assets)
-    val renderer = Renderer(canvas, sprites, assets, catalog)
+    val sprites  = SpriteStore(assets, ErrorReport.assetFailed)
+    val renderer = Renderer(canvas, sprites, assets, catalog, ErrorReport.assetFailed)
     val joystick = Joystick()
     var view     = Viewport.choose(dom.window.innerWidth, dom.window.innerHeight)
 

@@ -3,7 +3,6 @@ package mir.client.assets
 import org.scalajs.dom
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits.*
 
-import scala.collection.mutable
 import scala.concurrent.Future
 import scala.scalajs.js
 
@@ -24,13 +23,8 @@ enum Frame:
  * 图集按需加载：assets/img/<lib>/<block>.json + <block>_<page>.png（tools/atlas.py 生成），照 TS 版 assets/sprites.ts。
  * json 是 {pages, frames}，frames 每项是 [page, sx, sy, w, h, ox, oy] 或 0（空帧）。
  */
-final class SpriteStore(assets: Assets):
-  private enum Block:
-    case Loading(done: Future[Unit])
-    case Ready(frames: Vector[Option[Sprite]])
-    case Missing
-
-  private val blocks = mutable.HashMap.empty[String, Block]
+final class SpriteStore(assets: Assets, onFailure: (String, Throwable) => Unit = SpriteStore.warn):
+  private val blocks = LoadCache[String, Vector[Option[Sprite]]](SpriteStore.RetryAfterMs, onFailure)
 
   /** 取一帧；没下载就开始下载。 */
   def get(lib: String, index: Int): Frame =
@@ -38,39 +32,17 @@ final class SpriteStore(assets: Assets):
     else
       val size = SpriteStore.blockSize(lib)
       val b    = index / size
-      block(lib, b) match
-        case Block.Ready(frames) => frames.lift(index - b * size).flatten.fold(Frame.Empty)(Frame.Ready(_))
-        case Block.Missing       => Frame.Empty
-        case Block.Loading(_)    => Frame.Loading
+      blocks.get(s"$lib/$b")(load(lib, b)) match
+        case Loaded.Ready(frames) => frames.lift(index - b * size).flatten.fold(Frame.Empty)(Frame.Ready(_))
+        case Loaded.Absent        => Frame.Empty
+        case Loaded.Pending       => Frame.Loading
 
   def sprite(lib: String, index: Int): Option[Sprite] = get(lib, index).toOption
 
   /** 预下载一组帧所在的块。 */
   def preload(lib: String, indices: Iterable[Int]): Future[Unit] =
     val size = SpriteStore.blockSize(lib)
-    Future.sequence(indices.map(_ / size).toSet.toList.map(b => whenReady(lib, b))).map(_ => ())
-
-  private def whenReady(lib: String, b: Int): Future[Unit] = block(lib, b) match
-    case Block.Loading(done) => done
-    case _                   => Future.unit
-
-  private def block(lib: String, b: Int): Block =
-    val key = s"$lib/$b"
-    blocks.getOrElseUpdate(
-      key, {
-        val done = load(lib, b).transform { r =>
-          blocks(key) = r.fold(
-            e =>
-              dom.console.warn("图集块下载失败", key, e.getMessage)
-              Block.Missing
-            ,
-            Block.Ready(_)
-          )
-          scala.util.Success(())
-        }
-        Block.Loading(done)
-      }
-    )
+    Future.sequence(indices.map(_ / size).toSet.toList.map(b => blocks.settled(s"$lib/$b")(load(lib, b)))).map(_ => ())
 
   private def load(lib: String, b: Int): Future[Vector[Option[Sprite]]] =
     assets.text(s"img/$lib/$b.json").flatMap { text =>
@@ -88,6 +60,11 @@ final class SpriteStore(assets: Assets):
     }
 
 object SpriteStore:
+  /** 图集块下载失败后过多久再试（下载本身已带几次重试） */
+  val RetryAfterMs = 5000.0
+
+  def warn(key: String, e: Throwable): Unit = dom.console.warn("图集块下载失败", key, e.getMessage)
+
   /** 每块多少帧：与 tools/build_assets.py block_size 一致。 */
   def blockSize(lib: String): Int = lib.reverse.dropWhile(_.isDigit).reverse match
     case "hum" | "weapon" | "hair"                     => 600

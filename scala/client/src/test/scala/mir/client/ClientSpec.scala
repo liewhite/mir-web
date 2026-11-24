@@ -297,6 +297,35 @@ object ClientSpec extends ZIOSpecDefault:
         Travel.snap(c => c.x != 5, Cell(5, 3), Cell(9, 3)) == Cell(6, 3), Travel.snap(c => c.x != 5, Cell(5, 3), Cell(0, 3)) == Cell(4, 3)
       )
     },
+    test("素材下载缓存（#1251）：失败不记死，过了重试间隔再要就重下；404 记成没有不再下；同一块同时只下一份") {
+      import mir.client.assets.{Assets, LoadCache, Loaded}
+      import zio.ZIO
+      var clock    = 0.0
+      var failures = List.empty[String]
+      var calls    = 0
+      val cache    = LoadCache[String, Int](5000, (k, _) => failures = k :: failures, () => clock)
+      def flaky(n: Int): Future[Int] =
+        calls += 1
+        if calls <= n then Future.failed(Exception("断网")) else Future.successful(42)
+      for
+        first   <- ZIO.succeed(cache.get("a")(flaky(1)))
+        again   <- ZIO.succeed(cache.get("a")(flaky(1))) // 还在下：不另起一份
+        _       <- ZIO.fromFuture(_ => cache.settled("a")(flaky(1)))
+        failed  <- ZIO.succeed(cache.get("a")(flaky(1))) // 刚失败：等着，不马上重下
+        before  = calls
+        _       <- ZIO.succeed { clock = 5000 }
+        retried <- ZIO.succeed(cache.get("a")(flaky(1)))
+        _       <- ZIO.fromFuture(_ => cache.settled("a")(flaky(1)))
+        ready   <- ZIO.succeed(cache.get("a")(flaky(1)))
+        _       <- ZIO.fromFuture(_ => cache.settled("m")(Future.failed(Assets.Missing("m"))))
+        _       <- ZIO.succeed { clock = 1e9 }
+        absent  <- ZIO.succeed(cache.get("m")(Future.failed(Exception("不该再下"))))
+      yield assertTrue(
+        first == Loaded.Pending, again == Loaded.Pending, failed == Loaded.Pending, before == 1,
+        retried == Loaded.Pending, calls == 2, ready == Loaded.Ready(42),
+        absent == Loaded.Absent, failures == List("a")
+      )
+    },
     test("全景地图：图片等比缩放居中、格子和屏幕互换、出口格合并成门、名字重叠的不写") {
       import mir.client.ui.{Rect, WorldMap}
       import mir.client.input.Pt

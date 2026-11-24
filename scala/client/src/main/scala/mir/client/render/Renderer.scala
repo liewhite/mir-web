@@ -1,6 +1,6 @@
 package mir.client.render
 
-import mir.client.assets.{Assets, MapData, Sprite, SpriteStore}
+import mir.client.assets.{Assets, LoadCache, Loaded, MapData, Sprite, SpriteStore}
 import mir.client.assets.MapData.{GroundBlock, UnitX, UnitY}
 import mir.core.*
 import mir.data.Catalog
@@ -20,18 +20,18 @@ final case class Px(x: Double, y: Double)
  * Canvas 2D 渲染：地面（预渲染大块）→ 48×32 平铺物件 → 按行画高物件、地上物品、角色 → 特效 → 名字/血条/飘字/气泡。
  * 坐标和画法照原版 PlayScn.pas：格子 48×32，角色锚点是所在格的左上角，图片按自带偏移画。照 TS 版 render/renderer.ts。
  */
-final class Renderer(canvas: dom.HTMLCanvasElement, sprites: SpriteStore, assets: Assets, catalog: Catalog):
+final class Renderer(
+    canvas: dom.HTMLCanvasElement,
+    sprites: SpriteStore,
+    assets: Assets,
+    catalog: Catalog,
+    onAssetFailure: (String, Throwable) => Unit = SpriteStore.warn
+):
   import Renderer.*
 
   val ctx: dom.CanvasRenderingContext2D = canvas.getContext("2d").asInstanceOf[dom.CanvasRenderingContext2D]
 
-  private enum GroundImg:
-    case Loading
-    case Ready(img: dom.HTMLImageElement)
-    case Missing
-
-  private val groundCache = mutable.HashMap.empty[String, GroundImg]
-  private val groundJobs  = mutable.HashMap.empty[String, Future[Unit]]
+  private val grounds = LoadCache[String, dom.HTMLImageElement](SpriteStore.RetryAfterMs, onAssetFailure)
   /** 这一帧画出来的、可点中的角色（点怪锁定用） */
   private var hits = Vector.empty[Hit]
   private val tinter = Tinter()
@@ -102,7 +102,9 @@ final class Renderer(canvas: dom.HTMLCanvasElement, sprites: SpriteStore, assets
       by <- math.floor((cy - height) / bh).toInt to math.floor((cy + height) / bh).toInt
       bx <- math.floor((cx - width) / bw).toInt to math.floor((cx + width) / bw).toInt
       if bx >= 0 && by >= 0
-    yield loadGround(map.asset, bx, by)
+    yield
+      val key = groundKey(map.asset, bx, by)
+      grounds.settled(key)(loadGround(key))
     val jobs  = objects.toList.map((lib, set) => sprites.preload(lib, set)) ++ blocks
     var done  = 0
     progress(0, jobs.size)
@@ -111,26 +113,16 @@ final class Renderer(canvas: dom.HTMLCanvasElement, sprites: SpriteStore, assets
       progress(done, jobs.size)
     })).map(_ => ())
 
-  /** 下载一块地面（同一块只下一次）。 */
-  private def loadGround(asset: String, bx: Int, by: Int): Future[Unit] =
-    val key = s"$asset/${bx}_$by"
-    groundJobs.getOrElseUpdate(
-      key, {
-        groundCache(key) = GroundImg.Loading
-        assets.image(s"ground/$key.webp").transform { r =>
-          groundCache(key) = r.fold(_ => GroundImg.Missing, GroundImg.Ready(_))
-          scala.util.Success(())
-        }
-      }
-    )
+  private def groundKey(asset: String, bx: Int, by: Int): String = s"$asset/${bx}_$by"
+
+  /** 下载一块地面（由 grounds 缓存：同一块同时只下一份，失败过一会儿再下）。 */
+  private def loadGround(key: String): Future[dom.HTMLImageElement] = assets.image(s"ground/$key.webp")
 
   private def ground(asset: String, bx: Int, by: Int): Option[dom.HTMLImageElement] =
-    groundCache.get(s"$asset/${bx}_$by") match
-      case Some(GroundImg.Ready(img)) => Some(img)
-      case Some(_)                    => None
-      case None =>
-        loadGround(asset, bx, by): Unit
-        None
+    val key = groundKey(asset, bx, by)
+    grounds.get(key)(loadGround(key)) match
+      case Loaded.Ready(img) => Some(img)
+      case _                 => None
 
   // ---------------- 主绘制 ----------------
 

@@ -19,20 +19,27 @@ final class Assets(val version: String):
 
   def bytes(path: String): Future[ArrayBuffer] = Assets.retry(url(path))(_.arrayBuffer())
 
-  def image(path: String): Future[dom.HTMLImageElement] =
-    val p   = Promise[dom.HTMLImageElement]()
-    val img = dom.document.createElement("img").asInstanceOf[dom.HTMLImageElement]
-    img.asInstanceOf[js.Dynamic].decoding = "async"
-    img.addEventListener("load", (_: dom.Event) => p.trySuccess(img): Unit)
-    img.addEventListener("error", (_: dom.Event) => p.tryFailure(Assets.Missing(path)): Unit)
-    img.src = url(path)
-    p.future
+  /**
+   * 下载一张图：用 <img> 直接加载（走浏览器缓存）；失败时 <img> 看不到状态码，就用 HEAD 问一下：
+   * 404 是素材里没有（Missing，不再试），其他（断网、请求被取消、没解码出来）退避后重试，和 fetch 一样最多 4 次（#1251）。
+   */
+  def image(path: String, tries: Int = 4): Future[dom.HTMLImageElement] =
+    val u = url(path)
+    def attempt(i: Int): Future[dom.HTMLImageElement] =
+      Assets.loadImg(u).recoverWith { case e =>
+        Assets.status(u).flatMap {
+          case 404                 => Future.failed(Assets.Missing(path))
+          case _ if i + 1 >= tries => Future.failed(e)
+          case _                   => Assets.sleep(800 * (i + 1)).flatMap(_ => attempt(i + 1))
+        }
+      }
+    attempt(0)
 
   def map(id: MapId, asset: String): Future[MapData] =
     bytes(s"map/$asset.bin").flatMap(buf => MapData.parse(id, asset, buf).fold(e => Future.failed(Exception(e)), Future.successful))
 
 object Assets:
-  /** 素材里没有这个文件（404 或图片解码失败）。 */
+  /** 素材里没有这个文件（404）。 */
   final case class Missing(path: String) extends Exception(s"素材里没有 $path")
 
   /** 读素材版本；拿不到就用 "0"（只影响缓存，不影响游戏）。 */
@@ -47,6 +54,19 @@ object Assets:
     val p = Promise[Unit]()
     dom.window.setTimeout(() => p.success(()), ms)
     p.future
+
+  private def loadImg(u: String): Future[dom.HTMLImageElement] =
+    val p   = Promise[dom.HTMLImageElement]()
+    val img = dom.document.createElement("img").asInstanceOf[dom.HTMLImageElement]
+    img.asInstanceOf[js.Dynamic].decoding = "async"
+    img.addEventListener("load", (_: dom.Event) => p.trySuccess(img): Unit)
+    img.addEventListener("error", (_: dom.Event) => p.tryFailure(Exception(s"图片没加载出来 $u")): Unit)
+    img.src = u
+    p.future
+
+  /** HEAD 问状态码；请求本身失败（断网）算 0。 */
+  private def status(u: String): Future[Int] =
+    dom.fetch(u, new dom.RequestInit { method = dom.HttpMethod.HEAD }).toFuture.map(_.status).recover(_ => 0)
 
   private def retry[A](u: String, tries: Int = 4)(read: dom.Response => js.Promise[A]): Future[A] =
     def attempt(i: Int): Future[A] =
