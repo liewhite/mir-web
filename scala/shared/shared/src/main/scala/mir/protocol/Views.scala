@@ -62,7 +62,7 @@ final case class ActionView(
 object ActionView:
   given JsonCodec[ActionView] = DeriveJsonCodec.gen
 
-/** 对象进入视野时的全貌；tint 是中毒、麻痹把身子染成的颜色（没有为空）。 */
+/** 对象进入视野时的全貌；afflictions 是身上看得见的中毒、麻痹（锁定卡列出、身子按它染色）。 */
 final case class ActorView(
     id: ActorId,
     look: Look,
@@ -72,7 +72,7 @@ final case class ActorView(
     maxHp: Hp,
     action: ActionView,
     dead: Boolean,
-    tint: Option[BodyTint] = None
+    afflictions: Set[Affliction] = Set.empty
 )
 
 object ActorView:

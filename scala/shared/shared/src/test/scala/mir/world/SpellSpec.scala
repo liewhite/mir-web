@@ -222,7 +222,7 @@ object SpellSpec extends ZIOSpecDefault:
         m.maxHpNow = 100_000
         m.hp = 100_000
         def kinds = StatusKind.poisons.filter(m.statuses.has)
-        def tint  = s.view.actors.get(m.id).flatMap(_.tint)
+        def tint  = s.view.actors.get(m.id).flatMap(a => Affliction.tint(a.afflictions))
         val before = tint
         s.cast(p, 6, Some(m), m.cell)
         val first = kinds

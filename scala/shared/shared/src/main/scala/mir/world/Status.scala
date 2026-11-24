@@ -1,7 +1,7 @@
 package mir.world
 
 import mir.core.*
-import mir.model.PoisonKind
+import mir.model.{Affliction, PoisonKind}
 
 import scala.collection.mutable
 
@@ -16,6 +16,12 @@ object StatusKind:
     case PoisonKind.Red   => RedPoison
 
   val poisons: List[StatusKind] = List(GreenPoison, RedPoison)
+
+  /** 看得见的异常状态（锁定卡、染色）对应的身上状态 */
+  def of(af: Affliction): StatusKind = af match
+    case Affliction.GreenPoison => GreenPoison
+    case Affliction.RedPoison   => RedPoison
+    case Affliction.Paralyzed   => Paralyzed
 
 /** 身上的限时状态和它带的参数。 */
 enum Status(val kind: StatusKind):

@@ -104,3 +104,16 @@ enum BodyTint:
 
 object BodyTint:
   given JsonCodec[BodyTint] = EnumCodec.byName(values, _.toString)
+
+/** 身上看得见的异常状态：锁定信息卡列出来，身子的染色也由它推出（#1212）。 */
+enum Affliction:
+  case GreenPoison, RedPoison, Paralyzed
+
+object Affliction:
+  given JsonCodec[Affliction] = EnumCodec.byName(values, _.toString)
+
+  /** 染成的颜色：几种同时有时只显示一种，麻痹 > 红毒 > 绿毒（见 BodyTint）。 */
+  def tint(as: Set[Affliction]): Option[BodyTint] =
+    if as(Paralyzed) then Some(BodyTint.Gray)
+    else if as(RedPoison) then Some(BodyTint.Red)
+    else Option.when(as(GreenPoison))(BodyTint.Green)

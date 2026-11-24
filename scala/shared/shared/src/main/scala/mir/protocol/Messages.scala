@@ -117,8 +117,8 @@ enum ServerMsg:
   case HpChanged(id: ActorId, hp: Hp, maxHp: Hp)
   /** 外观变了（换武器衣服、怪物钻出/钻回、石像醒来） */
   case LookChanged(id: ActorId, look: Look)
-  /** 中毒、麻痹的染色变了（没有为空） */
-  case TintChanged(id: ActorId, tint: Option[BodyTint])
+  /** 身上看得见的中毒、麻痹变了 */
+  case AfflictionsChanged(id: ActorId, afflictions: Set[Affliction])
 
   // ---- 地上的东西 ----
   case GroundAppear(item: GroundView)

@@ -2,7 +2,7 @@ package mir.client.ui
 
 import mir.client.input.{Joystick, Pt}
 import mir.core.*
-import mir.model.{ItemInstance, ItemPlace, Job}
+import mir.model.{Affliction, BodyTint, ItemInstance, ItemPlace, Job}
 import mir.protocol.{GameCmd, Look}
 import mir.rules.{Rates, Skill}
 
@@ -151,13 +151,15 @@ final class Board(ui: ClassicUi):
 
   // ---------------- 触屏操作件（用户 #1140） ----------------
 
-  /** 锁定对象的信息卡：怪是名字、等级、攻防、经验（倍率后）；宝宝绿框；别的玩家只有名字、职业。都有血条，右上角 × 取消锁定。 */
+  /** 锁定对象的信息卡：怪是名字、等级、攻防、经验（倍率后），中了毒或麻痹再加一行；宝宝绿框；别的玩家只有名字、职业。都有血条，右上角 × 取消锁定。 */
   private def drawTarget(top: Double): Unit =
     for
       id   <- ui.client.locked
       a    <- ui.client.actor(id)
-      card <- targetCard(a.look)
+      base <- targetCard(a.look)
     do
+      val card = base.copy(lines = base.lines ++ afflictionLine(a.afflictions))
+      val sickColor = Affliction.tint(a.afflictions).map(tintColor)
       val x = math.round((ui.W - TargetW) / 2).toDouble
       val r = Rect(x, top, TargetW, 37 + 15 * card.lines.size)
       ui.area(r)
@@ -168,10 +170,28 @@ final class Board(ui: ClassicUi):
       g.rect(x + 6, top + 22, math.round((TargetW - 12) * ratio).toDouble, 10, if card.friend then "#2ecc71" else "#d33")
       val hp = s"${a.hp.value}/${a.maxHp.value}"
       g.text(hp, x + (TargetW - g.width(hp)) / 2, top + 21, "#fff", bold = true)
-      card.lines.zipWithIndex.foreach((line, i) => g.text(line, x + 6, top + 37 + 15 * i, if i == 0 then "#ddd" else "#c0c0c0"))
+      // 中毒、麻痹那行（有的话是最后一行）按身子的染色上色
+      card.lines.zipWithIndex.foreach { (line, i) =>
+        val color = if i >= base.lines.size then sickColor.getOrElse("#c0c0c0") else if i == 0 then "#ddd" else "#c0c0c0"
+        g.text(line, x + 6, top + 37 + 15 * i, color)
+      }
       val close = Rect(x + TargetW - 30, top, 30, 22)
       g.text("×", close.x + 11, close.y + 4, "#f88", bold = true)
       ui.button(Button(close, () => ui.ctl.unlock()))
+
+  /** 锁定卡上中毒、麻痹那一行（没有就不加） */
+  private def afflictionLine(as: Set[Affliction]): List[String] =
+    val names = Affliction.values.toList.filter(as).map {
+      case Affliction.GreenPoison => "绿毒"
+      case Affliction.RedPoison   => "红毒"
+      case Affliction.Paralyzed   => "麻痹"
+    }
+    Option.when(names.nonEmpty)("中了：" + names.mkString("、")).toList
+
+  private def tintColor(t: BodyTint): String = t match
+    case BodyTint.Green => "#7cff6a"
+    case BodyTint.Red   => "#ff7a6a"
+    case BodyTint.Gray  => "#d0d0d0"
 
   private def targetCard(look: Look): Option[TargetCard] = look match
     case h: Look.Human => Some(TargetCard(s"${h.name}  ${h.job.label}", friend = true, Nil))

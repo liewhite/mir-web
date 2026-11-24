@@ -45,11 +45,9 @@ sealed abstract class Actor(val id: ActorId, initCell: Cell, initDir: Dir, now: 
   def maxHp: Int
   def look: Look
 
-  /** 身上状态染的颜色（见 BodyTint：麻痹 > 红毒 > 绿毒） */
-  def tint: Option[BodyTint] =
-    if statuses.has(StatusKind.Paralyzed) then Some(BodyTint.Gray)
-    else if statuses.has(StatusKind.RedPoison) then Some(BodyTint.Red)
-    else Option.when(statuses.has(StatusKind.GreenPoison))(BodyTint.Green)
+  /** 身上看得见的异常状态（中毒、麻痹） */
+  def afflictions: Set[Affliction] =
+    Affliction.values.iterator.filter(af => statuses.has(StatusKind.of(af))).toSet
 
   def ac: Span
   def mac: Span
@@ -215,3 +213,4 @@ final case class Field(id: FieldId, cell: Cell, effect: FieldEffect, until: Mill
 
 final case class GroundItem(id: GroundId, cell: Cell, loot: Loot, droppedAt: Millis):
   def view: GroundView = GroundView(id, cell, loot.thing)
+

@@ -4,7 +4,7 @@ import mir.client.assets.{Assets, MapData, Sprite, SpriteStore}
 import mir.client.assets.MapData.{GroundBlock, UnitX, UnitY}
 import mir.core.*
 import mir.data.Catalog
-import mir.model.{ActKind, BodyTint, Cover, FieldKind, Mood}
+import mir.model.{ActKind, Affliction, BodyTint, Cover, FieldKind, Mood}
 import mir.protocol.*
 import mir.rules.ItemKind
 import org.scalajs.dom
@@ -281,7 +281,7 @@ final class Renderer(canvas: dom.HTMLCanvasElement, sprites: SpriteStore, assets
     val hair   = Option.when(h.hair > 0)(()).flatMap(_ => sprites.sprite("hair", (h.hair * 2 + sex) * Frames.HumanFrames + frame))
     val front  = Frames.weaponInFront(h.sex, frame)
     // 原版 HumActor.DrawChr：身子和头发染色，武器不染
-    val tint   = a.tint.filter(_ => !a.dead)
+    val tint   = Affliction.tint(a.afflictions).filter(_ => !a.dead)
     def put(sp: Option[Sprite], t: Option[BodyTint]): Unit = sp.foreach(x => blitTinted(x, t, dx + x.ox, dy + x.oy))
     if !front then put(weapon, None)
     put(body, tint)
@@ -306,7 +306,7 @@ final class Renderer(canvas: dom.HTMLCanvasElement, sprites: SpriteStore, assets
         f   = Frames.monster(t, mir.data.MonsterLook.of(d), a.action, a.dir, now, a.dead, m.cover)
         sp <- sprites.sprite(d.lib, d.offset + f)
       yield
-        blitTinted(sp, a.tint.filter(_ => !a.dead), dx + sp.ox, dy + sp.oy)
+        blitTinted(sp, Affliction.tint(a.afflictions).filter(_ => !a.dead), dx + sp.ox, dy + sp.oy)
         sp
 
   // ---------------- 特效 ----------------
