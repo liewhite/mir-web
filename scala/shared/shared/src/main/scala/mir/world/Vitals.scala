@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.DropDef
 import mir.model.*
 import mir.protocol.*
-import mir.rules.{ItemEffects, ItemKind, Leveling, PassiveSkills, PetBody, Progress, RandomUpgrade, Rates, Recovery, Rng, Rules, Skill, SpellRules}
+import mir.rules.{Charges, ItemEffects, ItemKind, Leveling, PassiveSkills, PetBody, Progress, RandomUpgrade, Rates, Recovery, Rng, Rules, Skill, SpellRules}
 
 /**
  * 血、蓝与生死：一下攻击的结算、扣血、死亡（经验、掉落）、复活、回血回蓝、属性重算。
@@ -188,8 +188,8 @@ final class Vitals(w: World):
       else
         itemDef.foreach { id =>
           val n = math.max(1, d.amount)
-          // 可叠的一次掉多个就掉成一叠（#1159）
-          if ItemKind.stacks(id) then w.dropAt(m.cell, Loot.Item(ItemInstance.fresh(w.newUid(), id).copy(count = n)))
+          // 可叠的一次掉多个就掉成一叠（#1159）；护身符、药粉的数量是次数（#1213）
+          if ItemKind.stacks(id) then w.dropAt(m.cell, Loot.Item(Charges.settle(id, ItemInstance.fresh(w.newUid(), id).copy(count = n))))
           else (1 to n).foreach(_ => w.dropAt(m.cell, Loot.Item(RandomUpgrade.monsterDrop(ItemInstance.fresh(w.newUid(), id), id))))
         }
   }

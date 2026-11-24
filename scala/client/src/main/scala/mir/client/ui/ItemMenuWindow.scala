@@ -3,7 +3,7 @@ package mir.client.ui
 import mir.client.input.Pt
 import mir.model.{ItemInstance, ItemPlace}
 import mir.protocol.{GameCmd, Tone}
-import mir.rules.ItemKind
+import mir.rules.{ItemKind, Pricing}
 
 /** 手机上点了物品弹出的说明 + 操作按钮。keepOpen：做完操作菜单留着（连续买药）。 */
 final case class MenuAction(label: String, run: () => Unit)
@@ -41,8 +41,8 @@ final class ItemMenuWindow(ui: ClassicUi) extends Window:
     do
       val kind = ItemKind.of(d)
       // 随时出售（#1178）：包裹和快捷栏里的都能卖，穿着的不行；开着商店出售页时用商店的「卖出」
-      val sell = Option.unless(ui.merchant.selling)(ui.quickSellPrice(it)).flatten.map { each =>
-        MenuAction(if it.count > 1 then s"出售（每个 $each）" else s"出售 $each 金币", () => ui.quickSell(it))
+      val sell = Option.unless(ui.merchant.selling)(ui.sellable(it)).flatten.map { _ =>
+        MenuAction(if it.count > 1 then s"出售（${Pricing.sellUnit(d)}）" else s"出售 ${Pricing.sell(d, 1)} 金币", () => ui.quickSell(it))
       }
       val actions: List[MenuAction] = place match
         case ItemPlace.Worn(slot) => List(MenuAction("脱下", () => ui.send(GameCmd.Unequip(slot))))

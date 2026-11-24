@@ -213,16 +213,23 @@ object PlayerOps:
       }
       w.vitals.recalc(p)
 
-  /** 脱下：放到指定的空格，或包裹第一个空格。 */
+  /** 脱下：放到指定的空格；没指定就放回包裹（可叠的护身符、药粉并进同名那一叠，#1213），否则第一个空格。 */
   def unequip(w: World, p: Player, slot: EquipSlot, into: Option[ItemPlace]): Result =
     for
-      it   <- p.worn.get(slot).toRight("这个位置没有装备")
-      dest <- into.orElse(Some(p.bag.indexOf(None)).filter(_ >= 0).map(ItemPlace.Bag(_))).toRight("包裹满了")
-      _    <- Either.cond(at(p, dest).isEmpty, (), "请放到空格子里")
-    yield
-      p.worn.remove(slot)
-      put(p, dest, Some(it))
-      w.vitals.recalc(p)
+      it <- p.worn.get(slot).toRight("这个位置没有装备")
+      _ <- into match
+        case Some(dest) =>
+          Either.cond(at(p, dest).isEmpty, (), "请放到空格子里").map { _ =>
+            p.worn.remove(slot)
+            put(p, dest, Some(it))
+          }
+        case None =>
+          p.worn.remove(slot)
+          Either.cond(addToBag(w, p, it), (), "包裹满了").left.map { why =>
+            p.worn(slot) = it
+            why
+          }
+    yield w.vitals.recalc(p)
 
   /** 在包裹、快捷栏、装备位之间挪（原版拖物品）。 */
   def moveItem(w: World, p: Player, uid: ItemUid, to: ItemPlace): Result =
@@ -308,7 +315,7 @@ object PlayerOps:
     yield r
 
   /**
-   * 卖出身上（包裹或快捷栏，穿着的不算）一件的 n 个（None = 整叠），每个 Pricing.sell。
+   * 卖出身上（包裹或快捷栏，穿着的不算）一件的 n 个（None = 整叠），价钱 Pricing.sell(d, n)（护身符、药粉按次折算）。
    * accepts：收不收这种东西；一文不值的不收（免得白白没了）。
    */
   private def sellOff(w: World, p: Player, uid: ItemUid, n: Option[Int], accepts: ItemDef => Result): Result =
@@ -319,7 +326,7 @@ object PlayerOps:
       _       <- Either.cond(Pricing.sell(d) > 0, (), s"${d.name.value}不值钱，卖不了")
       sold    <- takeOwned(w, p, uid, n)
     yield
-      val price = Pricing.sell(d) * sold.count
+      val price = Pricing.sell(d, sold.count)
       p.gold = p.gold + Gold(price)
       w.out.selfSound(p, Sounds.money)
       w.out.notice(p, s"卖出 ${label(sold)}，得到 $price 金币", Tone.Item)

@@ -3,7 +3,7 @@ package mir.client.ui
 import mir.data.{Catalog, ItemDef, SkillDef, Span}
 import mir.model.{EquipSlot, ItemBonus, ItemInstance, Job, LearnedSkill, PoisonKind}
 import mir.protocol.SelfStats
-import mir.rules.{Upgrade, Durability, Rates, ItemEffects, ItemKind, PotionRules, Pricing, Recovery, Requirement, Rules, ScrollEffect, dressSex}
+import mir.rules.{Upgrade, Charges, Durability, Rates, ItemEffects, ItemKind, PotionRules, Pricing, Recovery, Requirement, Rules, ScrollEffect, dressSex}
 
 /**
  * 把物品、属性、技能讲成可量化的说明（用户 #1165：所有效果给精确数值）。纯函数，只出文字。
@@ -70,7 +70,7 @@ object Describe:
         case Some(PoisonKind.Red)   => "施毒术用：红毒，中毒期间挨打伤害加深（数值见施毒术说明）"
       )),
       Some(Line("放包裹里就能用（左手镯位戴着的先用）", Tint.Dim)),
-      inst.map(i => Line(s"剩余 ${Durability.usesLeft(i.dura)} 次", Tint.Dim))
+      inst.map(i => Line(s"共可用 ${i.count} 次（同种叠成一格，数字就是剩余次数）", Tint.Dim))
     ).flatten
 
   /** 穿上它要的东西：等级/属性要求、性别（不限重量）。 */
@@ -145,7 +145,7 @@ object Describe:
     val titleText = if inst.exists(_.special) then s"${d.name.value}（极品）" else d.name.value
     val title = Line(titleText, if upgrade.isDefined then Tint.Upgrade else if inst.exists(_.special) then Tint.Special else Tint.Title)
     title :: upgradeLines(upgrade) ++ body ++ List(
-      Line(s"商店收购价 ${Pricing.sell(d)} 金币", Tint.Gold)
+      Line(s"商店收购价 ${if Charges.perPiece(d) > 1 then Pricing.sellUnit(d) else Pricing.sell(d).toString} 金币", Tint.Gold)
     )
 
   /** 高级物品提醒（#1200）：换上它主属性净提升多少。 */

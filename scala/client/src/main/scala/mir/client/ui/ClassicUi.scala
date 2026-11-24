@@ -4,7 +4,7 @@ import mir.client.game.{Controller, GameClient, UiEvents}
 import mir.client.input.{Joystick, Overlay, Pt}
 import mir.client.render.ViewOptions
 import mir.core.*
-import mir.data.Catalog
+import mir.data.{Catalog, ItemDef}
 import mir.model.*
 import mir.protocol.*
 import mir.rules.{ItemKind, Pricing}
@@ -230,12 +230,12 @@ final class ClassicUi(
       itemMenu.close()
       quantity.show(QuantityAsk(title, it.count, note, ok))
 
-  /** 随时出售（#1178）每个卖多少；不值钱的没有。 */
-  def quickSellPrice(it: ItemInstance): Option[Int] = catalog.item(it.name).map(Pricing.sell).filter(_ > 0)
+  /** 随时出售（#1178）：这件东西的定义，不值钱的（一份的卖价为 0）没有。 */
+  def sellable(it: ItemInstance): Option[ItemDef] = catalog.item(it.name).filter(Pricing.sell(_) > 0)
 
   /** 随时出售：一律先弹数量框确认（单个也问，免得误卖），确定后发 QuickSell。 */
-  def quickSell(it: ItemInstance): Unit = quickSellPrice(it).foreach { each =>
-    askCount(it, s"出售 ${it.name.value}", n => Some(s"得到 ${each * n} 金币"), n => send(GameCmd.QuickSell(it.uid, Some(n))), confirm = true)
+  def quickSell(it: ItemInstance): Unit = sellable(it).foreach { d =>
+    askCount(it, s"出售 ${it.name.value}", n => Some(s"得到 ${Pricing.sell(d, n)} 金币"), n => send(GameCmd.QuickSell(it.uid, Some(n))), confirm = true)
   }
 
   def apply(step: HandStep): Unit =

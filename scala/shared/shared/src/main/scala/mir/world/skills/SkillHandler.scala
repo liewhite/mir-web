@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.SkillDef
 import mir.model.*
 import mir.protocol.{Anchor, Tone}
-import mir.rules.{Durability, ItemKind, Rng, Skill, SpellRules}
+import mir.rules.{ItemKind, Rng, Skill, SpellRules}
 import mir.world.*
 
 /** 技能本身做了什么。 */
@@ -152,7 +152,7 @@ final class SpellCtx(
   private def findAmulet[K](fits: PartialFunction[Option[PoisonKind], K]): Option[(AmuletAt, K)] =
     (ItemPlace.Worn(EquipSlot.BraceletL) +: p.bag.indices.map(ItemPlace.Bag(_))).iterator.flatMap { place =>
       Inventory.at(p, place)
-        .filter(_.dura > 0)
+        .filter(_.count > 0)
         .flatMap(it => w.catalog.item(it.name))
         .map(ItemKind.of)
         .collect { case ItemKind.Amulet(k) if fits.isDefinedAt(k) => AmuletAt(place) -> fits(k) }
@@ -168,14 +168,13 @@ final class SpellCtx(
       .orElse(findAmulet { case Some(k) => k })
       .toRight(Effect.Fail("身上没有灰色或黄色药粉（包裹里或左手镯位都行）"))
 
-  /** 用掉找到的那份护符的一次；次数用完就没了。 */
+  /** 用掉找到的那一叠护符的一次（数量就是剩余次数，#1213 Charges）；次数用完就没了。 */
   def consume(a: AmuletAt): Unit =
     Inventory.at(p, a.place).foreach { it =>
-      val left = it.dura - Durability.PerUse
-      if left <= 0 then
+      if it.count <= 1 then
         Inventory.put(p, a.place, None)
         w.out.notice(p, s"${it.name.value} 用完了", Tone.Bad)
-      else Inventory.put(p, a.place, Some(it.copy(dura = left)))
+      else Inventory.put(p, a.place, Some(it.copy(count = it.count - 1)))
     }
 
   def displayName(a: Actor): String = a match

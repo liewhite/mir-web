@@ -61,7 +61,7 @@ final class BagWindow(ui: ClassicUi) extends ToggleWindow:
     case Some(Hand(ItemPlace.Worn(_), _))  => ui.message("先把装备脱下来放进包裹", Tone.Bad)
     case Some(h) =>
       ui.hand = None
-      if ui.quickSellPrice(h.item).isEmpty then ui.message(s"${h.item.name.value}不值钱，卖不了", Tone.Bad)
+      if ui.sellable(h.item).isEmpty then ui.message(s"${h.item.name.value}不值钱，卖不了", Tone.Bad)
       else ui.quickSell(h.item)
 
   override def itemAt(m: Me, p: Pt): Option[ItemInstance] =

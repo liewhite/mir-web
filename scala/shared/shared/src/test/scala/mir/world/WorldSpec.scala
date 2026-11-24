@@ -513,6 +513,61 @@ object WorldSpec extends ZIOSpecDefault:
           synced
         )
       },
+      suite("护身符、药粉按次叠成一格（#1213）")(
+        test("新拿到的一份就是它的次数；同名的并进那一格，次数相加；不同名的不混") {
+          val s  = sim()
+          val p  = join(s.w, "甲", Cell(30, 30))
+          val a  = s.w.newItem(ItemName("护身符")).get
+          val b  = s.w.newItem(ItemName("护身符")).get
+          val g  = s.w.newItem(ItemName("灰色药粉(少量)")).get
+          List(a, b, g).foreach(Inventory.add(catalog, p, _))
+          val charms  = p.bag.toList.flatten.filter(_.name == ItemName("护身符"))
+          val powders = p.bag.toList.flatten.filter(_.name == ItemName("灰色药粉(少量)"))
+          assertTrue(a.count == 300, g.count == 100, charms.map(_.count) == List(600), powders.map(_.count) == List(100))
+        },
+        test("旧存档里一份一格的符和毒：进游戏并成一格，次数是每份剩余次数之和，不丢；左手镯戴着的也换成次数") {
+          val s = sim()
+          val d = CharacterData.newbie(catalog, "乙", Job.Taoist, Sex.Male, UidSource.counter(7000))
+          def old(uid: Long, name: String, dura: Int) = Some(ItemInstance(ItemUid(uid), ItemName(name), dura, 30_000))
+          val bag = d.bag.updated(0, old(1L, "护身符", 30_000)).updated(3, old(2L, "护身符", 1_200)).updated(5, old(3L, "护身符", 0))
+            .updated(7, old(4L, "黄色药粉(少量)", 900))
+          val worn = d.worn + (EquipSlot.BraceletL -> ItemInstance(ItemUid(5L), ItemName("灰色药粉(少量)"), 5_000, 10_000))
+          val id = s.w.join(d.copy(bag = bag, worn = worn, place = Place(s.w.mapId, Cell(30, 30))))
+          val p  = s.w.player(id).get
+          assertTrue(
+            p.bag(0).map(_.count).contains(312),
+            p.bag(3).isEmpty, p.bag(5).isEmpty,
+            p.bag(7).map(_.count).contains(9),
+            p.worn.get(EquipSlot.BraceletL).map(_.count).contains(50)
+          )
+        },
+        test("出售按次折算（一份 300 次卖 250，卖 150 次得 125）；左手镯上的一叠脱下来并回包裹那一格") {
+          val s = sim()
+          val p = join(s.w, "甲", Cell(30, 30))
+          val c = s.w.newItem(ItemName("护身符")).get
+          Inventory.add(catalog, p, c)
+          val each = mir.rules.Pricing.sell(catalog.item(c.name).get)
+          val g0   = p.gold
+          s.cmd(p, GameCmd.QuickSell(c.uid, Some(150)))
+          val half = p.gold == g0 + Gold(each / 2) && p.bag.flatten.find(_.name == c.name).map(_.count).contains(150)
+          val worn = s.w.newItem(ItemName("护身符")).get
+          p.worn(EquipSlot.BraceletL) = worn
+          s.cmd(p, GameCmd.Unequip(EquipSlot.BraceletL))
+          val merged = p.bag.toList.flatten.filter(_.name == c.name).map(_.count) == List(450) && !p.worn.contains(EquipSlot.BraceletL)
+          val g1 = p.gold
+          s.cmd(p, GameCmd.QuickSell(c.uid))
+          assertTrue(each == 250, half, merged, p.gold == g1 + Gold(375), !p.bag.flatten.exists(_.name == c.name), s.consistent(p))
+        },
+        test("怪一次掉几份就是一叠几份的次数，捡起来并进身上那一格") {
+          val s = sim()
+          val p = join(s.w, "甲", Cell(30, 30))
+          Inventory.add(catalog, p, s.w.newItem(ItemName("护身符")).get)
+          val d = catalog.item(ItemName("护身符")).get
+          s.w.dropAt(Cell(30, 30), Loot.Item(mir.rules.Charges.settle(d, ItemInstance.fresh(s.w.newUid(), d).copy(count = 2))))
+          PlayerOps.pickUp(s.w, p)
+          assertTrue(p.bag.toList.flatten.filter(_.name == d.name).map(_.count) == List(900))
+        }
+      ),
       test("自动捡物只捡设置里勾了的种类（#1178），总开关关了什么都不捡") {
         val s = sim()
         val p = join(s.w, "甲", Cell(30, 30))
@@ -586,7 +641,7 @@ object WorldSpec extends ZIOSpecDefault:
         val back   = (reds.map(_.count), p.storage.toList.map(_.count))
         val sword  = ItemName("木剑")
         (1 to 2).foreach(_ => s.w.newItem(sword).foreach(PlayerOps.addToBag(s.w, p, _)))
-        val swords = p.bag.flatten.filter(_.name == sword).map(_.count).toList
+        val swords = p.bag.toList.flatten.filter(_.name == sword).map(_.count).toList
         assertTrue(
           start == List(4), merged == List(9), opened == List(15), leftB.contains(1), drank == List(14),
           stored == List(red -> 5), back == (List(13), List(1)), swords == List(1, 1),

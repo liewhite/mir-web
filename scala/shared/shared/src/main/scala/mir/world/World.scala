@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.{Catalog, MapDef, MonsterActionTable}
 import mir.model.*
 import mir.protocol.*
-import mir.rules.Rng
+import mir.rules.{Charges, Rng}
 import mir.terrain.Terrain
 
 import scala.collection.mutable
@@ -173,7 +173,7 @@ final class World(val catalog: Catalog, val mapDef: MapDef, val terrain: Terrain
   private[world] def removeGround(id: GroundId): Unit = ground.remove(id).foreach(_ => ())
 
   private[world] def newItem(name: ItemName): Option[ItemInstance] =
-    catalog.item(name).map(d => ItemInstance.fresh(uids.next(), d))
+    catalog.item(name).map(d => Charges.fresh(uids.next(), d))
 
   private[world] def newUid(): ItemUid = uids.next()
 

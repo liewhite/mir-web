@@ -3,7 +3,7 @@ package mir.world
 import mir.core.*
 import mir.data.Catalog
 import mir.model.*
-import mir.rules.PetBody
+import mir.rules.{Charges, PetBody}
 import zio.json.*
 
 /** 某张地图上的某一格。 */
@@ -53,7 +53,7 @@ object CharacterData:
    * 物品编号由 uids 分配。
    */
   def newbie(catalog: Catalog, name: String, job: Job, sex: Sex, uids: UidSource): CharacterData =
-    def item(n: String): Option[ItemInstance] = catalog.item(ItemName(n)).map(d => ItemInstance.fresh(uids.next(), d))
+    def item(n: String): Option[ItemInstance] = catalog.item(ItemName(n)).map(d => Charges.fresh(uids.next(), d))
     // 同名药叠成一格（#1159）
     val potions = List(item("金创药(小量)").map(_.copy(count = 4)), item("魔法药(小量)").map(_.copy(count = 2)))
     val worn = List(

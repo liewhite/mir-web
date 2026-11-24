@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.*
 import mir.model.*
 import mir.protocol.*
-import mir.rules.{PetBody, PoisonDose, Rng, SpellRules}
+import mir.rules.{Durability, PetBody, PoisonDose, Rng, SpellRules}
 import mir.terrain.Terrain
 import mir.rules.SpellRules.{TameOutcome, TameTarget}
 import mir.testkit.TestFiles
@@ -52,7 +52,7 @@ object SpellSpec extends ZIOSpecDefault:
     val id = s.w.join(d.copy(place = Place(s.w.mapId, at), level = level))
     val p  = s.w.player(id).get
     p.skills ++= skills.map(k => LearnedSkill(SkillId(k), 3, 0, None))
-    if charm then p.worn(EquipSlot.BraceletL) = ItemInstance(ItemUid(77L), ItemName("护身符"), 100_000, 100_000)
+    if charm then p.worn(EquipSlot.BraceletL) = charges(77L, "护身符", 1000)
     s.w.vitals.recalc(p)
     p.stats = p.stats.copy(maxHp = 100_000, maxMp = 100_000)
     p.hp = 100_000
@@ -60,6 +60,10 @@ object SpellSpec extends ZIOSpecDefault:
     s.me = Some(id)
     s.flush()
     p
+
+  /** 按次叠的护身符/药粉（#1213）：数量就是剩余次数 */
+  private def charges(uid: Long, name: String, n: Int): ItemInstance =
+    ItemInstance(ItemUid(uid), ItemName(name), Durability.PerUse, Durability.PerUse, count = n)
 
   private def put(s: Sim, name: String, at: Cell): Monster =
     s.w.spawner.spawnMonster(catalog.monster(MonsterName(name)).getOrElse(throw new AssertionError(name)), None, at, 0).get
@@ -177,34 +181,34 @@ object SpellSpec extends ZIOSpecDefault:
       test("只有包裹里有护身符：灵魂火符照样放，扣包裹里那张的次数；左手镯戴着的毒药不动") {
         val s      = sim()
         val p      = caster(s, Job.Taoist, List(13))
-        val powder = ItemInstance(ItemUid(78L), ItemName("黄色药粉(少量)"), 1000, 1000)
+        val powder = charges(78L, "黄色药粉(少量)", 10)
         p.worn(EquipSlot.BraceletL) = powder
         val slot = p.bag.indexOf(None)
-        p.bag(slot) = Some(ItemInstance(ItemUid(77L), ItemName("护身符"), 1000, 1000))
+        p.bag(slot) = Some(charges(77L, "护身符", 10))
         val m = put(s, "蛤蟆", Cell(33, 30))
         pin(m)
         m.maxHpNow = 100_000
         m.hp = 100_000
         s.cast(p, 13, Some(m), m.cell)
         s.run(2000)
-        assertTrue(m.hp < 100_000, p.bag(slot).map(_.dura).contains(900), p.worn.get(EquipSlot.BraceletL).contains(powder))
+        assertTrue(m.hp < 100_000, p.bag(slot).map(_.count).contains(9), p.worn.get(EquipSlot.BraceletL).contains(powder))
       },
       test("左手镯戴着护身符时先用它，包裹里的不动") {
         val s    = sim()
         val p    = caster(s, Job.Taoist, List(13), charm = true)
         val slot = p.bag.indexOf(None)
-        val bagged = ItemInstance(ItemUid(79L), ItemName("护身符"), 1000, 1000)
+        val bagged = charges(79L, "护身符", 10)
         p.bag(slot) = Some(bagged)
         val m = put(s, "蛤蟆", Cell(33, 30))
         pin(m)
         s.cast(p, 13, Some(m), m.cell)
-        assertTrue(p.worn.get(EquipSlot.BraceletL).map(_.dura).contains(100_000 - 100), p.bag(slot).contains(bagged))
+        assertTrue(p.worn.get(EquipSlot.BraceletL).map(_.count).contains(999), p.bag(slot).contains(bagged))
       },
       test("只有包裹里有药粉：施毒术按那份的颜色下毒，最后一次用完从包裹里拿掉并提示") {
         val s    = sim()
         val p    = caster(s, Job.Taoist, List(6))
         val slot = p.bag.indexOf(None)
-        p.bag(slot) = Some(ItemInstance(ItemUid(80L), ItemName("黄色药粉(少量)"), 100, 100))
+        p.bag(slot) = Some(charges(80L, "黄色药粉(少量)", 1))
         val m = put(s, "蛤蟆", Cell(33, 30))
         pin(m)
         s.cast(p, 6, Some(m), m.cell)
@@ -215,8 +219,8 @@ object SpellSpec extends ZIOSpecDefault:
         val s     = sim()
         val p     = caster(s, Job.Taoist, List(6))
         val slots = p.bag.indices.filter(p.bag(_).isEmpty).take(2)
-        p.bag(slots(0)) = Some(ItemInstance(ItemUid(81L), ItemName("灰色药粉(少量)"), 1000, 1000))
-        p.bag(slots(1)) = Some(ItemInstance(ItemUid(82L), ItemName("黄色药粉(少量)"), 1000, 1000))
+        p.bag(slots(0)) = Some(charges(81L, "灰色药粉(少量)", 10))
+        p.bag(slots(1)) = Some(charges(82L, "黄色药粉(少量)", 10))
         val m = put(s, "蛤蟆", Cell(33, 30))
         pin(m)
         m.maxHpNow = 100_000
@@ -239,8 +243,8 @@ object SpellSpec extends ZIOSpecDefault:
           green.contains(BodyTint.Green),
           both == StatusKind.poisons,
           red.contains(BodyTint.Red),
-          p.bag(slots(0)).map(_.dura).contains(800),
-          p.bag(slots(1)).map(_.dura).contains(900),
+          p.bag(slots(0)).map(_.count).contains(8),
+          p.bag(slots(1)).map(_.count).contains(9),
           m.hp < 100_000
         )
       },

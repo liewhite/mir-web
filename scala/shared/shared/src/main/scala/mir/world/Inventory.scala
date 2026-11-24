@@ -3,13 +3,14 @@ package mir.world
 import mir.core.*
 import mir.data.{Catalog, ItemDef}
 import mir.model.*
-import mir.rules.ItemKind
+import mir.rules.{Charges, ItemKind}
 
 import scala.collection.mutable
 
 /**
  * 身上（包裹 40 格 + 快捷栏 6 格）和仓库里物品的进出（#1159，照 TS 版 game/src/world/inventory.ts）：
- * 可叠的（ItemKind.stacks）同名并成一叠、不设上限；格子按「格」算满，重量按个数算（一叠 10 瓶药重 10 瓶）。
+ * 可叠的（ItemKind.stacks）同名并成一叠、不设上限；格子按「格」算满（不限重量）。
+ * 护身符、药粉的数量是剩余次数（#1213，Charges）：进来的先 settle 成按次计数再并。
  * 用一个只减数量；卖、存、取可以只动一叠里的几个（分出一件新编号的）。
  */
 private[world] object Inventory:
@@ -51,10 +52,11 @@ private[world] object Inventory:
   def hasRoom(p: Player, d: ItemDef): Boolean = stackOf(p, d).isDefined || freeSlot(p, d).isDefined
 
   /** 放到身上：并进同名一叠，否则找空位。放不下返回 false（什么都不动）。 */
-  def add(catalog: Catalog, p: Player, it: ItemInstance): Boolean =
-    catalog.item(it.name) match
+  def add(catalog: Catalog, p: Player, item: ItemInstance): Boolean =
+    catalog.item(item.name) match
       case None => false
       case Some(d) =>
+        val it = Charges.settle(d, item)
         stackOf(p, d) match
           case Some(place) =>
             at(p, place).foreach(s => put(p, place, Some(s.copy(count = s.count + it.count))))
@@ -79,8 +81,10 @@ private[world] object Inventory:
     }
 
   /** 存进仓库：并进同名一叠。 */
-  def store(catalog: Catalog, storage: mutable.ArrayBuffer[ItemInstance], it: ItemInstance): Unit =
-    val i = if catalog.item(it.name).exists(ItemKind.stacks) then storage.indexWhere(_.name == it.name) else -1
+  def store(catalog: Catalog, storage: mutable.ArrayBuffer[ItemInstance], item: ItemInstance): Unit =
+    val d  = catalog.item(item.name)
+    val it = d.fold(item)(Charges.settle(_, item))
+    val i  = if d.exists(ItemKind.stacks) then storage.indexWhere(_.name == it.name) else -1
     if i >= 0 then storage(i) = storage(i).copy(count = storage(i).count + it.count)
     else storage += it
 
@@ -94,14 +98,17 @@ private[world] object Inventory:
 
   /**
    * 进图整理（旧存档、TS 版迁移过来的存档）：数量不合法的改成 1，不可叠的一律 1；
+   * 护身符、药粉换成按次计数（#1213，一份一格的旧档按每份剩余次数加起来，次数用完的丢掉）；
    * 身上（快捷栏在前、再包裹）和仓库各自把同名可叠的并成一叠，留第一次出现的那格。
    */
   def normalize(catalog: Catalog, p: Player): Unit =
     def stacks(it: ItemInstance) = catalog.item(it.name).exists(ItemKind.stacks)
-    def fix(it: ItemInstance)    = if stacks(it) && it.count >= 1 then it else it.copy(count = 1)
+    def fix(it: ItemInstance): Option[ItemInstance] =
+      val counted = if stacks(it) && it.count >= 1 then it else it.copy(count = 1)
+      Some(catalog.item(it.name).fold(counted)(Charges.settle(_, counted))).filter(_.count >= 1)
     def merge(items: Vector[Option[ItemInstance]]): Vector[Option[ItemInstance]] =
       val first = mutable.Map.empty[ItemName, Int]
-      val out   = items.map(_.map(fix)).toArray
+      val out   = items.map(_.flatMap(fix)).toArray
       out.indices.foreach { i =>
         out(i).filter(stacks).foreach { it =>
           first.get(it.name) match
@@ -118,4 +125,4 @@ private[world] object Inventory:
     val st = merge(p.storage.toVector.map(Some(_))).flatten
     p.storage.clear()
     p.storage ++= st
-    p.worn.mapValuesInPlace((_, it) => fix(it))
+    p.worn.toList.foreach((slot, it) => fix(it).fold(p.worn.remove(slot): Unit)(p.worn(slot) = _))

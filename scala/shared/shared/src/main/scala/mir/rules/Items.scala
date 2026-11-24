@@ -1,5 +1,6 @@
 package mir.rules
 
+import mir.core.ItemUid
 import mir.data.{ItemDef, Span}
 import mir.model.*
 
@@ -74,12 +75,12 @@ object ItemKind:
     case _         => Nil
 
   /**
-   * 同名叠成一格、不设上限（用户 #1159 定，原版不叠）：药、卷轴、技能书、捆装药。
-   * 装备（每件持久不同）、护身符和毒粉（剩余次数记在持久里）、矿石等材料（纯度不同）和其他都不叠。
+   * 同名叠成一格、不设上限（用户 #1159 定，原版不叠）：药、卷轴、技能书、捆装药；护身符和药粉按「次」叠（#1213，见 Charges）。
+   * 装备（每件持久不同）、矿石等材料（纯度不同）和其他都不叠。
    */
   def stacks(k: ItemKind): Boolean = k match
-    case Potion(_, _, _) | Scroll(_) | Book(_, _) | Bundle(_) => true
-    case Equip(_) | Amulet(_) | Material | Other            => false
+    case Potion(_, _, _) | Scroll(_) | Book(_, _) | Bundle(_) | Amulet(_) => true
+    case Equip(_) | Material | Other                                    => false
 
   def stacks(d: ItemDef): Boolean = stacks(of(d))
 
@@ -196,7 +197,7 @@ object PotionRules:
 /**
  * 持久：存的是千分之一点（界面显示 存值/PerPoint 向上取整）。
  * 武器每次砍到目标有 1/WeaponWearOdds 的机会掉 WeaponWearPerHit；其他装备不掉持久。持久为 0 的装备不加任何属性。
- * 护身符、药粉的持久是剩余次数：每用一次扣 PerUse。
+ * 物品表里护身符、药粉的持久是一份的次数×PerUse（身上的按次叠，数量就是次数，见 Charges）。
  */
 object Durability:
   val PerPoint         = 1000
@@ -220,10 +221,41 @@ object Durability:
   def shown(raw: Int): Int    = math.ceil(raw / PerPoint.toDouble).toInt
   def usesLeft(raw: Int): Int = math.ceil(raw / PerUse.toDouble).toInt
 
-/** 商店买卖：买按表价，卖给商店得表价的一半（向下取整）。 */
+/**
+ * 护身符、药粉按「次」叠（用户 #1213：叠成一格、只显示还能用几次）：一格的数量（ItemInstance.count）就是剩余次数，
+ * 用一次数量减 1、减到 0 就没了，和药一样走同一套叠放、拆分、数量框。原版一份符/毒的剩余次数记在持久里（持久 = 次数×PerUse），
+ * 新拿到的和旧存档里的都由 settle 换成这种记法：数量 = 份数 × 每份剩余次数，持久固定为 PerUse（于是 settle 再做一次不变）。
+ * 其他物品不受影响，一个就是一个。
+ */
+object Charges:
+  /** 一份（物品表里的一个）能用几次：护身符 300、药粉 100–500；其他物品 1。 */
+  def perPiece(d: ItemDef): Int = ItemKind.of(d) match
+    case ItemKind.Amulet(_) => math.max(1, Durability.usesLeft(d.dura))
+    case _                  => 1
+
+  /** 换成按次计数（见上）；持久已用完的变成数量 0，由调用方丢掉。 */
+  def settle(d: ItemDef, it: ItemInstance): ItemInstance = ItemKind.of(d) match
+    case ItemKind.Amulet(_) =>
+      it.copy(count = it.count * Durability.usesLeft(math.max(0, it.dura)), dura = Durability.PerUse, duraMax = Durability.PerUse)
+    case _ => it
+
+  /** 新的一份：护身符、药粉直接是「这份的次数」那么多。 */
+  def fresh(uid: ItemUid, d: ItemDef): ItemInstance = settle(d, ItemInstance.fresh(uid, d))
+
+/**
+ * 商店买卖：买按表价（一份），卖给商店得表价的一半（向下取整）。
+ * 按次叠的护身符、药粉（Charges）卖 n 次得 一份的卖价 × n ÷ 每份次数（向下取整），整份卖和原来一样。
+ */
 object Pricing:
   def buy(d: ItemDef): Int  = d.price
+  /** 一份的卖价 */
   def sell(d: ItemDef): Int = d.price / 2
+  /** 卖 n 个（按次叠的是 n 次）得多少 */
+  def sell(d: ItemDef, n: Int): Int = (sell(d).toLong * n / Charges.perPiece(d)).toInt
+  /** 界面上写单价：「每个 250」，按次叠的写「每 300 次 250」 */
+  def sellUnit(d: ItemDef): String = Charges.perPiece(d) match
+    case 1 => s"每个 ${sell(d)}"
+    case k => s"每 $k 次 ${sell(d)}"
 
 /** 男装/女装：StdMode 10 男、11 女，其余不限。 */
 def dressSex(d: ItemDef): Option[Sex] = d.mode match

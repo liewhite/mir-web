@@ -195,7 +195,7 @@ object SkillInfo:
         s"选中的自己人（没选就是自己）周围 ${w}×$w 格的自己人每人持续回血共 ${heal(l)}" :: healingNotes
       case Skill.Poisoning =>
         List(
-          "用灰色药粉（绿毒）或黄色药粉（红毒），放包裹里就行，每次用 1 份；两种都带着时红绿交替下",
+          "用灰色药粉（绿毒）或黄色药粉（红毒），放包裹里就行，每次用掉 1 次；两种都带着时红绿交替下",
           s"绿毒：持续 ${poisonSecs(l, PoisonKind.Green)} 秒，每 ${SpellRules.PoisonTickMs / 1000} 秒掉 ${poisonPower(l, PoisonKind.Green)} 血",
           s"红毒：持续 ${poisonSecs(l, PoisonKind.Red)} 秒，期间挨打伤害加深 ${poisonPower(l, PoisonKind.Red)}%",
           s"= 道术 ${sc.lo}-${sc.hi} 随机取一个值，和技能等级一起定下时长与强度；已中同种毒再下，强度取较大的、时长重新算"
