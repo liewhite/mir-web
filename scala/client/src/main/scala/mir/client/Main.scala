@@ -2,7 +2,7 @@ package mir.client
 
 import mir.client.assets.{Assets, SpriteStore}
 import mir.client.audio.Audio
-import mir.client.game.{ClientEnv, Controller, GameClient}
+import mir.client.game.{ClientEnv, Controller, Freshness, GameClient}
 import mir.client.input.{Input, Joystick}
 import mir.client.net.{AccountApi, LocalServer, WsTransport}
 import mir.client.render.{Renderer, ViewOptions}
@@ -26,6 +26,9 @@ object Main:
   val PreloadCapMs = 30000
   val PingEveryMs  = 10000
   val OptionsKey   = "mir176.options"
+  /** sessionStorage（只在本标签页）：上次为服务端哪一版刷新过页面、刷新前在玩哪个角色（#1242） */
+  val ReloadedForKey = "mir176.reloadedFor"
+  val ResumeKey      = "mir176.resume"
 
   def main(args: Array[String]): Unit =
     val local = new dom.URLSearchParams(dom.window.location.search).has("local")
@@ -68,10 +71,12 @@ object Main:
               Future.firstCompletedOf(List(preload, Assets.sleep(PreloadCapMs))).map(_ => md)
             }
       ,
-      sound = (id, at, me) => audio.play(id, at, me)
+      sound = (id, at, me) => audio.play(id, at, me),
+      serverBuild = build => freshen(build, clientRef.flatMap(_.current))
     )
     val client = GameClient(catalog, env)
     clientRef = Some(client)
+    takeResume().foreach(client.resume)
     ErrorReport.playingAs(() => client.self.map(_.look).collect { case h: mir.protocol.Look.Human => h.name })
     val lobby = Lobby(client.send)
     val ctl   = Controller(client)
@@ -136,6 +141,24 @@ object Main:
     dom.window.requestAnimationFrame(frame): Unit
 
     DebugHandle.install(client, ctl, renderer, ui)
+
+  /** 服务端是另一版就记下在玩的角色、刷新页面；同一版本标签页只刷一次（见 Freshness）。 */
+  private def freshen(build: String, playing: Option[CharId]): Freshness =
+    val store   = dom.window.sessionStorage
+    val verdict = Freshness.judge(Build.commit, build, Option(store.getItem(ReloadedForKey)))
+    if verdict == Freshness.Reload then
+      store.setItem(ReloadedForKey, build)
+      playing.foreach(id => store.setItem(ResumeKey, id.value.toString))
+      Lobby.status("游戏已更新，正在刷新…")
+      dom.window.location.reload()
+    verdict
+
+  /** 取出刷新前在玩的角色（取一次就删，之后手动刷新照常回选人）。 */
+  private def takeResume(): Option[CharId] =
+    val store = dom.window.sessionStorage
+    val id    = Option(store.getItem(ResumeKey)).flatMap(_.toLongOption).map(CharId(_))
+    store.removeItem(ResumeKey)
+    id
 
   private def loadOptions(): ViewOptions =
     Option(dom.window.localStorage.getItem(OptionsKey)).flatMap(_.fromJson[ViewOptions].toOption).getOrElse(ViewOptions())

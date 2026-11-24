@@ -466,5 +466,26 @@ object ClientSpec extends ZIOSpecDefault:
         SettingRow.stepPercent(95, up = true) == 95,
         SettingRow.stepPercent(40, up = true) == 45
       )
+    },
+    test("页面和服务端版本（#1242）：同一版照常；旧页面刷新一次；为这一版刷新过还对不上就不再刷") {
+      assertTrue(
+        Freshness.judge("aaa", "aaa", None) == Freshness.Current,
+        Freshness.judge("aaa", "aaa", Some("aaa")) == Freshness.Current,
+        Freshness.judge("aaa", "bbb", None) == Freshness.Reload,
+        Freshness.judge("aaa", "bbb", Some("ccc")) == Freshness.Reload,
+        Freshness.judge("aaa", "bbb", Some("bbb")) == Freshness.Stuck
+      )
+    },
+    test("服务端是另一版：页面刷新，不进选人；同一版照常进选人") {
+      var logins = 0
+      def run(verdict: Freshness): Int =
+        logins = 0
+        val c = GameClient(catalog, ClientEnv(() => 0.0, _ => Future.never, (_, _, _) => (), _ => verdict))
+        c.ui = new UiEvents:
+          export UiEvents.Ignore.{loggedIn as _, *}
+          def loggedIn(account: String): Unit = logins += 1
+        c.receive(LinkEvent.Received(ServerMsg.LoggedIn("me", "x")))
+        logins
+      assertTrue(run(Freshness.Current) == 1, run(Freshness.Reload) == 0, run(Freshness.Stuck) == 1)
     }
   )

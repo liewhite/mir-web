@@ -65,7 +65,7 @@ final case class ViewState(
     case ServerMsg.Deal(d)                  => copy(deal = d)
     case ServerMsg.Pong(_, server)          => copy(serverNow = Some(server))
     // 一次性的事、会话消息：不改状态
-    case ServerMsg.LoggedIn(_) | ServerMsg.CharList(_) | ServerMsg.Kicked(_) | ServerMsg.Effect(_) | ServerMsg.Sound(_, _) |
+    case ServerMsg.LoggedIn(_, _) | ServerMsg.CharList(_) | ServerMsg.Kicked(_) | ServerMsg.Effect(_) | ServerMsg.Sound(_, _) |
         ServerMsg.Damage(_, _, _) | ServerMsg.Miss(_) | ServerMsg.Heal(_, _) | ServerMsg.MoveOk | ServerMsg.MoveDenied(_, _) |
         ServerMsg.Refused(_) | ServerMsg.Notice(_, _) | ServerMsg.LevelUp(_) | ServerMsg.Died | ServerMsg.NpcOpened(_, _) |
         ServerMsg.Chat(_, _, _) | ServerMsg.Whisper(_, _, _) =>

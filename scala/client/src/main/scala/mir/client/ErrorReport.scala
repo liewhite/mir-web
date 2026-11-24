@@ -1,5 +1,6 @@
 package mir.client
 
+import mir.core.Build
 import org.scalajs.dom
 
 import scala.scalajs.js
@@ -70,7 +71,7 @@ object ErrorReport:
             message = message.take(1000),
             stack = stack.linesIterator.take(MaxStackLines).map(_.take(300)).mkString("\n"),
             char = character().getOrElse(""),
-            version = BuildInfo.commit
+            version = Build.commit
           )
         )
         dom.fetch(

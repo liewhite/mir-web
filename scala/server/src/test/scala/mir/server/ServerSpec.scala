@@ -29,7 +29,7 @@ object ServerSpec extends ZIOSpecDefault:
     ZIO.scoped(Boot.start(cfg).flatMap(port => ZIO.attemptBlocking(f(Http(port)))))
 
   private def enter(bot: Bot, name: String, job: Job): (CharId, ActorId, Cell) =
-    bot.await("LoggedIn") { case ServerMsg.LoggedIn(_) => () }
+    bot.await("LoggedIn") { case ServerMsg.LoggedIn(_, build) if build == Build.commit => () }
     bot.send(SessionCmd.CreateChar(name, job, Sex.Male))
     val id = bot.await("CharList") { case ServerMsg.CharList(cs) if cs.exists(_.name == name) => cs.find(_.name == name).get.id }
     bot.send(SessionCmd.EnterGame(id))
@@ -160,14 +160,14 @@ object ServerSpec extends ZIOSpecDefault:
         a.drop()
         b.await("阿狸下线消失") { case ServerMsg.Disappear(`aId`) => () }
         val a2 = Bot(http, ca)
-        a2.await("LoggedIn") { case ServerMsg.LoggedIn(n) => n }
+        a2.await("LoggedIn") { case ServerMsg.LoggedIn(n, _) => n }
         a2.send(SessionCmd.EnterGame(aChar))
         val (aId2, back) = a2.await("重连进图") { case ServerMsg.EnterMap(you, _, c, _, _) => (you, c) }
         b.await("阿狸回来了") { case ServerMsg.Appear(v) if v.id == aId2 => () }
 
         // 同一角色在另一个连接登录：旧连接被踢，新连接接着在原地
         val a3 = Bot(http, ca)
-        a3.await("LoggedIn") { case ServerMsg.LoggedIn(_) => () }
+        a3.await("LoggedIn") { case ServerMsg.LoggedIn(_, _) => () }
         a3.send(SessionCmd.EnterGame(aChar))
         val kicked = a2.await("旧连接被踢") { case ServerMsg.Kicked(r) => r }
         val (aId3, again) = a3.await("新连接进图") { case ServerMsg.EnterMap(you, _, c, _, _) => (you, c) }
@@ -180,7 +180,7 @@ object ServerSpec extends ZIOSpecDefault:
         a3.drop()
         Thread.sleep(300)
         val a4 = Bot(http, ca)
-        a4.await("LoggedIn") { case ServerMsg.LoggedIn(_) => () }
+        a4.await("LoggedIn") { case ServerMsg.LoggedIn(_, _) => () }
         a4.send(SessionCmd.EnterGame(aChar))
         val stillThere = a4.await("重连还在盟重") { case ServerMsg.EnterMap(_, m, _, _, _) => m }
         // 一个人在图上时传走（图上没人了也要把换图的人交出去）
@@ -227,7 +227,7 @@ object ServerSpec extends ZIOSpecDefault:
         c.await("小组解散") { case ServerMsg.Group(g) if g.members.isEmpty => () }
         Thread.sleep(300)
         val d2 = Bot(http, cd)
-        d2.await("LoggedIn") { case ServerMsg.LoggedIn(_) => () }
+        d2.await("LoggedIn") { case ServerMsg.LoggedIn(_, _) => () }
         d2.send(SessionCmd.EnterGame(dChar))
         val back = d2.await("重新上线的组队状态") { case ServerMsg.Group(g) => g }
         (start, notAllowed, cg, dg, heard, back)
@@ -265,14 +265,14 @@ object ServerSpec extends ZIOSpecDefault:
         val nobody = e.await("查无此人") { case ServerMsg.Refused(r) => r }
         // 小乙上线：小甲收到提示和新名单
         val f2 = Bot(http, cf)
-        f2.await("LoggedIn") { case ServerMsg.LoggedIn(_) => () }
+        f2.await("LoggedIn") { case ServerMsg.LoggedIn(_, _) => () }
         f2.send(SessionCmd.EnterGame(fChar))
         val up = e.await("好友上线") { case ServerMsg.Friends(l) if l.exists(_.online) => l }
         // 小甲下线再上线：名单还在（存档）
         e.drop()
         Thread.sleep(300)
         val e2 = Bot(http, ce)
-        e2.await("LoggedIn") { case ServerMsg.LoggedIn(_) => () }
+        e2.await("LoggedIn") { case ServerMsg.LoggedIn(_, _) => () }
         e2.send(SessionCmd.EnterGame(eChar))
         val back = e2.await("重新上线的好友名单") { case ServerMsg.Friends(l) => l }
         (heard, sent, offline, added, nobody, up, back)

@@ -76,7 +76,7 @@ object ProtocolSpec extends ZIOSpecDefault:
   )
 
   val serverSamples: List[ServerMsg] = List(
-    ServerMsg.LoggedIn("liewhite"),
+    ServerMsg.LoggedIn("liewhite", "12af80f"),
     ServerMsg.CharList(List(CharSummary(CharId(1L), "小明", Job.Warrior, Sex.Male, 22))),
     ServerMsg.Kicked("账号在别处登录"),
     ServerMsg.EnterMap(me, MapId("0"), c1, Dir.Down, t0),

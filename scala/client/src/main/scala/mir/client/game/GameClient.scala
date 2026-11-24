@@ -19,7 +19,9 @@ final case class ClientEnv(
     localNow: () => Double,
     loadMap: MapId => Future[MapData],
     /** 播音效：编号、声源格（None 是自己身上）、自己所在格 */
-    sound: (Int, Option[Cell], Option[Cell]) => Unit
+    sound: (Int, Option[Cell], Option[Cell]) => Unit,
+    /** 服务端发来它的构建提交：判断页面过没过时，过时就刷新页面（#1242）；测试里默认同一版 */
+    serverBuild: String => Freshness = _ => Freshness.Current
 )
 
 /**
@@ -44,6 +46,12 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
   private var playing = Option.empty[CharId]
 
   def connect(t: Transport): Unit = transport = Some(t)
+
+  /** 正在玩的角色（刷新页面前记下，刷新后接着进） */
+  def current: Option[CharId] = playing
+
+  /** 刷新页面前在玩这个角色：当作断线重连，连上就直接进游戏，不回选人（在 connect 前调） */
+  def resume(id: CharId): Unit = playing = Some(id)
   /** 最近发出的指令（给 window.__mir 测试看） */
   var recent: Vector[ClientCmd] = Vector.empty
 
@@ -114,7 +122,13 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
         playing = None
         ui.kicked(why)
       // 重连时服务端也会再发一次：已经在玩就直接回游戏（Up 时已发 EnterGame），不回选人
-      case ServerMsg.LoggedIn(account)      => if playing.isEmpty then ui.loggedIn(account)
+      case ServerMsg.LoggedIn(account, build) =>
+        env.serverBuild(build) match
+          case Freshness.Reload  => () // 页面马上刷新，不再进选人
+          case Freshness.Current => if playing.isEmpty then ui.loggedIn(account)
+          case Freshness.Stuck   =>
+            ui.notice("游戏已更新，请手动刷新页面", Tone.Bad)
+            if playing.isEmpty then ui.loggedIn(account)
       case ServerMsg.CharList(chars)        => ui.charList(chars)
       case ServerMsg.Pong(sent, server)     => clock.pong(sent.toDouble, server, local)
       case ServerMsg.Act(id, _, _, _) if locked.contains(id) && view.actors.get(id).exists(_.dead) => locked = None

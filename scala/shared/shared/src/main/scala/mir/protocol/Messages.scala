@@ -159,7 +159,12 @@ object Speech:
  */
 enum ServerMsg:
   // ---- 登录、选人 ----
-  case LoggedIn(account: String)
+  /**
+   * 登录了（每次连上都发，含断线重连）。build 是服务端的构建提交（Build.commit）：
+   * 和页面自己的不一样，说明部署了新版、页面还是旧脚本，客户端自动刷新（#1242）。
+   * 这条消息的字段以后只加不改：旧页面要靠它发现自己过时了。
+   */
+  case LoggedIn(account: String, build: String)
   case CharList(chars: List[CharSummary])
   /** 被踢下线（同一角色在别处登录等） */
   case Kicked(reason: String)

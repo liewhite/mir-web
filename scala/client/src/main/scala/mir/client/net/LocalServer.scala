@@ -35,7 +35,7 @@ final class LocalServer(catalog: Catalog, assets: Assets, listener: LinkEvent =>
   dom.window.setTimeout(
     () =>
       listener(LinkEvent.Up)
-      deliver(ServerMsg.LoggedIn("本地"))
+      deliver(ServerMsg.LoggedIn("本地", Build.commit))
     ,
     0
   ): Unit
@@ -59,7 +59,7 @@ final class LocalServer(catalog: Catalog, assets: Assets, listener: LinkEvent =>
       case Left(err)   => dom.console.error("消息编码有误", err)
 
   private def session(c: SessionCmd): Unit = c match
-    case SessionCmd.Login(account, _) => deliver(ServerMsg.LoggedIn(account))
+    case SessionCmd.Login(account, _) => deliver(ServerMsg.LoggedIn(account, Build.commit))
     case SessionCmd.ListChars         => deliver(ServerMsg.CharList(chars.map(_._1).toList))
     case SessionCmd.CreateChar(name, job, sex) =>
       val id = CharId(chars.size + 1L)

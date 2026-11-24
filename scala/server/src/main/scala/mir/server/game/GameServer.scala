@@ -121,7 +121,7 @@ final class GameServer(
   private def handle(e: LinkEvent, now: Millis): Unit = e match
     case LinkEvent.Opened(link) =>
       conns(link.id) = Conn(link, None, now)
-      link.send(ServerMsg.LoggedIn(link.account.name))
+      link.send(ServerMsg.LoggedIn(link.account.name, Build.commit))
     case LinkEvent.Closed(link) =>
       conns.get(link.id).foreach(disconnect)
     case LinkEvent.Alive(link) =>

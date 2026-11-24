@@ -33,6 +33,23 @@ ThisBuild / gameJson := (ThisBuild / baseDirectory).value.getParentFile / "publi
 lazy val tsGolden = settingKey[File]("testdata/ts-golden.json 的绝对路径")
 ThisBuild / tsGolden := (ThisBuild / baseDirectory).value / "testdata" / "ts-golden.json"
 
+// mir.core.Build.commit：构建时的 git 提交。客户端报错上报时带上（#1228）；服务端登录时发给客户端，页面和服务端不是同一版就自动刷新（#1242）。
+// 放在 shared 里，服务端和客户端从同一次构建拿到同一个值。内容没变不重写，免得每次都重编
+lazy val buildInfo = Def.settings(
+  Compile / sourceGenerators += Def.task {
+    val f      = (Compile / sourceManaged).value / "mir" / "core" / "Build.scala"
+    val commit = scala.util.Try(scala.sys.process.Process(Seq("git", "rev-parse", "--short", "HEAD"), baseDirectory.value).!!.trim).getOrElse("dev")
+    val text   = s"""package mir.core
+                    |
+                    |/** sbt 生成：构建时的 git 提交 */
+                    |object Build:
+                    |  val commit: String = "$commit"
+                    |""".stripMargin
+    if (!f.exists || IO.read(f) != text) IO.write(f, text)
+    Seq(f)
+  }.taskValue
+)
+
 lazy val zioTest = Def.settings(
   libraryDependencies ++= Seq(
     "dev.zio" %%% "zio-test"     % V.zio % Test,
@@ -46,6 +63,7 @@ lazy val shared = crossProject(JVMPlatform, JSPlatform)
   .in(file("shared"))
   .settings(zioTest)
   .settings(libraryDependencies += "dev.zio" %%% "zio-json" % V.zioJson)
+  .settings(buildInfo)
   .jvmSettings(
     Test / fork := true,
     Test / javaOptions ++= Seq("-Dfile.encoding=UTF-8", s"-Dmir.gameJson=${gameJson.value}", s"-Dmir.tsGolden=${tsGolden.value}", s"-Dmir.scalaRoot=${(ThisBuild / baseDirectory).value}")
@@ -102,19 +120,6 @@ lazy val client = project
       "org.scala-js" %%% "scalajs-dom"                % V.scalajsDom,
       "org.scala-js" %%% "scala-js-macrotask-executor" % V.macrotask
     ),
-    // BuildInfo.commit：构建时的 git 提交，客户端报错上报时带上，看玩家用的是哪一版页面（#1228）。内容没变不重写，免得每次都重编
-    Compile / sourceGenerators += Def.task {
-      val f      = (Compile / sourceManaged).value / "mir" / "client" / "BuildInfo.scala"
-      val commit = scala.util.Try(scala.sys.process.Process(Seq("git", "rev-parse", "--short", "HEAD"), baseDirectory.value).!!.trim).getOrElse("dev")
-      val text   = s"""package mir.client
-                      |
-                      |/** sbt 生成：构建时的 git 提交 */
-                      |object BuildInfo:
-                      |  val commit: String = "$commit"
-                      |""".stripMargin
-      if (!f.exists || IO.read(f) != text) IO.write(f, text)
-      Seq(f)
-    }.taskValue,
     scalaJSUseMainModuleInitializer := true,
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.ESModule)),
     // 产物放进 web/js/（web/ 是服务端在 / 提供的静态目录：index.html、style.css、js/main.js）
