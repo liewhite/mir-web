@@ -124,6 +124,8 @@ final class Monster(id: ActorId, val defn: MonsterDef, val behavior: Behavior, i
   private[world] var target: Option[ActorId] = None
   private[world] var nextThink: Millis  = now
   private[world] var lastAttack: Millis = Millis.zero
+  /** 上次找最近目标的时刻（有目标时按 behavior.retarget 定时重找） */
+  private[world] var lastSearch: Millis = Millis.zero
   /** 召唤物或被诱惑的怪：主人 */
   private[world] var master: Option[ActorId] = None
   private[world] var petLevel: Int = 0

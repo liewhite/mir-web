@@ -193,6 +193,46 @@ object WorldSpec extends ZIOSpecDefault:
         val after = s.run(10_000, Some(p))
         assertTrue(angry, hit > 0, after == 0, !s.w.isEnemy(g, p), g.cell == Cell(30, 30))
       },
+      test("怪贴身打玩家时宝宝打它一下，它就改打宝宝（#1207，AnimalObject.Struck）") {
+        val s   = sim()
+        val p   = join(s.w, "甲", Cell(30, 30))
+        val m   = put(s.w, "洞蛆", Cell(31, 30))
+        val pet = put(s.w, "蛤蟆", Cell(33, 30))
+        pet.master = Some(p.id)
+        p.pets += pet.id
+        m.target = Some(p.id)
+        s.w.vitals.strike(Some(pet), m, Blow(Defence.Pierce, 1)): Unit
+        assertTrue(!m.dead, m.target.contains(pet.id))
+      },
+      test("有目标的怪每 8 秒重找一次最近的敌人，换成更近的宝宝（#1207，AtMonster.Run）") {
+        val s   = sim()
+        val p   = join(s.w, "甲", Cell(30, 30))
+        val m   = put(s.w, "掷斧骷髅", Cell(35, 30)) // 隔 5 格扔斧头，不用走动
+        val pet = put(s.w, "蛤蟆", Cell(37, 30))
+        pet.master = Some(p.id)
+        p.pets += pet.id
+        pet.statuses.put(Status.Seized, Millis(Long.MaxValue / 2)) // 宝宝站着不还手
+        s.w.vitals.setMaxHp(pet, 1_000_000)
+        m.target = Some(p.id)
+        m.lastSearch = s.w.now
+        s.run(2000)
+        val early = m.target
+        s.run(7000)
+        assertTrue(early.contains(p.id), m.target.contains(pet.id))
+      },
+      test("僵尸（LightingZombi）有目标就一直追着，不按 8 秒换（#1207）") {
+        val s   = sim()
+        val p   = join(s.w, "甲", Cell(30, 30))
+        val m   = put(s.w, "僵尸1", Cell(34, 30))
+        val pet = put(s.w, "蛤蟆", Cell(36, 30))
+        pet.master = Some(p.id)
+        p.pets += pet.id
+        pet.statuses.put(Status.Seized, Millis(Long.MaxValue / 2))
+        s.w.vitals.setMaxHp(pet, 1_000_000)
+        m.target = Some(p.id)
+        s.run(10_000)
+        assertTrue(m.target.contains(p.id))
+      },
       test("传送菜单：每个目的地都是游戏里有的地图，传到别的图交给服务端") {
         val s    = sim()
         val p    = join(s.w, "甲", Cell(30, 30))

@@ -51,14 +51,17 @@ object MonsterAi:
     val kept = m.target.flatMap(w.actor).filter { t =>
       !t.dead && w.isEnemy(m, t) && m.cell.chebyshev(t.cell) <= 14 && !t.statuses.has(StatusKind.Invisible)
     }
-    val target = kept.orElse {
-      if b.passive && master.isEmpty then None
-      else
+    // 没目标时每回合找；有目标时按 retarget 定时重找，找到更近的就换，没找到继续追原来的（原版 SearchTarget 只在找到时 SetTargetCreat）
+    val seeks = !(b.passive && master.isEmpty)
+    val found =
+      if seeks && (kept.isEmpty || searchDue(w, m, b.retarget)) then
+        m.lastSearch = w.now
         val range = if m.isGuard then 6 else if master.isDefined then 8 else b.strike match
           case Strike.Area(r, _) => r
           case _                 => 7
         w.hostility.nearestEnemy(m, range)
-    }
+      else None
+    val target = found.orElse(kept)
     m.target = target.map(_.id)
     target match
       case Some(t) =>
@@ -71,6 +74,22 @@ object MonsterAi:
             // 闲逛
             if w.rngOf.random(100) < 4 && w.grid.move(m, Dir.fromCode(w.rngOf.random(8)), run = false) then
               m.busyUntil = w.now + m.defn.walkSpeed + w.rngOf.random(1000)
+
+  /** 已有目标时该不该重找最近的敌人。 */
+  private def searchDue(w: World, m: Monster, r: Retarget): Boolean = r match
+    case Retarget.Every(ms)  => w.now - m.lastSearch >= ms
+    case Retarget.EachAttack => ready(w, m)
+    case Retarget.Never      => false
+
+  /**
+   * 挨了 by 的打要不要改打它（AnimalObject.Struck）：没目标、当前目标就贴在身边一格（GetAttackDir）、
+   * 或者 1/6 的机会，就改打 by（by 得是它能打的敌人，IsProperTarget）。所以怪贴身砸玩家时，宝宝一打就把它拉走。
+   * 野怪、宝宝、发狂的怪都是这条；守卫原版是 SuperGuard（不走 AnimalObject.Struck），不进这里。
+   */
+  def struck(w: World, m: Monster, by: Actor): Unit =
+    val current  = m.target.flatMap(w.actor).filter(!_.dead)
+    val switches = current.forall(t => m.cell.chebyshev(t.cell) == 1) || w.rngOf.random(6) == 0
+    if switches && w.isEnemy(m, by) then m.target = Some(by.id)
 
   // ---------------- 藏身 ----------------
 

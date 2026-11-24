@@ -35,7 +35,7 @@ final class Hostility(w: World):
     case m: Monster => m.grudge.exists(g => g.by == b.id && w.now - g.at <= Grudge.Ms)
     case _          => false
 
-  /** range 格以内最近的敌人（怪看不见隐身的，除非能看穿隐身）。 */
+  /** range 格以内最近的敌人（怪看不见隐身的，除非能看穿隐身）；远近按曼哈顿距离比（原版 SearchTarget）。 */
   private[world] def nearestEnemy(m: Actor, range: Int): Option[Actor] =
     val seesInvisible = m match
       case mon: Monster => mon.defn.coolEye > 0
@@ -43,10 +43,8 @@ final class Hostility(w: World):
     val candidates = if side(m).contains(Side.Wild) then fighters.iterator.filter(w.present) else w.eachActor
     candidates
       .filter(a => isEnemy(m, a) && (seesInvisible || !a.statuses.has(StatusKind.Invisible)) && !ignoredByGuard(m, a))
-      .map(a => a -> m.cell.chebyshev(a.cell))
-      .filter(_._2 <= range)
-      .minByOption(_._2)
-      .map(_._1)
+      .filter(a => m.cell.chebyshev(a.cell) <= range)
+      .minByOption(a => m.cell.manhattan(a.cell))
 
   /**
    * 守卫不去找的怪：不主动打人的鸡、鹿、羊（Race ≤ 52，原版 GuardUnit.CanPassiveAttack）；

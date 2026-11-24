@@ -88,6 +88,18 @@ enum ExtraState:
 enum Rage:
   case Calm, Ready, Crazy
 
+/** 已经有目标时，多久重找一次最近的敌人、换成更近的（没目标时每回合都找）。 */
+enum Retarget:
+  /** 每隔 ms 毫秒（绝大多数怪：AtMonster 一族 Run 每 8 秒 SearchTarget） */
+  case Every(ms: Int)
+  /** 每次能出手时（食人花、触龙神：StickMonster.Run 攻击间隔一到就 SearchTarget） */
+  case EachAttack
+  /** 有目标就一直追着（僵尸 LightingZombi.Run 只在没目标时找；守卫按 SuperGuard 另算） */
+  case Never
+
+object Retarget:
+  val Default: Retarget = Every(8000)
+
 final case class Behavior(
     strike: Strike,
     hiding: Hiding = Hiding.Never,
@@ -95,7 +107,8 @@ final case class Behavior(
     rooted: Boolean = false,
     /** 不主动打人（鸡、鹿、羊） */
     passive: Boolean = false,
-    extras: List[Extra] = Nil
+    extras: List[Extra] = Nil,
+    retarget: Retarget = Retarget.Default
 )
 
 object Behavior:
@@ -104,21 +117,21 @@ object Behavior:
 
   /** 数据表 Race → 行为（WorldServer.MonGen.cs CreateMonster）。没列出的按普通近战。 */
   def of(d: MonsterDef): Behavior = d.race match
-    case 11 | 12      => Behavior(Strike.Warp)
+    case 11 | 12      => Behavior(Strike.Warp, retarget = Retarget.Never)
     case 50 | 51 | 52 => Behavior(Strike.Melee, passive = true)
     case 82 | 119     => Behavior(Strike.Spit)
-    case 85           => Behavior(Strike.Melee, hiding = Hiding.Burrow(4, 4), rooted = true)
+    case 85           => Behavior(Strike.Melee, hiding = Hiding.Burrow(4, 4), rooted = true, retarget = Retarget.EachAttack)
     case 87 | 104 | 112 => Behavior(Strike.Missile(7, MonsterLook.of(d).missile))
     case 90 | 105 | 106 => Behavior(Strike.Gas)
     case 91            => Behavior(Strike.Magic)
     case 92            => Behavior(Strike.Split(0.5), extras = List(Extra.CowKing))
-    case 94            => Behavior(Strike.Lightning)
+    case 94            => Behavior(Strike.Lightning, retarget = Retarget.Never)
     case 95            => Behavior(Strike.Melee, hiding = Hiding.DigOut)
     case 96            => Behavior(Strike.Melee, extras = List(Extra.Revive))
     case 101           => Behavior(Strike.Melee, hiding = Hiding.Statue(wakeAll = true))
     case 102           => Behavior(Strike.Split(0), hiding = Hiding.Statue(wakeAll = false), extras = List(Extra.SummonZuma))
     case 103           => Behavior(Strike.Spawn(MonsterName("蝙蝠"), below = false), rooted = true)
-    case 107           => Behavior(Strike.Area(6, poison = true), hiding = Hiding.Centipede, rooted = true)
+    case 107           => Behavior(Strike.Area(6, poison = true), hiding = Hiding.Centipede, rooted = true, retarget = Retarget.EachAttack)
     case 115           => Behavior(Strike.Area(16, poison = false), rooted = true)
     case 116           => Behavior(Strike.Spawn(MonsterName("爆裂蜘蛛"), below = true), rooted = true)
     case 117           => Behavior(Strike.Explode)

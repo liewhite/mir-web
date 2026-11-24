@@ -79,7 +79,8 @@ final class Vitals(w: World):
               if m.action.kind == ActKind.Stand || m.action.kind == ActKind.Struck then
                 w.grid.setAction(m, ActKind.Struck, dur)
                 if m.busyUntil < w.now + dur then m.busyUntil = w.now + dur
-              if m.target.isEmpty then m.target = source
+              if m.isGuard then { if m.target.isEmpty then m.target = source }
+              else src.foreach(MonsterAi.struck(w, m, _))
             case p: Player if p.action.kind == ActKind.Stand => w.grid.setAction(p, ActKind.Struck, 210)
             case _                                           => ()
 

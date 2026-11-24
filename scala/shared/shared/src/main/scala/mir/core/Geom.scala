@@ -9,6 +9,9 @@ final case class Cell(x: Int, y: Int):
   /** 切比雪夫距离：八方向走几步。 */
   def chebyshev(o: Cell): Int = math.max(math.abs(x - o.x), math.abs(y - o.y))
 
+  /** 曼哈顿距离（原版怪找最近目标 SearchTarget 按它比远近）。 */
+  def manhattan(o: Cell): Int = math.abs(x - o.x) + math.abs(y - o.y)
+
   /** 朝 o 的方向（同一格时为下）。 */
   def dirTo(o: Cell): Dir =
     val dx = Integer.signum(o.x - x)
