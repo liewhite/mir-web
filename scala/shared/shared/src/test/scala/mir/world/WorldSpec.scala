@@ -194,6 +194,64 @@ object WorldSpec extends ZIOSpecDefault:
         val after = s.run(10_000, Some(p))
         assertTrue(angry, hit > 0, after == 0, !s.w.isEnemy(g, p), g.cell == Cell(30, 30))
       },
+      test("卫士照原版主动砍宝宝，主人照样不挨打（#1216）") {
+        val s   = sim()
+        val p   = join(s.w, "甲", Cell(33, 30))
+        val g   = put(s.w, "卫士", Cell(30, 30))
+        val pet = put(s.w, "蛤蟆", Cell(32, 30))
+        pet.master = Some(p.id)
+        p.pets += pet.id
+        val hurt = s.run(10_000, Some(p))
+        assertTrue(pet.dead, hurt == 0, !s.w.isEnemy(g, p))
+      },
+      test("卫士不主动打 Race 80 以下的：诱惑来的鸡、野狼（#1216，原版 SuperGuard 只认 Race ≥ 80）") {
+        val s     = sim()
+        val p     = join(s.w, "甲", Cell(40, 40))
+        put(s.w, "卫士", Cell(30, 30))
+        val hen   = put(s.w, "鸡", Cell(32, 30))
+        hen.master = Some(p.id)
+        p.pets += hen.id
+        hen.statuses.put(Status.Seized, Millis(Long.MaxValue / 2)) // 鸡站着不走回主人身边
+        val wolf  = put(s.w, "狼", Cell(30, 33))
+        wolf.statuses.put(Status.Seized, Millis(Long.MaxValue / 2)) // 狼不先动手（野怪现在会去打守卫，另见 #1217）
+        s.run(10_000)
+        assertTrue(hen.hp == hen.maxHp, wolf.hp == wolf.maxHp)
+      },
+      test("弓箭守卫不打宝宝（#1216，原版 ArcherGuard 只打打它的、红名）") {
+        val s   = sim()
+        val p   = join(s.w, "甲", Cell(33, 30))
+        val g   = put(s.w, "弓箭守卫", Cell(30, 30))
+        val pet = put(s.w, "蛤蟆", Cell(32, 30))
+        pet.master = Some(p.id)
+        p.pets += pet.id
+        s.run(10_000)
+        assertTrue(!pet.dead, pet.hp == pet.maxHp, !s.w.isEnemy(g, pet))
+      },
+      test("守卫砍某只宝宝时，挨砍的还手、同主人的宝宝一起围上去，别人的宝宝和主人不掺和（#1216，IsAttackTarget）") {
+        val s     = sim()
+        val p     = join(s.w, "甲", Cell(40, 30))
+        val q     = join(s.w, "乙", Cell(40, 40))
+        val g     = put(s.w, "卫士", Cell(30, 30))
+        val a     = put(s.w, "骷髅", Cell(32, 30))
+        val b     = put(s.w, "骷髅", Cell(36, 30))
+        val other = put(s.w, "骷髅", Cell(36, 33))
+        Seq(a, b).foreach { m =>
+          m.master = Some(p.id)
+          p.pets += m.id
+        }
+        other.master = Some(q.id)
+        q.pets += other.id
+        g.target = Some(a.id)
+        s.w.vitals.strike(Some(g), a, Blow(Defence.Pierce, 1)): Unit
+        assertTrue(
+          a.target.contains(g.id),
+          s.w.isEnemy(a, g),
+          s.w.isEnemy(b, g),
+          !s.w.isEnemy(other, g),
+          !s.w.isEnemy(p, g),
+          s.w.isEnemy(g, other)
+        )
+      },
       test("怪贴身打玩家时宝宝打它一下，它就改打宝宝（#1207，AnimalObject.Struck）") {
         val s   = sim()
         val p   = join(s.w, "甲", Cell(30, 30))

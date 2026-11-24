@@ -1,5 +1,6 @@
 package mir.world
 
+import mir.core.ActorId
 import mir.protocol.Look
 import mir.rules.Side
 
@@ -19,10 +20,11 @@ final class Hostility(w: World):
 
   /**
    * a 能不能打 b（自动找目标、范围攻击都按它）：都活着、不是同一个、外观上敌对（不同阵营，埋着的、石像打不到）；
-   * 守卫和玩家平时不互打，但守卫被谁打了，Grudge.Ms 内把他当敌人（原版 GuardUnit.IsProperTarget 认 LastHiter）。
+   * 守卫和玩家平时不互打，但守卫被谁打了，Grudge.Ms 内把他当敌人（原版 GuardUnit.IsProperTarget 认 LastHiter）；
+   * 守卫和宝宝之间另看 guardVsPet（#1216）。
    */
   def isEnemy(a: Actor, b: Actor): Boolean =
-    alive(a, b) && (Look.hostile(a.look, b.look, w.catalog.isGuard) || grudge(a, b))
+    alive(a, b) && (Look.hostile(a.look, b.look, w.catalog.isGuard) || grudge(a, b) || guardVsPet(a, b))
 
   /** a 能不能亲手打选中的 b：敌人，或者是玩家打守卫（Look.attackable）。所有攻击最终都过这一关（Vitals.strike）。 */
   def canAttack(a: Actor, b: Actor): Boolean =
@@ -47,9 +49,27 @@ final class Hostility(w: World):
       .minByOption(a => m.cell.manhattan(a.cell))
 
   /**
-   * 守卫不去找的怪：不主动打人的鸡、鹿、羊（Race ≤ 52，原版 GuardUnit.CanPassiveAttack）；
-   * 它们先动手打了守卫（记仇）照样还手。
+   * 守卫和宝宝（#1216，阵营上宝宝跟玩家一边，这里按原版补上）：
+   *  - 守卫打宝宝看守卫种类（GuardKind.huntsPet：卫士、带刀护卫见了就砍，弓箭守卫不打）；
+   *  - 宝宝打守卫：守卫正打着它主人或主人的任何一只宝宝（原版 IsAttackTarget：BaseObject.m_TargetCret = m_Master
+   *    或 m_TargetCret.m_Master = m_Master），所以挨砍的宝宝会还手，旁边的同主人宝宝也会围上去。
+   */
+  private def guardVsPet(a: Actor, b: Actor): Boolean = (a, b) match
+    case (g: Monster, pet: Monster) if pet.master.isDefined =>
+      g.defn.guard.exists(_.huntsPet(pet.defn.race, targetsMe = pet.target.contains(g.id)))
+    case (pet: Monster, g: Monster) if g.isGuard =>
+      pet.master.exists(owner => g.target.flatMap(w.actor).exists(t => t.id == owner || ownedBy(t, owner)))
+    case _ => false
+
+  private def ownedBy(a: Actor, owner: ActorId): Boolean = a match
+    case m: Monster => m.master.contains(owner)
+    case _          => false
+
+  /**
+   * 守卫不去找的野怪（GuardKind.huntsWild：卫士、带刀护卫只找 Race ≥ 80 的，鸡鹿羊狼练功师不找；
+   * 弓箭守卫不找鸡鹿羊）；它们先动手打了守卫（记仇）照样还手。宝宝归 guardVsPet 管。
    */
   private def ignoredByGuard(g: Actor, a: Actor): Boolean = (g, a) match
-    case (gm: Monster, am: Monster) if gm.isGuard && am.master.isEmpty => am.defn.race <= 52 && !grudge(g, a)
-    case _                                                            => false
+    case (gm: Monster, am: Monster) if am.master.isEmpty =>
+      gm.defn.guard.exists(k => !k.huntsWild(am.defn.race)) && !grudge(g, a)
+    case _ => false

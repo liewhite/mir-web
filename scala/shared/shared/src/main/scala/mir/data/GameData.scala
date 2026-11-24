@@ -183,11 +183,48 @@ final case class MonsterDef(
    * 守卫（见到怪就打，平时不打玩家；玩家亲手选中能打它，打了它会还手，见 Look.attackable）：按 Race 认（OpenMir2 Race.cs：11 Supreguard、12 Petsupreguard、
    * 20 ArcherPolice、112 ArcherGuard）。TS 版按名字带「卫士」认，把沃玛卫士、祖玛卫士也当成了守卫。
    */
-  def isGuard: Boolean = MonsterDef.GuardRaces.contains(race)
+  def isGuard: Boolean = guard.isDefined
+
+  /** 是守卫的话是哪一种（决定主动打谁）。 */
+  def guard: Option[GuardKind] = GuardKind.ofRace(race)
 
 object MonsterDef:
   given JsonCodec[MonsterDef] = DeriveJsonCodec.gen
-  private val GuardRaces = Set(11, 12, 20, 112)
+
+/**
+ * 守卫种类，原版按 Race 分，决定主动去打谁（被打了记仇还手各种一样，见 Hostility）。
+ * 宝宝按它原本那种怪的 Race 算（诱惑来的鸡鹿 Race ≤ 52）。
+ */
+enum GuardKind:
+  /** 卫士、带刀护卫（Race 11，ObjGuard.pas TSuperGuard：AttackPet=True）：Race ≥ 80 的怪都打，宝宝也打。 */
+  case Blade
+  /** Race 12（TPetSuperGuard：AttackPet=False）：Race ≥ 80 的野怪打，宝宝只打正把它当目标的。现有数据里没有。 */
+  case PetSparing
+  /** 弓箭守卫、弓箭手（Race 112 ArcherGuard、20 ArcherPolice）：不打宝宝；野怪沿用旧规则（鸡鹿羊以外都打）。 */
+  case Archer
+
+  /** 主动去打这只野怪（race 是它的 Race）。原版 SuperGuard.Run 只认 Race ≥ 80（RC_MONSTER），狼、练功师也不打。 */
+  def huntsWild(race: Int): Boolean = this match
+    case Blade | PetSparing => race >= GuardKind.MonsterRace
+    case Archer             => race > GuardKind.AnimalMaxRace
+
+  /** 主动去打这只宝宝：race 是它的 Race，targetsMe 是它正把这个守卫当目标。 */
+  def huntsPet(race: Int, targetsMe: Boolean): Boolean = this match
+    case Blade      => race >= GuardKind.MonsterRace
+    case PetSparing => race >= GuardKind.MonsterRace && targetsMe
+    case Archer     => false
+
+object GuardKind:
+  /** 原版 RC_MONSTER：Race 从这里起才算「怪物」 */
+  val MonsterRace = 80
+  /** 鸡、鹿、羊这类不主动打人的动物最大的 Race（原版 GuardUnit.CanPassiveAttack） */
+  val AnimalMaxRace = 52
+
+  def ofRace(race: Int): Option[GuardKind] = race match
+    case 11       => Some(Blade)
+    case 12       => Some(PetSparing)
+    case 20 | 112 => Some(Archer)
+    case _        => None
 
 /** 爆率一行：numerator/denominator 的概率掉 amount 个（金币是数额）。 */
 final case class DropDef(item: ItemName, numerator: Int, denominator: Int, amount: Int):
