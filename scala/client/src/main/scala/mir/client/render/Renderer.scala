@@ -224,7 +224,7 @@ final class Renderer(canvas: dom.HTMLCanvasElement, sprites: SpriteStore, assets
   private def drawGroundItem(g: GroundView): Unit =
     val look = g.thing match
       case GroundThing.Coins(n) => Some(Frames.goldLook(n.value))
-      case GroundThing.Item(n)  => catalog.item(n).map(_.look)
+      case GroundThing.Item(n, _) => catalog.item(n).map(_.look)
     look.flatMap(sprites.sprite("dnitems", _)).foreach { sp =>
       val cx = g.cell.x * UnitX - camX + UnitX / 2
       val cy = g.cell.y * UnitY - camY + UnitY / 2
@@ -361,7 +361,8 @@ final class Renderer(canvas: dom.HTMLCanvasElement, sprites: SpriteStore, assets
         if x >= -40 && x <= width + 40 && y >= -20 && y <= height + 20 then
           val (name, color) = g.thing match
             case GroundThing.Coins(n) => (s"金币 ${n.value}", "#ffe08a")
-            case GroundThing.Item(n) =>
+            case GroundThing.Item(n, true) => (n.value, SpecialItemColor)
+            case GroundThing.Item(n, false) =>
               val equip = catalog.item(n).map(ItemKind.of).exists(_.isInstanceOf[ItemKind.Equip])
               (n.value, if equip then "#ffd76b" else "#dddddd")
           text(name, x, y, color)
@@ -417,5 +418,7 @@ object Renderer:
   val WideCols = 10
   val Font      = "12px \"PingFang SC\",\"Microsoft YaHei\",sans-serif"
   val FloatFont = "bold 14px sans-serif"
+  /** 极品的名字颜色（地上、说明标题，#1191）：亮青色，和普通装备的金黄、杂物的白分开 */
+  val SpecialItemColor = "#3cf0ff"
 
   private final case class Hit(id: ActorId, x: Double, y: Double, w: Double, h: Double, row: Int)

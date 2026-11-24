@@ -276,7 +276,8 @@ final class ClassicUi(
 
   /** 一件身上物品的说明（装备和身上同部位的比较）。 */
   def describe(m: Me, it: ItemInstance): List[Line] = catalog.item(it.name).fold(Nil) { d =>
-    val cur = ItemKind.slots(ItemKind.of(d)).headOption.flatMap(m.view.worn.get).filter(_.uid != it.uid).flatMap(c => catalog.item(c.name))
+    val cur = ItemKind.slots(ItemKind.of(d)).headOption.flatMap(m.view.worn.get).filter(_.uid != it.uid)
+      .flatMap(c => catalog.item(c.name).map(_ -> c.bonus))
     Describe.itemLines(catalog, d, Some(it), m.job, m.stats, cur)
   }
 

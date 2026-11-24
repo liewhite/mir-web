@@ -272,12 +272,18 @@ object ClientSpec extends ZIOSpecDefault:
       val me     = r.client.view.stats.get
       val wood   = catalog.item(ItemName("木剑")).get
       val bronze = catalog.item(ItemName("青铜剑")).get
-      val lines  = Describe.itemLines(catalog, bronze, None, Job.Warrior, me, Some(wood))
+      val lines  = Describe.itemLines(catalog, bronze, None, Job.Warrior, me, Some(wood -> None))
       val potion = Describe.itemLines(catalog, catalog.item(ItemName("金创药(小量)")).get, None, Job.Warrior, me, None)
       val stats  = Describe.statLines("甲", Job.Warrior, me, 15, 8)
       val fire   = catalog.skill(SkillId(1)).get
+      val jp     = mir.model.ItemInstance(ItemUid(5L), bronze.name, 9000, 9000, 1, Some(mir.model.ItemBonus.Weapon(dc = 2, strength = 2)))
+      val jpDesc = Describe.itemLines(catalog, bronze, Some(jp), Job.Warrior, me, None)
       assertTrue(
         lines.head.text == "青铜剑",
+        // 极品：标题换色、总值已含附加、单列多了什么（#1191）
+        jpDesc.head == mir.client.ui.Line("青铜剑（极品）", Tint.Special),
+        jpDesc.exists(_.text.startsWith(s"攻击 +${bronze.dc.lo}-${bronze.dc.hi + 2}")),
+        jpDesc.exists(_.text == "极品：攻击上限 +2、强度 +2（比普通的青铜剑）"),
         lines.exists(_.text.startsWith("攻击 +")),
         lines.exists(l => l.text.startsWith("换下 木剑")),
         // 1 级穿不了青铜剑：要求标红

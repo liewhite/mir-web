@@ -114,7 +114,8 @@ object Combat:
       if p.powerHitCount == p.powerHitPoint then p.powerHitReady = true
     }
     p.worn.get(EquipSlot.Weapon).foreach { wpn =>
-      val wear = if rng.random(Durability.WeaponWearOdds) == 0 && target.isDefined then Durability.WeaponWearPerHit else 0
+      val strength = wpn.bonus.collect { case b: ItemBonus.Weapon => b.strength }.getOrElse(0)
+      val wear     = if target.isDefined && Durability.weaponWears(strength) then Durability.WeaponWearPerHit else 0
       if wear > 0 then p.worn(EquipSlot.Weapon) = wpn.copy(dura = math.max(0, wpn.dura - wear))
     }
 

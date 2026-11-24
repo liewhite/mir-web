@@ -9,12 +9,31 @@ import zio.json.*
  * count：一格里叠了几个（#1159）——可叠的消耗品（ItemKind.stacks）同名并成一叠，其他永远是 1；
  * 存档里没有这个字段时按 1。
  */
-final case class ItemInstance(uid: ItemUid, name: ItemName, dura: Int, duraMax: Int, count: Int = 1)
+final case class ItemInstance(uid: ItemUid, name: ItemName, dura: Int, duraMax: Int, count: Int = 1, bonus: Option[ItemBonus] = None):
+  /** 带极品附加属性（#1191；只加了持久的不算，原版也不算）。 */
+  def special: Boolean = bonus.isDefined
 
 object ItemInstance:
   given JsonCodec[ItemInstance] = DeriveJsonCodec.gen
 
   def fresh(uid: ItemUid, d: ItemDef): ItemInstance = ItemInstance(uid, d.name, d.dura, d.dura)
+
+/**
+ * 极品附加属性（#1191，原版 UserItem.Desc 按含义拆开）。怪物爆出的装备照原版随机生成（规则见 mir.rules.RandomUpgrade），
+ * 加在物品表数值的上限上，怎么起作用仍由 ItemEffects 按 StdMode 解读。全为 0 的不存（ItemInstance.bonus 为 None）。
+ * 字段名进存档，改名要兼顾旧存档。
+ */
+enum ItemBonus:
+  /** 武器：攻击/魔法/道术上限、准确、攻击速度（可为负：原版 2/3 的攻速附加是减速）、强度（砍怪时少磨持久） */
+  case Weapon(dc: Int = 0, mc: Int = 0, sc: Int = 0, hit: Int = 0, attackSpeed: Int = 0, strength: Int = 0)
+  /**
+   * 衣服、头盔、项链、戒指、手镯：加在物品表 AC、MAC、DC、MC、SC 的上限上。
+   * AC、MAC 两栏的含义随部位变（衣服头盔是防御魔防，有的项链是准确敏捷、有的是幸运等），由 ItemEffects 解读。
+   */
+  case Gear(ac: Int = 0, mac: Int = 0, dc: Int = 0, mc: Int = 0, sc: Int = 0)
+
+object ItemBonus:
+  given JsonCodec[ItemBonus] = DeriveJsonCodec.gen
 
 /** 包裹 40 格（原版 8x5）、快捷栏 6 格。 */
 object Capacity:

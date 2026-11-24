@@ -19,6 +19,8 @@ enum Tint(val color: String):
   case Bad   extends Tint("#f55")
   case Dim   extends Tint("#aaa")
   case Gold  extends Tint("#ffd96b")
+  /** 极品（与地上极品名字同色） */
+  case Special extends Tint(mir.client.render.Renderer.SpecialItemColor)
 
 final case class Line(text: String, tint: Tint = Tint.Plain)
 

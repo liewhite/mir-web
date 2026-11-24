@@ -167,7 +167,7 @@ enum Loot:
   case Coins(amount: Gold)
 
   def thing: GroundThing = this match
-    case Item(it)  => GroundThing.Item(it.name)
+    case Item(it)  => GroundThing.Item(it.name, it.special)
     case Coins(g)  => GroundThing.Coins(g)
 
 /** 地上持续法术的作用：火墙（谁放的、每跳威力，按魔防减）；困魔咒光圈（只是样子，困住怪靠怪身上的 Seized 状态）。 */

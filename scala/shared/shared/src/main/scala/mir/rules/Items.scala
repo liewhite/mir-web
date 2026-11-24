@@ -140,6 +140,22 @@ object ItemEffects:
       case 0 | 3 | 4 | 25 | 31 => base // 消耗品：AC/MAC 是药效，不是属性
       case _       => base.copy(ac = d.ac, mac = d.mac)
 
+  /**
+   * 带极品附加的一件装备：照原版 GetUpgradeStdItem 把附加值加到物品表对应栏的上限（封顶 255），
+   * 再按普通物品解读；武器攻速是真实值相加。强度不是属性，见 Durability.weaponWears。
+   */
+  def of(d: ItemDef, bonus: Option[ItemBonus]): ItemEffects = bonus match
+    case None => of(d)
+    case Some(ItemBonus.Weapon(dc, mc, sc, hit, speed, _)) =>
+      val e = of(d.copy(dc = up(d.dc, dc), mc = up(d.mc, mc), sc = up(d.sc, sc), ac = up(d.ac, hit)))
+      e.copy(attackSpeed = e.attackSpeed + speed)
+    case Some(ItemBonus.Gear(ac, mac, dc, mc, sc)) =>
+      of(d.copy(ac = up(d.ac, ac), mac = up(d.mac, mac), dc = up(d.dc, dc), mc = up(d.mc, mc), sc = up(d.sc, sc)))
+
+  def of(d: ItemDef, it: ItemInstance): ItemEffects = of(d, it.bonus)
+
+  private def up(s: Span, n: Int): Span = if n == 0 then s else s.copy(hi = math.min(255, s.hi + n))
+
 /** 穿戴要求：要多少等级、攻击上限、魔法上限或道术上限。 */
 enum Requirement(val label: String):
   case Level(value: Int) extends Requirement("等级")
@@ -179,6 +195,19 @@ object Durability:
   val WeaponWearOdds   = 3
   val WeaponWearPerHit = 1
   val PerUse           = 100
+
+  /**
+   * 这一刀武器磨不磨。原版每刀磨 max(0, Random(5)+2−强度) 点（强度 0 时平均 4），本服磨损比原版轻（平均每刀 1/3 点），
+   * 强度（#1191 极品武器）按同样的比例减：磨损机会 = 1/3 × 原版这一刀的磨损点数 ÷ 4。
+   */
+  def weaponWears(strength: Int)(using rng: Rng): Boolean =
+    rng.random(WeaponWearOdds * OrigMeanWear) < math.max(0, rng.random(5) + 2 - strength)
+
+  /** 上面那个机会的精确值（说明用）。 */
+  def weaponWearChance(strength: Int): Double =
+    (0 until 5).map(r => math.max(0, r + 2 - strength)).sum / 5.0 / (WeaponWearOdds * OrigMeanWear)
+
+  private val OrigMeanWear = 4
 
   def shown(raw: Int): Int    = math.ceil(raw / PerPoint.toDouble).toInt
   def usesLeft(raw: Int): Int = math.ceil(raw / PerUse.toDouble).toInt

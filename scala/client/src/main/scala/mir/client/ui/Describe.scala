@@ -1,7 +1,7 @@
 package mir.client.ui
 
 import mir.data.{Catalog, ItemDef, SkillDef, Span}
-import mir.model.{EquipSlot, ItemInstance, Job, LearnedSkill, PoisonKind}
+import mir.model.{EquipSlot, ItemBonus, ItemInstance, Job, LearnedSkill, PoisonKind}
 import mir.protocol.SelfStats
 import mir.rules.{SpellRules, Durability, Rates, ItemEffects, ItemKind, PotionRules, Pricing, Recovery, Requirement, Rules, ScrollEffect, dressSex}
 
@@ -84,11 +84,17 @@ object Describe:
     val sex = dressSex(d).map(x => Line(s"${x.label}穿", Tint.Dim))
     need.toList ++ sex
 
+  private def strengthOf(inst: Option[ItemInstance]): Int =
+    inst.flatMap(_.bonus).collect { case b: ItemBonus.Weapon => b.strength }.getOrElse(0)
+
   private def durabilityLines(slots: List[EquipSlot], inst: Option[ItemInstance]): List[Line] =
     inst.toList.flatMap { i =>
       val wear =
         if slots.contains(EquipSlot.Weapon) then
-          s"每次砍中目标有 1/${Durability.WeaponWearOdds} 机会磨损 ${BigDecimal(Durability.WeaponWearPerHit) / Durability.PerPoint}"
+          val per = BigDecimal(Durability.WeaponWearPerHit) / Durability.PerPoint
+          strengthOf(inst) match
+            case 0 => s"每次砍中目标有 1/${Durability.WeaponWearOdds} 机会磨损 $per"
+            case s => s"每次砍中目标有 ${pct(Durability.weaponWearChance(s))} 机会磨损 $per（强度 $s，普通武器 ${pct(Durability.weaponWearChance(0))}）"
         else "不会磨损"
       List(
         Line(s"持久 ${Durability.shown(i.dura)}/${Durability.shown(i.duraMax)}", if i.dura > 0 then Tint.Plain else Tint.Bad),
@@ -96,8 +102,28 @@ object Describe:
       )
     }
 
-  /** 物品说明（含与身上同部位装备的对比）。 */
-  def itemLines(catalog: Catalog, d: ItemDef, inst: Option[ItemInstance], job: Job, me: SelfStats, compareWith: Option[ItemDef]): List[Line] =
+  /**
+   * 极品附加了哪几项（#1191）。原版客户端只显示加好后的总值（上面的效果行已含），
+   * 这里再单列一行比同名普通件多了什么，不用自己对表。
+   */
+  private def bonusLines(d: ItemDef, inst: Option[ItemInstance]): List[Line] =
+    inst.filter(_.special).toList.flatMap { i =>
+      val parts = diffs(ItemEffects.of(d, i), ItemEffects.of(d)).map(_._1) ++
+        Option.when(strengthOf(inst) > 0)(s"强度 +${strengthOf(inst)}")
+      List(Line(s"极品：${parts.mkString("、")}（比普通的${d.name.value}）", Tint.Special))
+    }
+
+  /**
+   * 物品说明（含与身上同部位装备的对比）。inst 为空是商店里的商品；compareWith 是身上同部位那件（表里的物品和它的极品附加）。
+   */
+  def itemLines(
+      catalog: Catalog,
+      d: ItemDef,
+      inst: Option[ItemInstance],
+      job: Job,
+      me: SelfStats,
+      compareWith: Option[(ItemDef, Option[ItemBonus])]
+  ): List[Line] =
     val k = ItemKind.of(d)
     val body: List[Line] = k match
       case ItemKind.Potion(hp, mp, instant) => potionLines(hp, mp, instant)
@@ -110,30 +136,39 @@ object Describe:
         List(Line(s"双击拆成 ${ItemKind.BundleSize} 个$one"), Line("并进包裹里同名的那叠，没有就占 1 格", Tint.Dim))
       case ItemKind.Amulet(poison) => amuletLines(poison, inst)
       case ItemKind.Equip(slots) =>
-        val e = ItemEffects.of(d)
-        Line(s"装备位置：${slots.map(_.label).mkString("或")}", Tint.Dim) :: effectLines(e) ++ wearLines(d, slots, me) ++
-          durabilityLines(slots, inst) ++
-          compareWith.filter(_.name != d.name).fold(Nil)(c => compareLines(e, ItemEffects.of(c), c.name.value))
+        val e = ItemEffects.of(d, inst.flatMap(_.bonus))
+        Line(s"装备位置：${slots.map(_.label).mkString("或")}", Tint.Dim) :: effectLines(e) ++ bonusLines(d, inst) ++
+          wearLines(d, slots, me) ++ durabilityLines(slots, inst) ++
+          compareWith.fold(Nil)((c, cb) => compareLines(e, ItemEffects.of(c, cb), c.name.value))
       case ItemKind.Material | ItemKind.Other => Nil
-    Line(d.name.value, Tint.Title) :: body ++ List(
+    val title = if inst.exists(_.special) then Line(s"${d.name.value}（极品）", Tint.Special) else Line(d.name.value, Tint.Title)
+    title :: body ++ List(
       Line(s"商店收购价 ${Pricing.sell(d)} 金币", Tint.Gold)
     )
 
-  private def compareLines(a: ItemEffects, b: ItemEffects, oldName: String): List[Line] =
+  /** a 比 b 多了什么：每项（文字，是不是往好的方向）。区间只有上限变的写成「攻击上限 +2」。 */
+  private def diffs(a: ItemEffects, b: ItemEffects): List[(String, Boolean)] =
     def sign(n: Int) = if n > 0 then s"+$n" else s"$n"
-    def range(name: String, x: Span, y: Span): Option[Line] =
+    def range(name: String, x: Span, y: Span): Option[(String, Boolean)] =
       val (d0, d1) = (x.lo - y.lo, x.hi - y.hi)
-      Option.when(d0 != 0 || d1 != 0)(Line(s"$name ${sign(d0)}/${sign(d1)}", if d0 + d1 >= 0 then Tint.Good else Tint.Bad))
-    def num(name: String, x: Int, y: Int): Option[Line] =
+      Option.when(d0 != 0 || d1 != 0)(
+        (if d0 == 0 then s"${name}上限 ${sign(d1)}" else s"$name ${sign(d0)}/${sign(d1)}", d0 + d1 >= 0)
+      )
+    def num(name: String, x: Int, y: Int): Option[(String, Boolean)] =
       val d = x - y
-      Option.when(d != 0)(Line(s"$name ${sign(d)}", if d > 0 then Tint.Good else Tint.Bad))
-    val diffs = List(
+      Option.when(d != 0)((s"$name ${sign(d)}", d > 0))
+    List(
       range("攻击", a.dc, b.dc), range("魔法", a.mc, b.mc), range("道术", a.sc, b.sc), range("防御", a.ac, b.ac),
       range("魔防", a.mac, b.mac), num("准确", a.hit, b.hit), num("敏捷", a.agility, b.agility),
       num("攻速", a.attackSpeed, b.attackSpeed), num("幸运", a.luck - a.curse, b.luck - b.curse),
-      num("体力恢复", a.hpRegen, b.hpRegen), num("魔法恢复", a.mpRegen, b.mpRegen)
+      num("魔法躲避", a.magicAvoid, b.magicAvoid), num("毒物躲避", a.poisonAvoid, b.poisonAvoid),
+      num("体力恢复", a.hpRegen, b.hpRegen), num("魔法恢复", a.mpRegen, b.mpRegen),
+      num("中毒恢复", a.poisonRegen, b.poisonRegen)
     ).flatten
-    if diffs.isEmpty then Nil else Line(s"换下 $oldName 后：", Tint.Dim) :: diffs
+
+  private def compareLines(a: ItemEffects, b: ItemEffects, oldName: String): List[Line] =
+    val ds = diffs(a, b).map((t, good) => Line(t, if good then Tint.Good else Tint.Bad))
+    if ds.isEmpty then Nil else Line(s"换下 $oldName 后：", Tint.Dim) :: ds
 
   /**
    * 属性面板：每项属性的当前值和它在规则里的具体作用。

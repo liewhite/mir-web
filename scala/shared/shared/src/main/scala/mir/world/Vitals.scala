@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.DropDef
 import mir.model.*
 import mir.protocol.*
-import mir.rules.{ItemEffects, ItemKind, Leveling, PassiveSkills, Progress, Rates, Recovery, Rng, Rules, Skill, SpellRules}
+import mir.rules.{ItemEffects, ItemKind, Leveling, PassiveSkills, Progress, RandomUpgrade, Rates, Recovery, Rng, Rules, Skill, SpellRules}
 
 /**
  * 血、蓝与生死：一下攻击的结算、扣血、死亡（经验、掉落）、复活、回血回蓝、属性重算。
@@ -161,9 +161,9 @@ final class Vitals(w: World):
           w.out.notice(p, s"升级了！现在 $lv 级", Tone.Good)
         }
 
-  /** 按爆率表掉落（概率按 Rates 换算；金币数量 amount/2 + Random(amount)）。 */
+  /** 按爆率表掉落（概率按 Rates 换算；金币数量 amount/2 + Random(amount)；装备照原版可能是极品，见 RandomUpgrade）。 */
   private def dropLoot(m: Monster): Unit = w.catalog.drops(m.defn.name).foreach { (d: DropDef) =>
-    val rng     = w.rngOf
+    given rng: Rng = w.rngOf
     val itemDef = if d.isGold then None else w.catalog.item(d.item)
     val roll    = rng.random(1_000_000) / 1_000_000.0
     if roll < Rates.dropChance(d, itemDef) then
@@ -175,7 +175,7 @@ final class Vitals(w: World):
           val n = math.max(1, d.amount)
           // 可叠的一次掉多个就掉成一叠（#1159）
           if ItemKind.stacks(id) then w.dropAt(m.cell, Loot.Item(ItemInstance.fresh(w.newUid(), id).copy(count = n)))
-          else (1 to n).foreach(_ => w.dropAt(m.cell, Loot.Item(ItemInstance.fresh(w.newUid(), id))))
+          else (1 to n).foreach(_ => w.dropAt(m.cell, Loot.Item(RandomUpgrade.monsterDrop(ItemInstance.fresh(w.newUid(), id), id))))
         }
   }
 
@@ -227,7 +227,7 @@ final class Vitals(w: World):
   /** 重算属性：等级 + 身上装备（持久用完的不算；护身符和毒药不加属性）+ 被动技能。血蓝按新上限截。 */
   private[world] def recalc(p: Player): Unit =
     val effects = p.worn.values.flatMap { it =>
-      w.catalog.item(it.name).filter(d => it.dura > 0 && !ItemKind.of(d).isInstanceOf[ItemKind.Amulet]).map(ItemEffects.of)
+      w.catalog.item(it.name).filter(d => it.dura > 0 && !ItemKind.of(d).isInstanceOf[ItemKind.Amulet]).map(ItemEffects.of(_, it))
     }
     def lv(s: Skill): Option[Int] = p.skill(s.id).map(_.level)
     val base = Rules.computeStats(p.job, p.level, effects, PassiveSkills(lv(Skill.OneSword), lv(Skill.SpiritSword), lv(Skill.PowerHit)))

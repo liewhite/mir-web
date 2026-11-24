@@ -98,4 +98,5 @@
 - [x] 战士野蛮冲撞（#1168）：`world.Rush` 照 DoMotaebo/CharPushed，公式 `SpellRules.rush*`；被推用 `grid.pushBack`（抗拒火环共用），动作 `ActKind.Rush`（from 为空＝撞不动原地冲）/`Backstep`（脸朝推的人倒退），客户端按原版 ActRushLeft/Right、倒放走路帧画。
 - [x] 瞬息移动改传当前地图随机位置（#1177，用户定，原版 MagSaceMove 传回城点那张图）：取格用 `Placement.randomSpot`（随机传送卷共用）；带 NORANDOMMOVE 的图两者都不能用（照原版 EatUseItems 2：卷轴不消耗、技能不扣蓝）。
 - [x] 随时出售 + 自动捡物分类（#1178，用户定）：`GameCmd.QuickSell(uid, count)` 不用找 NPC，包裹/快捷栏里的都收（穿着的不行），价钱同商店收购 `Pricing.sell`（表价一半），和 NPC 卖出共用 `PlayerOps.sellOff`；客户端一律先弹数量框确认（手机：物品菜单「出售」；电脑：拿起物品点包裹里的「出售」键）。自动捡物 = 总开关 `autoPickup` + 分类 `CharSettings.pickupKinds`（`PickupKind`：金币、药品、装备、书、肉矿石、符毒、卷轴、其他；物品归类 `ItemKind.pickupKind`，肉 StdMode 40 算肉矿石），存档没有这个字段时全捡；范围不变（6 格内走过去捡）。
+- [x] 极品（#1191，用户定照原版、不加倍率）：`ItemInstance.bonus: Option[ItemBonus]`（`Weapon` 攻/魔/道上限、准确、攻速可负、强度；`Gear` 加在 AC/MAC/DC/MC/SC 上限，含义仍由 `ItemEffects.of(d, bonus)` 按 StdMode 解读），旧存档没有字段为 None。只在怪物爆物时生成：`RandomUpgrade.monsterDrop`，1/10 进随机升级，各部位概率照 GameItemSystem.cs UpgradeRandom*（另加持久，只加持久不算极品）。强度按原版磨损比例降低本服武器磨损（`Durability.weaponWears`）。地上 `GroundThing.Item.special` 名字亮青色（`Renderer.SpecialItemColor`），物品说明标题标「极品」并单列多了什么。原版爆物持久随机 20%–99% 本服没做。
 - [ ] 门（doorIndex）；按地图回城点（现在一律回比奇）
