@@ -126,7 +126,10 @@ final class GameServer(
       lastSave = now
       online.values.foreach(o => snapshot(o).foreach(save(o.id, _)))
       backups.foreach(b => guard("备份数据库")(b.daily(System.currentTimeMillis())))
-    headcount.foreach(h => guard("人数公告")(h.due(now, online.size).foreach(broadcast)))
+    headcount.foreach(h => guard("人数公告")(h.due(now, online.size).foreach { text =>
+      broadcast(text)
+      System.err.println(s"人数公告：$text（发给 ${conns.size} 个连接）")
+    }))
 
   /** 停服：全部在线角色存档下线。 */
   def shutdown(): Unit =
