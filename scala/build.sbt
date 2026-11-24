@@ -102,6 +102,19 @@ lazy val client = project
       "org.scala-js" %%% "scalajs-dom"                % V.scalajsDom,
       "org.scala-js" %%% "scala-js-macrotask-executor" % V.macrotask
     ),
+    // BuildInfo.commit：构建时的 git 提交，客户端报错上报时带上，看玩家用的是哪一版页面（#1228）。内容没变不重写，免得每次都重编
+    Compile / sourceGenerators += Def.task {
+      val f      = (Compile / sourceManaged).value / "mir" / "client" / "BuildInfo.scala"
+      val commit = scala.util.Try(scala.sys.process.Process(Seq("git", "rev-parse", "--short", "HEAD"), baseDirectory.value).!!.trim).getOrElse("dev")
+      val text   = s"""package mir.client
+                      |
+                      |/** sbt 生成：构建时的 git 提交 */
+                      |object BuildInfo:
+                      |  val commit: String = "$commit"
+                      |""".stripMargin
+      if (!f.exists || IO.read(f) != text) IO.write(f, text)
+      Seq(f)
+    }.taskValue,
     scalaJSUseMainModuleInitializer := true,
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.ESModule)),
     // 产物放进 web/js/（web/ 是服务端在 / 提供的静态目录：index.html、style.css、js/main.js）

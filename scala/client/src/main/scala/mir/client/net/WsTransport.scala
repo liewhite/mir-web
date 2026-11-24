@@ -31,7 +31,9 @@ final class WsTransport(listener: LinkEvent => Unit) extends Transport:
         case s: String =>
           s.fromJson[ServerMsg] match
             case Right(m)  => listener(LinkEvent.Received(m))
-            case Left(err) => dom.console.warn("看不懂的服务端消息", err, s.take(200))
+            case Left(err) =>
+              dom.console.warn("看不懂的服务端消息", err, s.take(200))
+              mir.client.ErrorReport.notice(s"看不懂的服务端消息：$err", s.take(200))
         case _ => ()
     ws.onclose = e =>
       socket = None

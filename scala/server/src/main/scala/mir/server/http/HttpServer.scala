@@ -18,7 +18,10 @@ import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
  * - `POST api/login {account,password}` 设会话 cookie（失败 401，同一 IP 10 分钟失败 10 次后 429）；`GET api/me`；`POST api/logout`。
  * - `POST api/register {account,password}`：自助注册（完全开放，#1197），成功就已登录（设 cookie）；格式不对 400、重名 409，
  *   正文 `{error}` 是给玩家看的中文；同一 IP 1 小时试 10 次后 429。
- * - `GET ws`：登录了才升级；一帧一条 JSON（客户端发 ClientCmd，服务端发 ServerMsg）。
+ * - `GET ws`：登录了才升级；一帧一条 JSON（客户端发 ClientCmd，服务端发 ServerMsg）。解不开的指令回 Refused 并记日志
+ *   「看不懂的指令」（多半是页面和服务端版本不一致；每账号每分钟最多记 5 条）。
+ * - `POST api/client-error {message,stack?,char?,version?}`：登录了才收，玩家浏览器里的报错打进日志（见 `ClientError`）；
+ *   成功 204，每账号每小时 30 条、每 IP 每小时 60 条（超了 429，不记），请求体超过 16KB 413。
  * - `assets/…`：素材，登录后才能取（登录画面本身要用的几个文件除外，见 `LoginScreenAssets`），
  *   浏览器缓存一周（version.json 除外）；其余路径是客户端页面（WEB_DIR），不用登录。
  * - 都带 ETag（304），文本类大于 1KB 的 gzip。
@@ -26,6 +29,9 @@ import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
 final class HttpServer(accounts: Accounts, tokens: SessionTokens, game: GameServer, assetsDir: Path, webDir: Path):
   private val loginLimiter    = RateLimiter.login()
   private val registerLimiter = RateLimiter.register()
+  private val reportByAccount = RateLimiter.clientErrorsPerAccount()
+  private val reportByIp      = RateLimiter.clientErrorsPerIp()
+  private val badCmdLimiter   = RateLimiter.badCommands()
   private val linkIds = AtomicLong(0)
 
   val routes: Routes[Any, Nothing] =
@@ -37,6 +43,8 @@ final class HttpServer(accounts: Accounts, tokens: SessionTokens, game: GameServ
     val result: Task[Response] = (m, p) match
       case (Method.POST, "/api/login")    => login(req)
       case (Method.POST, "/api/register") => register(req)
+      case (Method.POST, "/api/client-error") =>
+        account(req).flatMap(_.fold(ZIO.succeed(unauthorized))(clientError(req, _)))
       case (Method.POST, "/api/logout") => ZIO.succeed(json(Status.Ok, """{"ok":true}""").addHeader("set-cookie", s"${SessionTokens.Cookie}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"))
       case (Method.GET, "/healthz")     => ZIO.succeed(json(Status.Ok, """{"ok":true}"""))
       case (Method.GET, "/api/me") =>
@@ -116,6 +124,29 @@ final class HttpServer(accounts: Accounts, tokens: SessionTokens, game: GameServ
       .orElse(req.remoteAddress.map(_.getHostAddress))
       .getOrElse("")
 
+  // ---------------- 客户端报错 ----------------
+
+  private def clientError(req: Request, acc: Account): Task[Response] =
+    val ip   = clientIp(req)
+    val key  = acc.id.value.toString
+    val now  = java.lang.System.currentTimeMillis()
+    val tooBig = req.rawHeader("content-length").flatMap(_.toLongOption).exists(_ > ClientError.MaxBody)
+    if tooBig then ZIO.succeed(json(Status.RequestEntityTooLarge, """{"error":"too large"}"""))
+    else if reportByAccount.blocked(key, now) || reportByIp.blocked(ip, now) then
+      ZIO.succeed(json(Status.TooManyRequests, """{"error":"too many reports"}"""))
+    else
+      req.body.asString.map { body =>
+        if body.length > ClientError.MaxBody then json(Status.RequestEntityTooLarge, """{"error":"too large"}""")
+        else
+          body.fromJson[ClientError] match
+            case Left(_) => json(Status.BadRequest, """{"error":"bad request"}""")
+            case Right(e) =>
+              reportByAccount.hit(key, now)
+              reportByIp.hit(ip, now)
+              java.lang.System.err.println(ClientError.render(e, acc.name, req.rawHeader("user-agent").getOrElse("")))
+              Response(status = Status.NoContent)
+      }
+
   // ---------------- WebSocket ----------------
 
   private def webSocket(acc: Account): UIO[Response] =
@@ -132,13 +163,23 @@ final class HttpServer(accounts: Accounts, tokens: SessionTokens, game: GameServ
                  case ChannelEvent.Read(WebSocketFrame.Text(text)) =>
                    text.fromJson[ClientCmd] match
                      case Right(cmd) => ZIO.succeed(game.post(LinkEvent.Received(link, cmd)))
-                     case Left(e)    => ZIO.succeed(link.send(mir.protocol.ServerMsg.Refused(s"看不懂的指令：$e")))
+                     case Left(e)    => ZIO.succeed(badCommand(link, e, text))
                  case ChannelEvent.Unregistered => close
                  case _                         => ZIO.unit
                }.ensuring(close)
         yield ()
       }
     }.toResponse
+
+  /** 解不开的指令：回给客户端，并记日志（限频，版本不一致时客户端每走一步都会来一条）。 */
+  private def badCommand(link: WsLink, error: String, text: String): Unit =
+    val now = java.lang.System.currentTimeMillis()
+    val key = link.account.id.value.toString
+    if badCmdLimiter.take(key, now) then
+      java.lang.System.err.println(
+        s"看不懂的指令 账号 ${link.account.name}：${ClientError.oneLine(error, 200)} ｜ ${ClientError.oneLine(text, 200)}"
+      )
+    link.send(mir.protocol.ServerMsg.Refused(s"看不懂的指令：$error"))
 
   // ---------------- 小工具 ----------------
 

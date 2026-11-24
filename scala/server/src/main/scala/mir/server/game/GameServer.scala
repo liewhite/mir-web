@@ -250,12 +250,15 @@ object GameServer:
   /** 在自己的线程里每 50 毫秒走一步；返回停服函数（存档后返回）。 */
   def run(game: GameServer): () => Unit =
     @volatile var running = true
+    val slow = SlowSteps()
     val thread = Thread(() =>
       while running do
         val t0 = System.nanoTime()
         try game.step()
         catch case NonFatal(e) => e.printStackTrace()
-        val left = StepMs - (System.nanoTime() - t0) / 1_000_000
+        val took = (System.nanoTime() - t0) / 1_000_000
+        slow.observe(took, System.currentTimeMillis(), game.onlineCount).foreach(System.err.println)
+        val left = StepMs - took
         if left > 0 then Thread.sleep(left)
     , "mir-game")
     thread.start()

@@ -15,6 +15,7 @@ import zio.json.*
 
 import scala.concurrent.Future
 import scala.scalajs.js
+import scala.util.control.NonFatal
 
 /**
  * 入口：读游戏数据 → 登录（地址带 ?local 时跳过，在浏览器里跑本地服务端）→ 连服务端 → 选角色 → 主循环。
@@ -28,6 +29,7 @@ object Main:
 
   def main(args: Array[String]): Unit =
     val local = new dom.URLSearchParams(dom.window.location.search).has("local")
+    if !local then ErrorReport.install()
     Lobby.status("读取游戏数据…")
     // 素材要登录后才给，先登录再读数据（旧版留下的 cookie 新服务端不认，也会走到登录表单）
     val boot =
@@ -40,7 +42,7 @@ object Main:
         audio   <- Audio.load(assets)
       yield start(catalog, assets, audio, local)
     boot.failed.foreach { e =>
-      dom.console.error(e.toString)
+      ErrorReport.caught("启动", e)
       Lobby.status(s"出错了：${e.getMessage}")
     }
 
@@ -70,6 +72,7 @@ object Main:
     )
     val client = GameClient(catalog, env)
     clientRef = Some(client)
+    ErrorReport.playingAs(() => client.self.map(_.look).collect { case h: mir.protocol.Look.Human => h.name })
     val lobby = Lobby(client.send)
     val ctl   = Controller(client)
     def applyOptions(o: ViewOptions): Unit =
@@ -118,14 +121,17 @@ object Main:
     client.connect(if local then LocalServer(catalog, assets, client.receive) else WsTransport(client.receive))
     dom.window.setInterval(() => client.ping(), PingEveryMs)
 
+    // 一帧出错只上报、接着画下一帧（不接住的话异常抛出去就不再约下一帧，画面定住）
     lazy val frame: js.Function1[Double, Unit] = t =>
-      ctl.update()
-      client.scene(t).foreach(renderer.draw)
-      if client.map.isEmpty then
-        renderer.ctx.fillStyle = "#000"
-        renderer.ctx.fillRect(0, 0, renderer.width, renderer.height)
-      renderer.scaleTo(view.uiScale)
-      ui.draw(dom.window.innerWidth / view.uiScale, dom.window.innerHeight / view.uiScale, view.ctlScale)
+      try
+        ctl.update()
+        client.scene(t).foreach(renderer.draw)
+        if client.map.isEmpty then
+          renderer.ctx.fillStyle = "#000"
+          renderer.ctx.fillRect(0, 0, renderer.width, renderer.height)
+        renderer.scaleTo(view.uiScale)
+        ui.draw(dom.window.innerWidth / view.uiScale, dom.window.innerHeight / view.uiScale, view.ctlScale)
+      catch case NonFatal(e) => ErrorReport.caught("画面一帧", e)
       dom.window.requestAnimationFrame(frame): Unit
     dom.window.requestAnimationFrame(frame): Unit
 

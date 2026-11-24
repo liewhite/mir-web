@@ -43,8 +43,8 @@ object SessionTokens:
   val Cookie: String     = "mir_sess"
 
 /**
- * 按 IP 限次数：窗口内记满 max 次就挡住，直到最早那次滑出窗口。
- * 登录记失败次数（10 分钟 10 次，与旧服务端一样）、注册记尝试次数（RateLimiter.register）。
+ * 按键（IP 或账号）限次数：窗口内记满 max 次就挡住，直到最早那次滑出窗口。
+ * 登录记失败次数（10 分钟 10 次，与旧服务端一样）、注册记尝试次数（RateLimiter.register）、客户端报错和看不懂的指令记日志次数。
  */
 final class RateLimiter(max: Int, windowMs: Long):
   private val hits = mutable.Map.empty[String, List[Long]]
@@ -58,8 +58,23 @@ final class RateLimiter(max: Int, windowMs: Long):
 
   def hit(ip: String, now: Long): Unit = synchronized(hits(ip) = now :: recent(ip, now))
 
+  /** 没被挡住就记一次并返回 true；已满返回 false（不记）。 */
+  def take(key: String, now: Long): Boolean = synchronized {
+    val l = recent(key, now)
+    if l.size >= max then false
+    else
+      hits(key) = now :: l
+      true
+  }
+
 object RateLimiter:
   /** 登录：10 分钟内失败 10 次 */
   def login(): RateLimiter = RateLimiter(10, 600_000L)
   /** 注册：1 小时内试 10 次（成功失败都算），挡住脚本批量开号 */
   def register(): RateLimiter = RateLimiter(10, 3_600_000L)
+  /** 客户端报错上报（按账号）：1 小时 30 条，防刷日志 */
+  def clientErrorsPerAccount(): RateLimiter = RateLimiter(30, 3_600_000L)
+  /** 客户端报错上报（按 IP）：1 小时 60 条 */
+  def clientErrorsPerIp(): RateLimiter = RateLimiter(60, 3_600_000L)
+  /** 看不懂的指令记日志（按账号）：1 分钟 5 条 */
+  def badCommands(): RateLimiter = RateLimiter(5, 60_000L)
