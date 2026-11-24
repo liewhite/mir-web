@@ -240,13 +240,18 @@ object CharSelect:
   enum Btn:
     case Select1, Select2, Start, NewChr, Erase, Credits, Exit
 
-  /** 按钮图号（prguse，按下时画）、位置（800×600 内，FState.pas 968 行起） */
+  /** 按钮图号（prguse，按下时画）、位置（800×600 内，FState.pas 980 行起） */
   val ButtonImg: Map[Btn, Int] = Map(
     Btn.Select1 -> 66, Btn.Select2 -> 67, Btn.Start -> 68, Btn.NewChr -> 69, Btn.Erase -> 70, Btn.Credits -> 71, Btn.Exit -> 72
   )
+  /**
+   * 用 FState.pas 每行 `{…}` 里那组坐标：它对的是我们这版背景（prguse 65）上画好的字；
+   * 生效的那组（开始 367,457 等）对的是另一版背景，用了会让可点区域比画出来的字偏左（#1196）。
+   * 按下图叠在背景上逐像素核过对齐。
+   */
   val ButtonAt: Map[Btn, (Double, Double)] = Map(
-    Btn.Select1 -> (134, 454), Btn.Select2 -> (685, 454), Btn.Start -> (367, 457), Btn.NewChr -> (321, 488),
-    Btn.Erase -> (311, 509), Btn.Credits -> (362, 529), Btn.Exit -> (379, 559)
+    Btn.Select1 -> (134, 454), Btn.Select2 -> (685, 454), Btn.Start -> (385, 456), Btn.NewChr -> (348, 486),
+    Btn.Erase -> (347, 506), Btn.Credits -> (362, 527), Btn.Exit -> (379, 547)
   )
 
   /** 每个职业性别的石像位置 (bx, by) 和活人相对石像的偏移 (fx-bx, fy-by)（SelectChrScene.PlayScene） */
