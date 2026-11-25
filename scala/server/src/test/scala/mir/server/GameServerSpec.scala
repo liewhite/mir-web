@@ -85,6 +85,42 @@ object GameServerSpec extends ZIOSpecDefault:
         ignored, lobbyClosed, back == (true, true)
       )
     },
+    test("页面刷新换新版（#1289）：先说要刷新再断开，角色不下线、小组还在，新页面进同一角色接上（旧连接不收踢下线）；没回来的 30 秒后下线") {
+      val f  = Fixture()
+      val c2 = f.store.chars.create(f.acc.id, CharacterData.newbie(catalog, "阿乙", Job.Taoist, Sex.Female, f.store.uids))
+        .fold(e => throw AssertionError(e), identity)
+      val a = f.connect(1)
+      val b = f.connect(2)
+      f.say(a, SessionCmd.EnterGame(f.char.id))
+      f.say(b, SessionCmd.EnterGame(c2.id))
+      f.say(b, SocialCmd.AllowGroup(true))
+      f.say(a, SocialCmd.CreateGroup("阿乙"))
+      val grouped = f.social.mates("阿狸")
+      // 阿狸的页面刷新：说一声再断开
+      f.say(a, SessionCmd.Reloading)
+      f.game.post(LinkEvent.Closed(a)); f.game.step()
+      f.advance(2_000)
+      val waiting = (f.game.onlineCount, f.social.mates("阿狸"))
+      val a2 = f.connect(3)
+      f.say(a2, SessionCmd.EnterGame(f.char.id))
+      val back = (
+        f.game.onlineCount, f.social.mates("阿狸"), a2.got.exists(_.isInstanceOf[ServerMsg.EnterMap]),
+        a.got.exists(_.isInstanceOf[ServerMsg.Kicked]), b.got.collect { case ServerMsg.Notice(t, _) => t }.exists(_.contains("离开"))
+      )
+      // 阿乙的页面也刷新，但一直没回来：照掉线超时下线
+      f.say(b, SessionCmd.Reloading)
+      f.game.post(LinkEvent.Closed(b)); f.game.step()
+      f.advance(10_000)
+      val stillThere = f.game.onlineCount
+      (1 to 3).foreach { _ => f.game.post(LinkEvent.Alive(a2)); f.advance(10_000) }
+      val gone = f.game.onlineCount
+      f.store.db.close()
+      assertTrue(
+        grouped.toSet == Set("阿狸", "阿乙"), waiting == (2, grouped),
+        back == (2, grouped, true, false, false),
+        stillThere == 2, gone == 1
+      )
+    },
     test("交易成交：不等 30 秒定时存档，双方存档里就是交易后的样子") {
       val f  = Fixture()
       val c2 = f.store.chars.create(f.acc.id, CharacterData.newbie(catalog, "阿乙", Job.Taoist, Sex.Female, f.store.uids))

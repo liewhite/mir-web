@@ -71,7 +71,9 @@ final class GameServer(
     idleTimeoutMs: Long = 30_000L,
     social: Social = Social(),
     headcount: Option[Headcount] = None,
-    freezer: Freezer = Freezer.Off
+    freezer: Freezer = Freezer.Off,
+    /** 本服的版本（登录时发给页面比，#1289）；测试里没有 game.json 原文就用空数据 */
+    release: Release = Release.of("")
 ):
   import GameServer.*
 
@@ -92,8 +94,12 @@ final class GameServer(
 
   // ---------------- 以下只在游戏线程里用 ----------------
 
-  /** 一个连接：在大厅（playing 为空）或在玩某个角色；heardAt 是最后收到它消息的时刻（判掉线超时）。 */
-  private final class Conn(val link: Link, var playing: Option[CharId], var heardAt: Millis)
+  /**
+   * 一个连接：在大厅（playing 为空）或在玩某个角色；heardAt 是最后收到它消息的时刻（判掉线超时）。
+   * reloading：页面说了马上刷新（SessionCmd.Reloading，#1289），它断开时角色先不下线，等新页面顶替或掉线超时。
+   */
+  private final class Conn(val link: Link, var playing: Option[CharId], var heardAt: Millis):
+    var reloading = false
   /** 一个在线角色：哪个连接、在哪张图、在图里的对象编号。 */
   private final class Online(val id: CharId, val name: String, val conn: Conn, var map: MapId, var actor: ActorId)
 
@@ -199,9 +205,10 @@ final class GameServer(
     case AdminRequest(cmd, reply) => reply(execute(cmd))
     case LinkEvent.Opened(link) =>
       conns(link.id) = Conn(link, None, now)
-      link.send(ServerMsg.LoggedIn(link.account.name, Build.commit))
+      link.send(ServerMsg.loggedIn(link.account.name, release))
+    // 要刷新的页面断开：角色留在世界里等新页面顶替（enterGame），没回来就由掉线超时下线
     case LinkEvent.Closed(link) =>
-      conns.get(link.id).foreach(disconnect)
+      conns.get(link.id).filterNot(_.reloading).foreach(disconnect)
     case LinkEvent.Alive(link) =>
       conns.get(link.id).foreach(_.heardAt = now)
     case LinkEvent.Received(link, cmd) =>
@@ -243,6 +250,7 @@ final class GameServer(
     cmd match
       case SessionCmd.Login(_, _) => refuse("已经登录")
       case SessionCmd.Ping(ms)    => c.link.send(ServerMsg.Pong(ms, clock()))
+      case SessionCmd.Reloading   => c.reloading = true
       case SessionCmd.ListChars   => charList()
       case SessionCmd.CreateChar(name, job, sex) =>
         chars.create(account.id, CharacterData.newbie(catalog, name.trim, job, sex, uids)).fold(refuse, _ => charList())
@@ -263,7 +271,9 @@ final class GameServer(
       case Some(old) =>
         if old.conn ne c then
           old.conn.playing = None
-          old.conn.link.send(ServerMsg.Kicked("这个角色在别处登录了"))
+          // 刷新前的旧页面已经断了：直接移出连接表；别处还连着的告诉它被顶下线
+          if old.conn.reloading then conns.remove(old.conn.link.id): Unit
+          else old.conn.link.send(ServerMsg.Kicked("这个角色在别处登录了"))
           old.conn.link.close(Farewell.Dropped)
         val kept = maps.get(old.map).toOption.flatMap(_.carriedOf(old.actor)).getOrElse(Carried())
         (takeOut(old).getOrElse(sc.data), kept)

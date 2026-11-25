@@ -22,6 +22,11 @@ enum SessionCmd:
   case EnterGame(id: CharId)
   /** 对时：clientMs 是客户端发出时的本地时钟，服务端原样带回 */
   case Ping(clientMs: Long)
+  /**
+   * 页面马上要刷新换新版（#1289）：这个连接接着断开时先不下线角色（宝宝、状态、小组都留着），
+   * 等刷新后的页面再进这个角色时接上；掉线超时（30 秒）前没回来再按下线处理。
+   */
+  case Reloading
 
 object SessionCmd:
   given JsonCodec[SessionCmd] = DeriveJsonCodec.gen
@@ -167,11 +172,11 @@ object Speech:
 enum ServerMsg:
   // ---- 登录、选人 ----
   /**
-   * 登录了（每次连上都发，含断线重连）。build 是服务端的构建提交（Build.commit）：
-   * 和页面自己的不一样，说明部署了新版、页面还是旧脚本，客户端自动刷新（#1242）。
-   * 这条消息的字段以后只加不改：旧页面要靠它发现自己过时了。
+   * 登录了（每次连上都发，含断线重连，是连上后的第一条消息）。build、wire、data 是服务端的 Release（构建提交、通讯格式、游戏数据摘要）：
+   * 页面拿来和自己的比，决定照常、过会儿找机会刷新，还是马上刷新（#1242、#1289）。
+   * 这条消息的字段以后只加不改：旧页面要靠它发现自己过时了（#1289 之前的页面只认 build，不同就马上刷新）。
    */
-  case LoggedIn(account: String, build: String)
+  case LoggedIn(account: String, build: String, wire: String, data: String)
   case CharList(chars: List[CharSummary])
   /** 被踢下线（同一角色在别处登录等） */
   case Kicked(reason: String)
@@ -257,3 +262,6 @@ enum ServerMsg:
 
 object ServerMsg:
   given JsonCodec[ServerMsg] = DeriveJsonCodec.gen
+
+  def loggedIn(account: String, release: Release): ServerMsg =
+    LoggedIn(account, release.commit, release.wire, release.data)

@@ -29,6 +29,7 @@ object ProtocolSpec extends ZIOSpecDefault:
     SessionCmd.CreateChar("小明", Job.Taoist, Sex.Female),
     SessionCmd.DeleteChar(CharId(3L)),
     SessionCmd.EnterGame(CharId(3L)),
+    SessionCmd.Reloading,
     GameCmd.Walk(c1, Dir.UpLeft),
     GameCmd.Run(c1, Dir.Down),
     GameCmd.Turn(Dir.Right),
@@ -78,7 +79,7 @@ object ProtocolSpec extends ZIOSpecDefault:
   )
 
   val serverSamples: List[ServerMsg] = List(
-    ServerMsg.LoggedIn("liewhite", "12af80f"),
+    ServerMsg.LoggedIn("liewhite", "12af80f", "1-0123456789abcdef", "a1b2c3"),
     ServerMsg.CharList(List(CharSummary(CharId(1L), "小明", Job.Warrior, Sex.Male, 22))),
     ServerMsg.Kicked("账号在别处登录"),
     ServerMsg.EnterMap(me, MapId("0"), c1, Dir.Down, t0),
@@ -193,6 +194,30 @@ object ProtocolSpec extends ZIOSpecDefault:
         """{"allowGroup":true}""".fromJson[SocialPrefs] == Right(SocialPrefs(allowGroup = true, friends = Nil))
       )
     },
+    test("登录消息只加字段（#1289）：#1289 之前的页面（只认 account、build）照样读得出新服务端的登录消息，发现版本变了去刷新") {
+      val json = ServerMsg.loggedIn("liewhite", Release("abc1234", Release.wire, "d")).toJson
+      assertTrue(json.fromJson[ProtocolSpec.OldServerMsg] == Right(ProtocolSpec.OldServerMsg.LoggedIn("liewhite", "abc1234")))
+    },
+    test("通讯格式指纹（#1289）：编译期按类名、字段名和类型、分支展开；改字段名或类型、加分支都会变") {
+      val shape = WireShape.shape[ProtocolSpec.ShapeSample]
+      assertTrue(
+        shape.contains("Hit(target:mir.core.Ids$package$.ActorId,power:scala.Option[scala.Int],at:mir.core.Cell(x:scala.Int,y:scala.Int))"),
+        shape.contains(",Quit}"),
+        WireShape.shape[ProtocolSpec.ShapeSample] == shape,
+        WireShape.digest[ProtocolSpec.ShapeSample] != WireShape.digest[ProtocolSpec.ShapeSample2],
+        Release.wire.startsWith(s"${Release.WireRevision}-"),
+        Release.wire.length > 10
+      )
+    },
+    test("游戏数据摘要（#1289）：同一段文字一样，改一个字就不一样") {
+      assertTrue(
+        Release.dataPrint("""{"a":"沃玛"}""") == Release.dataPrint("""{"a":"沃玛"}"""),
+        Release.dataPrint("""{"a":"沃玛"}""") != Release.dataPrint("""{"a":"祖玛"}"""),
+        Release("x", "w", "d").compatible(Release("y", "w", "d")),
+        !Release("x", "w", "d").compatible(Release("y", "w2", "d")),
+        !Release("x", "w", "d").compatible(Release("y", "w", "d2"))
+      )
+    },
     test("坏消息解码失败而不是抛异常") {
       assertTrue(
         """{"Walk":{"from":{"x":1,"y":2},"dir":8}}""".fromJson[ClientCmd].isLeft,
@@ -202,3 +227,18 @@ object ProtocolSpec extends ZIOSpecDefault:
       )
     }
   )
+
+  /** #1289 之前的登录消息长这样 */
+  enum OldServerMsg:
+    case LoggedIn(account: String, build: String)
+  object OldServerMsg:
+    given JsonCodec[OldServerMsg] = DeriveJsonCodec.gen
+
+  /** 指纹测试用：一条带字段的分支、一条不带的 */
+  enum ShapeSample:
+    case Hit(target: ActorId, power: Option[Int], at: Cell)
+    case Quit
+  /** 同上，只改了一个字段的类型 */
+  enum ShapeSample2:
+    case Hit(target: ActorId, power: Option[Long], at: Cell)
+    case Quit

@@ -20,8 +20,10 @@ final case class ClientEnv(
     loadMap: MapId => Future[MapData],
     /** 播音效：编号、声源格（None 是自己身上）、自己所在格 */
     sound: (Int, Option[Cell], Option[Cell]) => Unit,
-    /** 服务端发来它的构建提交：判断页面过没过时，过时就刷新页面（#1242）；测试里默认同一版 */
-    serverBuild: String => Freshness = _ => Freshness.Current
+    /** 服务端发来它的版本：判断页面过没过时，要马上刷新的这里就刷新（#1242、#1289）；测试里默认同一版 */
+    serverRelease: Release => Freshness = _ => Freshness.Current,
+    /** 现在刷新页面换服务端这个提交的新版（Stale 等到切画面时调，#1289）；调之前已告诉服务端别下线角色 */
+    refresh: String => Unit = _ => ()
 )
 
 /**
@@ -44,6 +46,8 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
   var options: ViewOptions    = ViewOptions()
   /** 选好的角色：断线重连后自动再进 */
   private var playing = Option.empty[CharId]
+  /** 页面旧了、等机会刷新到哪一步了（#1289） */
+  private var update: PendingUpdate = PendingUpdate.Idle
 
   def connect(t: Transport): Unit = transport = Some(t)
 
@@ -70,11 +74,11 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
   // ---------------- 收 ----------------
 
   def receive(e: LinkEvent): Unit = e match
+    // 连上后先等 LoggedIn 比过版本再进游戏：要马上刷新就不进，免得进去又马上断开，把停服快照里留给自己的宝宝、状态领了又丢掉
     case LinkEvent.Up =>
       clock.reset()
       ui.link(None)
       ping()
-      playing.foreach(id => send(SessionCmd.EnterGame(id)))
     case LinkEvent.Down(why) =>
       motion = SelfMotion()
       ui.link(Some(why))
@@ -85,7 +89,18 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
     view = view(m)
     val local = env.localNow()
     m match
+      case ServerMsg.EnterMap(_, _, _, _, _) if refreshAtCut.isDefined =>
+        // 换图、回城、复活本来就要黑一下：趁这时刷新换新版，先叫服务端别下线角色
+        refreshAtCut.foreach { commit =>
+          update = PendingUpdate.Idle
+          map = None
+          send(SessionCmd.Reloading)
+          env.refresh(commit)
+        }
       case ServerMsg.EnterMap(_, mapId, _, _, now) =>
+        update match
+          case PendingUpdate.AwaitRejoin(commit) => update = PendingUpdate.AtNextCut(commit)
+          case _                                 => ()
         clock.roughly(now, local)
         motion = SelfMotion()
         fx = fx.cleared
@@ -123,20 +138,36 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
       case ServerMsg.Kicked(why)            =>
         playing = None
         ui.kicked(why)
-      // 重连时服务端也会再发一次：已经在玩就直接回游戏（Up 时已发 EnterGame），不回选人
-      case ServerMsg.LoggedIn(account, build) =>
-        env.serverBuild(build) match
-          case Freshness.Reload  => () // 页面马上刷新，不再进选人
-          case Freshness.Current => if playing.isEmpty then ui.loggedIn(account)
+      // 每次连上都发：比过版本，已经在玩就直接回游戏（断线重连、刷新前在玩），不回选人
+      case ServerMsg.LoggedIn(account, build, wire, data) =>
+        def proceed(): Unit = playing match
+          case Some(id) => send(SessionCmd.EnterGame(id))
+          case None     => ui.loggedIn(account)
+        env.serverRelease(Release(build, wire, data)) match
+          case Freshness.Reload  => () // 页面马上刷新，不再进游戏或选人
+          case Freshness.Current =>
+            update = PendingUpdate.Idle
+            proceed()
+          case Freshness.Stale =>
+            // 接着玩：马上来的进图是重连回原处，再下一次才是切画面
+            update = if playing.isDefined then PendingUpdate.AwaitRejoin(build) else PendingUpdate.Idle
+            ui.notice("游戏有新版本，下次换地图、回城或复活时自动更新", Tone.Good)
+            proceed()
           case Freshness.Stuck   =>
+            update = PendingUpdate.Idle
             ui.notice("游戏已更新，请手动刷新页面", Tone.Bad)
-            if playing.isEmpty then ui.loggedIn(account)
+            proceed()
       case ServerMsg.CharList(chars)        => ui.charList(chars)
       case ServerMsg.Pong(sent, server)     => clock.pong(sent.toDouble, server, local)
       case ServerMsg.Act(id, _, _, _) if locked.contains(id) && view.actors.get(id).exists(_.dead) => locked = None
       case _                                => ()
     // 死了就不再本地先走
     if before.self.exists(!_.dead) && view.self.exists(_.dead) then motion = SelfMotion()
+
+  /** 等到切画面就刷新：刷成服务端哪个提交 */
+  private def refreshAtCut: Option[String] = update match
+    case PendingUpdate.AtNextCut(commit) => Some(commit)
+    case _                               => None
 
   /** 说话的人：名字对得上的玩家。 */
   private def speaker(name: String): Option[ActorId] =

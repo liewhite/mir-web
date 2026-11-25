@@ -560,26 +560,58 @@ object ClientSpec extends ZIOSpecDefault:
         SettingRow.stepPercent(40, up = true) == 45
       )
     },
-    test("页面和服务端版本（#1242）：同一版照常；旧页面刷新一次；为这一版刷新过还对不上就不再刷") {
+    test("页面和服务端版本（#1242、#1289）：同一版照常；只有提交不同能接着玩；通讯格式或数据不同马上刷新；为这一版刷新过还对不上就不再刷") {
+      val mine = Release("aaa", "w1", "d1")
+      def server(commit: String, wire: String = "w1", data: String = "d1") = Release(commit, wire, data)
       assertTrue(
-        Freshness.judge("aaa", "aaa", None) == Freshness.Current,
-        Freshness.judge("aaa", "aaa", Some("aaa")) == Freshness.Current,
-        Freshness.judge("aaa", "bbb", None) == Freshness.Reload,
-        Freshness.judge("aaa", "bbb", Some("ccc")) == Freshness.Reload,
-        Freshness.judge("aaa", "bbb", Some("bbb")) == Freshness.Stuck
+        Freshness.judge(mine, server("aaa"), None) == Freshness.Current,
+        Freshness.judge(mine, server("aaa"), Some("aaa")) == Freshness.Current,
+        Freshness.judge(mine, server("bbb"), None) == Freshness.Stale,
+        Freshness.judge(mine, server("bbb", wire = "w2"), None) == Freshness.Reload,
+        Freshness.judge(mine, server("bbb", data = "d2"), None) == Freshness.Reload,
+        Freshness.judge(mine, server("bbb", wire = "w2"), Some("ccc")) == Freshness.Reload,
+        Freshness.judge(mine, server("bbb", wire = "w2"), Some("bbb")) == Freshness.Stuck,
+        Freshness.judge(mine, server("bbb"), Some("bbb")) == Freshness.Stuck
       )
     },
-    test("服务端是另一版：页面刷新，不进选人；同一版照常进选人") {
+    test("连上后先比版本再进游戏（#1289）：要马上刷新就不进游戏也不进选人，免得把停服时留着的宝宝领了又丢；同一版照常") {
       var logins = 0
-      def run(verdict: Freshness): Int =
+      def run(verdict: Freshness, resume: Option[CharId]): (Int, Boolean) =
         logins = 0
         val c = GameClient(catalog, ClientEnv(() => 0.0, _ => Future.never, (_, _, _) => (), _ => verdict))
         c.ui = new UiEvents:
           export UiEvents.Ignore.{loggedIn as _, *}
           def loggedIn(account: String): Unit = logins += 1
-        c.receive(LinkEvent.Received(ServerMsg.LoggedIn("me", "x")))
-        logins
-      assertTrue(run(Freshness.Current) == 1, run(Freshness.Reload) == 0, run(Freshness.Stuck) == 1)
+        resume.foreach(c.resume)
+        c.receive(LinkEvent.Up)
+        val early = c.recent.exists(_.isInstanceOf[SessionCmd.EnterGame])
+        c.receive(LinkEvent.Received(ServerMsg.LoggedIn("me", "x", "w", "d")))
+        (logins, !early && c.recent.contains(SessionCmd.EnterGame(CharId(7))))
+      val playing = Some(CharId(7))
+      assertTrue(
+        run(Freshness.Current, None) == (1, false), run(Freshness.Reload, None) == (0, false), run(Freshness.Stuck, None) == (1, false),
+        run(Freshness.Current, playing) == (0, true), run(Freshness.Reload, playing) == (0, false),
+        run(Freshness.Stale, playing) == (0, true), run(Freshness.Stuck, playing) == (0, true)
+      )
+    },
+    test("能接着玩的旧页面（#1289）：重连回原处不刷新，下一次进图（换图、回城、复活）先告诉服务端再刷新，只刷一次") {
+      var refreshed = Vector.empty[String]
+      val c = GameClient(catalog, ClientEnv(() => 0.0, _ => Future.never, (_, _, _) => (), _ => Freshness.Stale, commit => refreshed :+= commit))
+      def enterMap(id: String) = c.receive(LinkEvent.Received(ServerMsg.EnterMap(ActorId(1), MapId(id), Cell(10, 10), Dir.Down, Millis(0))))
+      c.resume(CharId(7))
+      c.receive(LinkEvent.Up)
+      c.receive(LinkEvent.Received(ServerMsg.LoggedIn("me", "bbb", "w", "d")))
+      enterMap("0") // 重连回到原处
+      val afterRejoin = (refreshed, c.view.map)
+      enterMap("3") // 换图
+      val afterCut = (refreshed, c.recent.lastOption)
+      enterMap("0")
+      assertTrue(
+        afterRejoin == (Vector.empty, Some(MapId("0"))),
+        afterCut == (Vector("bbb"), Some(SessionCmd.Reloading)),
+        refreshed == Vector("bbb")
+        )
+      }
     },
     test("断线重连（#1290）：服务器说在重启就每 0.5 秒试、重启期间连不上也不变，1 分钟没回来按普通断线；普通断线退避到 5 秒") {
       import mir.client.net.{Outage, Reconnect}

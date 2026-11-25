@@ -9,6 +9,7 @@ import mir.client.render.{Renderer, ViewOptions}
 import mir.client.ui.{ClassicUi, Gfx, Insets, Lobby, UiEnv, Viewport}
 import mir.core.*
 import mir.data.Catalog
+import mir.protocol.Release
 import org.scalajs.dom
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits.*
 import zio.json.*
@@ -43,13 +44,14 @@ object Main:
         text    <- assets.text("data/game.json")
         catalog <- Catalog.decode(text).fold(e => Future.failed(Exception(s"游戏数据有误：$e")), Future.successful)
         audio   <- Audio.load(assets)
-      yield start(catalog, assets, audio, local)
+      yield start(catalog, Release.of(text), assets, audio, local)
     boot.failed.foreach { e =>
       ErrorReport.caught("启动", e)
       Lobby.status(s"出错了：${e.getMessage}")
     }
 
-  private def start(catalog: Catalog, assets: Assets, audio: Audio, local: Boolean): Unit =
+  /** mine：页面自己的版本（本脚本的提交、通讯格式 + 读到的游戏数据），和服务端的比（#1289） */
+  private def start(catalog: Catalog, mine: Release, assets: Assets, audio: Audio, local: Boolean): Unit =
     val canvas   = dom.document.querySelector("#game").asInstanceOf[dom.HTMLCanvasElement]
     val sprites  = SpriteStore(assets, ErrorReport.assetFailed)
     val renderer = Renderer(canvas, sprites, assets, catalog, ErrorReport.assetFailed)
@@ -72,7 +74,8 @@ object Main:
             }
       ,
       sound = (id, at, me) => audio.play(id, at, me),
-      serverBuild = build => freshen(build, clientRef.flatMap(_.current))
+      serverRelease = server => freshen(mine, server, clientRef.flatMap(_.current)),
+      refresh = commit => reload(commit, clientRef.flatMap(_.current))
     )
     val client = GameClient(catalog, env)
     clientRef = Some(client)
@@ -142,16 +145,25 @@ object Main:
 
     DebugHandle.install(client, ctl, renderer, ui)
 
-  /** 服务端是另一版就记下在玩的角色、刷新页面；同一版本标签页只刷一次（见 Freshness）。 */
-  private def freshen(build: String, playing: Option[CharId]): Freshness =
-    val store   = dom.window.sessionStorage
-    val verdict = Freshness.judge(Build.commit, build, Option(store.getItem(ReloadedForKey)))
-    if verdict == Freshness.Reload then
-      store.setItem(ReloadedForKey, build)
-      playing.foreach(id => store.setItem(ResumeKey, id.value.toString))
-      Lobby.status("游戏已更新，正在刷新…")
-      dom.window.location.reload()
+  /**
+   * 服务端是另一版：要马上刷新的现在刷（还在选人、没进游戏的，能接着玩也现在刷，反正不打断什么）；
+   * 同一版本标签页只刷一次（见 Freshness）。
+   */
+  private def freshen(mine: Release, server: Release, playing: Option[CharId]): Freshness =
+    val reloadedFor = Option(dom.window.sessionStorage.getItem(ReloadedForKey))
+    val verdict = Freshness.judge(mine, server, reloadedFor) match
+      case Freshness.Stale if playing.isEmpty => Freshness.Reload
+      case v                                  => v
+    if verdict == Freshness.Reload then reload(server.commit, playing)
     verdict
+
+  /** 刷新页面：记下为服务端哪个提交刷的（刷完还对不上就是 Stuck）和在玩的角色（刷完接着进）。 */
+  private def reload(forCommit: String, playing: Option[CharId]): Unit =
+    val store = dom.window.sessionStorage
+    store.setItem(ReloadedForKey, forCommit)
+    playing.foreach(id => store.setItem(ResumeKey, id.value.toString))
+    Lobby.status("游戏已更新，正在刷新…")
+    dom.window.location.reload()
 
   /** 取出刷新前在玩的角色（取一次就删，之后手动刷新照常回选人）。 */
   private def takeResume(): Option[CharId] =

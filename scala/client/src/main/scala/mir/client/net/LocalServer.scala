@@ -35,7 +35,7 @@ final class LocalServer(catalog: Catalog, assets: Assets, listener: LinkEvent =>
   dom.window.setTimeout(
     () =>
       listener(LinkEvent.Up)
-      deliver(ServerMsg.LoggedIn("本地", Build.commit))
+      deliver(ServerMsg.loggedIn("本地", Release.of("")))
     ,
     0
   ): Unit
@@ -59,7 +59,7 @@ final class LocalServer(catalog: Catalog, assets: Assets, listener: LinkEvent =>
       case Left(err)   => dom.console.error("消息编码有误", err)
 
   private def session(c: SessionCmd): Unit = c match
-    case SessionCmd.Login(account, _) => deliver(ServerMsg.LoggedIn(account, Build.commit))
+    case SessionCmd.Login(account, _) => deliver(ServerMsg.loggedIn(account, Release.of("")))
     case SessionCmd.ListChars         => deliver(ServerMsg.CharList(chars.map(_._1).toList))
     case SessionCmd.CreateChar(name, job, sex) =>
       val id = CharId(chars.size + 1L)
@@ -79,6 +79,7 @@ final class LocalServer(catalog: Catalog, assets: Assets, listener: LinkEvent =>
           here = None
           enter(chars.find(_._1.id == id).fold(data)(_._2), Carried())
     case SessionCmd.Ping(ms) => deliver(ServerMsg.Pong(ms, clock))
+    case SessionCmd.Reloading => () // 本地服务端跟着页面一起刷新，没有要留的
 
   /** 本机只有一个角色：组队、私聊、好友照同一套规则跑（别人总是「不在线」、查无此人），换图不变。 */
   private val society = mir.social.Social()
