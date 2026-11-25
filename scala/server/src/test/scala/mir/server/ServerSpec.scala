@@ -358,6 +358,29 @@ object ServerSpec extends ZIOSpecDefault:
         assertTrue(gc == Some(CloseCode.Restarting), hc == Some(CloseCode.Restarting), carried == Set("停服甲"))
       }
     },
+    test("只起一个服务端（#1292）：不带参数不起服务；同一数据目录再起一个被拒、不开库，在跑的那个的管理入口照常") {
+      val cfg = tempConfig()
+      cli(cfg, "account", "add", "ivan")("secret1"): Unit
+      val bare = cli(cfg)()
+      withServer(cfg) { _ =>
+        val second = Unsafe.unsafe { implicit u => Runtime.default.unsafe.run(ZIO.scoped(Boot.start(cfg)).either).getOrThrow() }
+        (second, Files.exists(cfg.adminSocket), cli(cfg, "announce", "还在")())
+      }.map { case (second, sockKept, announced) =>
+        assertTrue(bare == 2, second.left.exists(_.isInstanceOf[mir.server.store.ServeLock.Held]), sockKept, announced == 0)
+      }
+    },
+    test("管理入口不抢别人的 socket（#1292）：已有服务在听时后来的不删它、退出时也不删") {
+      import mir.server.admin.{AdminCmd, AdminReply, AdminSocket}
+      val path = Files.createTempDirectory("mir-admin").resolve("admin.sock")
+      def answer(who: String) = (_: AdminCmd) => AdminReply.Done(who)
+      ZIO.scoped {
+        for
+          _ <- AdminSocket.serve(path, answer("第一个"))
+          _ <- ZIO.scoped(AdminSocket.serve(path, answer("第二个")))
+          r <- ZIO.attemptBlocking(AdminSocket.request(path, AdminCmd.Bosses()))
+        yield r
+      }.map(r => assertTrue(r == Right(AdminReply.Done("第一个")), !Files.exists(path)))
+    },
     test("迁移旧单机存档") {
       val cfg  = tempConfig()
       val save = Files.createTempFile("save", ".json")

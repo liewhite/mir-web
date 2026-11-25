@@ -7,7 +7,8 @@ import java.io.{ByteArrayOutputStream, InputStream}
 import java.net.{StandardProtocolFamily, UnixDomainSocketAddress}
 import java.nio.channels.{Channels, ClosedChannelException, ServerSocketChannel, SocketChannel}
 import java.nio.charset.StandardCharsets.UTF_8
-import java.nio.file.{Files, Path}
+import java.nio.file.{Files, LinkOption, Path}
+import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.PosixFilePermissions
 import scala.util.Try
 import scala.util.control.NonFatal
@@ -23,7 +24,9 @@ object AdminSocket:
   val MaxLine = 16 * 1024
 
   /**
-   * 在 path 上监听直到离开 Scope（关掉并删掉 socket 文件）。上次没删掉的旧文件先删。
+   * 在 path 上监听直到离开 Scope（关掉并删掉自己绑的 socket 文件）。
+   * 已有文件时先试连（#1292）：连得上说明别的服务端正用着它，不删、不开；连不上才是上次没删掉的旧文件，删了重开。
+   * 停的时候只在文件还是自己绑的那个（同一个 inode）时删，不删别人后来绑的。
    * exec 在连接各自的虚拟线程里调用，可以阻塞（等游戏线程回话）。
    * 开不了（目录不可写、路径太长）只打日志，游戏照常起：管理入口坏了不该让玩家进不了游戏。
    */
@@ -34,15 +37,25 @@ object AdminSocket:
     }.unit
 
   private def open(path: Path, exec: AdminCmd => AdminReply): () => Unit =
+    if live(path) then throw IllegalStateException(s"$path 有别的服务端在用，不动它")
     Files.deleteIfExists(path)
     val server = ServerSocketChannel.open(StandardProtocolFamily.UNIX)
     server.bind(UnixDomainSocketAddress.of(path))
     Files.setPosixFilePermissions(path, PosixFilePermissions.fromString("rw-------"))
+    val mine     = fileKey(path)
     val acceptor = Thread.ofPlatform().daemon().name("mir-admin").start(() => acceptLoop(server, exec))
     () =>
       server.close()
       acceptor.join(1000)
-      Files.deleteIfExists(path): Unit
+      if mine.isDefined && fileKey(path) == mine then Files.deleteIfExists(path): Unit
+
+  /** path 上有没有活的服务端在听（文件在且连得上） */
+  private def live(path: Path): Boolean =
+    Files.exists(path) && Try(SocketChannel.open(UnixDomainSocketAddress.of(path)).close()).isSuccess
+
+  /** 文件的身份（inode 等），没有文件时 None */
+  private def fileKey(path: Path): Option[AnyRef] =
+    Try(Option(Files.readAttributes(path, classOf[BasicFileAttributes], LinkOption.NOFOLLOW_LINKS).fileKey())).toOption.flatten
 
   private def acceptLoop(server: ServerSocketChannel, exec: AdminCmd => AdminReply): Unit =
     try

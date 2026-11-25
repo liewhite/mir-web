@@ -104,7 +104,7 @@ java -jar $JAR serve                         # 起服务
 
 浏览器打开 http://127.0.0.1:18176 ，登录、建角色就能玩。账号和角色存在 `$DATA_DIR/mir.db`，每天自动备份到 `$DATA_DIR/backup/`。
 
-开发时不打 jar 也行：`sbt client/fastLinkJS` 后 `sbt server/run`（环境变量同上；不设时默认读 `../public/assets`、`client/web`，数据放 `server/data`）。
+开发时不打 jar 也行：`sbt client/fastLinkJS` 后 `sbt "server/run serve"`（环境变量同上；不设时默认读 `../public/assets`、`client/web`，数据放 `server/data`）。
 
 命令行（服务在跑的时候也能用）：
 

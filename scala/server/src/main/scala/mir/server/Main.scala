@@ -36,6 +36,7 @@ object Boot:
 
   def start(cfg: ServerConfig): ZIO[Scope, Throwable, Int] =
     for
+      _       <- ServeLock.acquire(cfg.dataDir) // 先于开库：已有服务端在跑就到此为止（#1292）
       tokens  <- ZIO.attempt(SessionTokens(cfg.sessionSecret))
       json    <- ZIO.attemptBlocking(Files.readString(cfg.gameJson))
       catalog <- ZIO.fromEither(Catalog.decode(json)).mapError(e => Exception(s"${cfg.gameJson} 解码失败：$e"))
@@ -62,7 +63,7 @@ object Boot:
 
 /**
  * 入口：
- *   （无参数）或 serve                 起服务
+ *   serve                              起服务（必须明说：误敲不带参数的命令不该在线上再起一个，#1292）
  *   account add <账号>                 开号，密码从标准输入读一行
  *   account passwd <账号>              改密码，同上
  *   account list                       列出账号和角色数
@@ -84,7 +85,7 @@ object Main:
       readPw: () => Option[String],
       readAll: () => String = () => String(java.lang.System.in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
   ): Int = args match
-    case Nil | List("serve") => serve(cfg)
+    case List("serve")       => serve(cfg)
     case "account" :: rest   => withStore(cfg)(account(_, rest, readPw))
     case List("migrate", acc, file)       => withStore(cfg)(migrate(_, acc, file, None))
     case List("migrate", acc, file, name) => withStore(cfg)(migrate(_, acc, file, Some(name)))
@@ -112,7 +113,7 @@ object Main:
       java.lang.Runtime.getRuntime.addShutdownHook(Thread(() => Runtime.default.unsafe.run(fiber.interrupt): Unit))
       Runtime.default.unsafe.run(fiber.join) match
         case Exit.Failure(c) if !c.isInterruptedOnly =>
-          java.lang.System.err.println(c.prettyPrint)
+          java.lang.System.err.println(c.failureOption.collect { case h: ServeLock.Held => h.getMessage }.getOrElse(c.prettyPrint))
           1
         case _ => 0
     }
