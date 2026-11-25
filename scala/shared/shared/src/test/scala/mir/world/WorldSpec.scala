@@ -396,6 +396,27 @@ object WorldSpec extends ZIOSpecDefault:
           s.consistent(a), s.consistent(b)
         )
       },
+      test("别人开魔法盾旁人看得见，后进视野的也看得见，到期一起消失（#1297）") {
+        val s = sim()
+        val a = join(s.w, "甲", Cell(30, 30))
+        val b = join(s.w, "乙", Cell(33, 30))
+        s.flush()
+        val before = s.views(b.id).actors(a.id).auras
+        s.w.conditions.addStatus(a, Status.Shielded(2), 5_000)
+        s.flush()
+        val seenB = s.views(b.id).actors(a.id).auras
+        val c     = join(s.w, "丙", Cell(30, 33))
+        s.flush()
+        val seenC = s.views(c.id).actors(a.id).auras
+        s.run(6_000)
+        assertTrue(
+          before.isEmpty,
+          seenB == Set(Aura.MagicShield), seenC == Set(Aura.MagicShield),
+          s.views(b.id).actors(a.id).auras.isEmpty, s.views(c.id).actors(a.id).auras.isEmpty,
+          s.views(a.id).actors(a.id).auras.isEmpty,
+          s.consistent(a), s.consistent(b)
+        )
+      },
       test("各打各的怪；怪的血量、死活以世界为准，两人看到的一样") {
         val s  = sim(seed = 7)
         val a  = join(s.w, "甲", Cell(20, 30))

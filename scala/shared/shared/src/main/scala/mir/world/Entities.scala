@@ -51,6 +51,10 @@ sealed abstract class Actor(val id: ActorId, initCell: Cell, initDir: Dir, now: 
   def afflictions: Set[Affliction] =
     Affliction.values.iterator.filter(af => statuses.has(StatusKind.of(af))).toSet
 
+  /** 身上看得见的增益光效（魔法盾），周围的人都画 */
+  def auras: Set[Aura] =
+    Aura.values.iterator.filter(au => statuses.has(StatusKind.of(au))).toSet
+
   def ac: Span
   def mac: Span
   def agility: Int

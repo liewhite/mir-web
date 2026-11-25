@@ -1,7 +1,7 @@
 package mir.world
 
 import mir.core.*
-import mir.model.{Affliction, PoisonKind}
+import mir.model.{Affliction, Aura, PoisonKind}
 
 import scala.collection.mutable
 
@@ -22,6 +22,10 @@ object StatusKind:
     case Affliction.GreenPoison => GreenPoison
     case Affliction.RedPoison   => RedPoison
     case Affliction.Paralyzed   => Paralyzed
+
+  /** 看得见的增益光效对应的身上状态 */
+  def of(aura: Aura): StatusKind = aura match
+    case Aura.MagicShield => Shield
 
 /** 身上的限时状态和它带的参数。 */
 enum Status(val kind: StatusKind):

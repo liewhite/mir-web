@@ -195,6 +195,8 @@ enum ServerMsg:
   case LookChanged(id: ActorId, look: Look)
   /** 身上看得见的中毒、麻痹变了 */
   case AfflictionsChanged(id: ActorId, afflictions: Set[Affliction])
+  /** 身上看得见的光效（魔法盾）变了 */
+  case AurasChanged(id: ActorId, auras: Set[Aura])
 
   // ---- 地上的东西 ----
   case GroundAppear(item: GroundView)

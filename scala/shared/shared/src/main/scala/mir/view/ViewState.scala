@@ -47,6 +47,7 @@ final case class ViewState(
     case ServerMsg.HpChanged(id, hp, maxHp) => update(id)(_.copy(hp = hp, maxHp = maxHp))
     case ServerMsg.LookChanged(id, look)    => update(id)(_.copy(look = look))
     case ServerMsg.AfflictionsChanged(id, af) => update(id)(_.copy(afflictions = af))
+    case ServerMsg.AurasChanged(id, au)       => update(id)(_.copy(auras = au))
     case ServerMsg.GroundAppear(g)          => copy(ground = ground.updated(g.id, g))
     case ServerMsg.GroundDisappear(id)      => copy(ground = ground - id)
     case ServerMsg.FieldAppear(f)           => copy(fields = fields.updated(f.id, f))

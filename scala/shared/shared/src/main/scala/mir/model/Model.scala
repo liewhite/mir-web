@@ -117,3 +117,13 @@ object Affliction:
     if as(Paralyzed) then Some(BodyTint.Gray)
     else if as(RedPoison) then Some(BodyTint.Red)
     else Option.when(as(GreenPoison))(BodyTint.Green)
+
+/**
+ * 身上看得见的增益光效：周围所有人都画（原版人物状态位 STATE_BUBBLEDEFENCEUP 广播给周围，
+ * HumActor.pas 对任何开着盾的人都画盾，#1297）。
+ */
+enum Aura:
+  case MagicShield
+
+object Aura:
+  given JsonCodec[Aura] = EnumCodec.byName(values, _.toString)

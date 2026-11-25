@@ -104,7 +104,7 @@ final case class ActionView(
 object ActionView:
   given JsonCodec[ActionView] = DeriveJsonCodec.gen
 
-/** 对象进入视野时的全貌；afflictions 是身上看得见的中毒、麻痹（锁定卡列出、身子按它染色）。 */
+/** 对象进入视野时的全貌；afflictions 是身上看得见的中毒、麻痹（锁定卡列出、身子按它染色），auras 是身上的光效（魔法盾）。 */
 final case class ActorView(
     id: ActorId,
     look: Look,
@@ -114,7 +114,8 @@ final case class ActorView(
     maxHp: Hp,
     action: ActionView,
     dead: Boolean,
-    afflictions: Set[Affliction] = Set.empty
+    afflictions: Set[Affliction] = Set.empty,
+    auras: Set[Aura] = Set.empty
 )
 
 object ActorView:

@@ -4,7 +4,7 @@ import mir.client.assets.{Assets, LoadCache, Loaded, MapData, Sprite, SpriteStor
 import mir.client.assets.MapData.{GroundBlock, UnitX, UnitY}
 import mir.core.*
 import mir.data.Catalog
-import mir.model.{ActKind, Affliction, BodyTint, Cover, FieldKind, Mood}
+import mir.model.{ActKind, Affliction, Aura, BodyTint, Cover, FieldKind, Mood}
 import mir.protocol.*
 import mir.rules.{ItemKind, PkStanding}
 import org.scalajs.dom
@@ -250,7 +250,8 @@ final class Renderer(
         sp.foreach(b => blit(b, dx + b.ox, dy + b.oy))
         sp
     ctx.globalAlpha = 1
-    if a.id == s.me && s.myShield then
+    // 魔法盾：谁开着都画（原版 HumActor.pas 的 STATE_BUBBLEDEFENCEUP，#1297）
+    if a.auras(Aura.MagicShield) && !a.dead then
       sprites.sprite("magic", 3890 + ((s.local / 100).toLong % 3).toInt).foreach(sp => lighter(blit(sp, dx + sp.ox, dy + sp.oy)))
     body.filter(_ => !a.dead).map(b => Hit(a.id, dx + b.ox, dy + b.oy, b.w, b.h, row, b))
 

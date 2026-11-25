@@ -32,8 +32,6 @@ final case class Scene(
     fx: Transients,
     /** 锁定的目标：脚下画红圈 */
     target: Option[ActorId],
-    /** 自己开着魔法盾 */
-    myShield: Boolean,
     /** 自己隐身（画成半透明） */
     meInvisible: Boolean,
     server: Millis,

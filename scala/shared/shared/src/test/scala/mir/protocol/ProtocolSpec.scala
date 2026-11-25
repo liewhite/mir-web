@@ -89,6 +89,8 @@ object ProtocolSpec extends ZIOSpecDefault:
     ServerMsg.Appear(ActorView(ActorId(102), Look.Monster(MonsterName("蛤蟆"), Cover.Open, None), c1, Dir.Left, Hp(9), Hp(50), act, false, Set(Affliction.RedPoison, Affliction.GreenPoison))),
     ServerMsg.AfflictionsChanged(ActorId(102), Set(Affliction.Paralyzed)),
     ServerMsg.AfflictionsChanged(ActorId(102), Set.empty),
+    ServerMsg.Appear(ActorView(ActorId(103), Look.Human("小红", Job.Wizard, Sex.Female, 1, None, None), c1, Dir.Down, Hp(19), Hp(19), act, false, auras = Set(Aura.MagicShield))),
+    ServerMsg.AurasChanged(ActorId(103), Set.empty),
     ServerMsg.Disappear(ActorId(100)),
     ServerMsg.Act(me, c1, Dir.Right, ActionView(ActKind.Attack, t0, 510, hit = Some(HitStyle.Fire))),
     ServerMsg.Act(me, c1, Dir.Right, ActionView(ActKind.Spell, t0, 600, spellEffect = Some(1))),

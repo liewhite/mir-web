@@ -277,7 +277,6 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
       fx = fx.prune(now, local)
       Scene(
         md, me, actors, view.ground.values, view.fields.values, fx, locked,
-        myShield = view.status.shieldUntil.exists(_ > now),
         meInvisible = view.status.invisibleUntil.exists(_ > now),
         server = now, local = local, options = options, upgrades = groundUpgrades
       )
