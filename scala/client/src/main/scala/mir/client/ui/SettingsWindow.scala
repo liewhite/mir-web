@@ -11,7 +11,7 @@ final class SettingsWindow(ui: ClassicUi) extends ToggleWindow:
   import ui.g
 
   /** 档位滑条上相邻两挡隔多宽 */
-  private val TierGap = 60.0
+  private val TierGap = 56.0
 
   /** 当前分页（通用 / 战士 / 法师 / 道士） */
   private var tab: SettingTab = SettingTab.General

@@ -19,7 +19,7 @@ object GameDataSpec extends ZIOSpecDefault:
         d.guards.size == 49,
         d.merchants.size == 69 + 8,
         d.minimaps.size == 117 + 14 + 9,
-        d.items.size == 264,
+        d.items.size == 264 + 42, // + 1.80 新装备补充表（#1312）
         d.monsters.size == 188 + 7,
         d.drops.size == 188,
         d.drops.values.map(_.size).sum == 6833,

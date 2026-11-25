@@ -158,18 +158,20 @@ object PickupKind:
   given JsonCodec[PickupKind] = EnumCodec.byName(values, _.toString)
 
 /**
- * 装备档位（#1301）：玩家口中的「沃玛装 / 祖玛装 / 赤月装」，按出处从低到高（声明顺序就是高低）。
+ * 装备档位（#1301）：玩家口中的「沃玛装 / 祖玛装 / 赤月装」，#1312 加 1.80 的雷霆系列和终极系列，按出处从低到高（声明顺序就是高低）。
  * 哪件归哪档见 mir.rules.GearTiers。名字进存档（CharSettings.pickupTier），改名要兼顾旧存档。
  */
 enum GearTier(val label: String):
   case Woma    extends GearTier("沃玛")
   case Zuma    extends GearTier("祖玛")
   case Redmoon extends GearTier("赤月")
+  case Thunder extends GearTier("雷霆")
+  case Ultimate extends GearTier("终极")
 
   def atLeast(floor: GearTier): Boolean = ordinal >= floor.ordinal
 
 /**
- * 自动捡装备滑条的一挡（#1301）：最左「全部」，往右沃玛、祖玛、赤月（该档及以上）。
+ * 自动捡装备滑条的一挡（#1301）：最左「全部」，往右沃玛、祖玛、赤月、雷霆、终极（该档及以上）。
  * 名字进存档（CharSettings.pickupTier），改名要兼顾旧存档。
  */
 enum PickupFloor(val label: String, val tier: Option[GearTier]):
@@ -177,6 +179,8 @@ enum PickupFloor(val label: String, val tier: Option[GearTier]):
   case Woma    extends PickupFloor(GearTier.Woma.label, Some(GearTier.Woma))
   case Zuma    extends PickupFloor(GearTier.Zuma.label, Some(GearTier.Zuma))
   case Redmoon extends PickupFloor(GearTier.Redmoon.label, Some(GearTier.Redmoon))
+  case Thunder extends PickupFloor(GearTier.Thunder.label, Some(GearTier.Thunder))
+  case Ultimate extends PickupFloor(GearTier.Ultimate.label, Some(GearTier.Ultimate))
 
 object PickupFloor:
   given JsonCodec[PickupFloor] = EnumCodec.byName(values, _.toString)

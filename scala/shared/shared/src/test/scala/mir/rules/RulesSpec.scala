@@ -25,6 +25,32 @@ object RulesSpec extends ZIOSpecDefault:
         )
       }
     ),
+    suite("1.80 新装备（#1312）")(
+      test("部位、加成解读、档位：雷霆腰带只加攻击下限，真魂项链魔法躲避，战神项链幸运，玄天准确") {
+        def d(n: String): ItemDef = catalog.item(ItemName(n)).getOrElse(throw new AssertionError(s"数据表里没有 $n"))
+        def fx(n: String)         = ItemEffects.of(d(n))
+        val thunder = List("雷霆战甲(男)", "雷霆项链", "雷霆护腕", "雷霆战戒", "雷霆腰带", "雷霆战靴",
+                           "烈焰魔衣(女)", "烈焰魔靴", "光芒道袍(男)", "光芒腰带")
+        val ultimate = List("开天", "镇天", "玄天", "凤天魔甲", "凰天魔衣", "战神项链", "圣魔手镯", "真魂戒指")
+        assertTrue(
+          ItemKind.of(d("雷霆腰带")) == ItemKind.Equip(List(EquipSlot.Belt)),
+          ItemKind.of(d("光芒道靴")) == ItemKind.Equip(List(EquipSlot.Boots)),
+          ItemKind.of(d("布鞋")) == ItemKind.Equip(List(EquipSlot.Boots)),
+          fx("雷霆腰带") == ItemEffects(ac = Span(2, 3), mac = Span(0, 1), dc = Span(1, 0)),
+          fx("雷霆护腕") == ItemEffects(ac = Span(0, 2), mac = Span(0, 2), dc = Span(1, 4)),
+          fx("真魂项链").magicAvoid == 2, fx("战神项链").luck == 1, fx("战神项链").dc == Span(3, 8),
+          fx("圣魔项链").agility == 3, fx("烈焰项链").hit == 3, fx("真魂手镯").agility == 2,
+          fx("玄天").hit == 2, fx("玄天").sc == Span(5, 12), fx("开天").dc == Span(6, 40),
+          fx("凤天魔甲") == fx("凰天魔衣"), dressSex(d("凤天魔甲")) != dressSex(d("凰天魔衣")),
+          Requirement.of(d("战神戒指")) == Requirement.Dc(54), Requirement.of(d("开天")) == Requirement.Level(43),
+          thunder.forall(n => GearTiers.of(ItemName(n)).contains(GearTier.Thunder)),
+          ultimate.forall(n => GearTiers.of(ItemName(n)).contains(GearTier.Ultimate)),
+          GearTiers.of(ItemName("钢铁腰带")).isEmpty,
+          GearTiers.passes(ItemName("开天"), PickupFloor.Thunder), !GearTiers.passes(ItemName("屠龙"), PickupFloor.Thunder),
+          !GearTiers.passes(ItemName("雷霆项链"), PickupFloor.Ultimate)
+        )
+      }
+    ),
     suite("方向与格子")(
       test("方向编号同原版：0 上顺时针，相反方向、取模") {
         assertTrue(

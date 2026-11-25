@@ -111,9 +111,15 @@ object RulesGoldenSpec extends ZIOSpecDefault:
       assertTrue(golden.levelAbility.flatten.size == 180, diffs.isEmpty)
     },
     test("每件物品的用途、加成、穿戴要求、是否高级装备") {
+      // TS 版（只作对照）没有 1.80 才有的腰带、靴子位（#1311、#1312 只做了 Scala 版），这两类不比
+      val beltOrBoots = Set(EquipSlot.Belt, EquipSlot.Boots)
+      def compared(d: ItemDef) = ItemKind.of(d) match
+        case ItemKind.Equip(slots) => !slots.exists(beltOrBoots)
+        case _                     => true
       val diffs = golden.items.flatMap { c =>
         val d = catalog.item(c.name).get
-        List(
+        if !compared(d) then Nil
+        else List(
           Option.when(tsKind(ItemKind.of(d)) != c.kind)(s"${c.name} 用途"),
           Option.when(ItemEffects.of(d) != c.effects)(s"${c.name} 加成"),
           Option.when(tsRequirement(Requirement.of(d)) != c.requirement)(s"${c.name} 要求"),

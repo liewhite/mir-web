@@ -13,6 +13,13 @@ import mir.rules.{Mining, WeaponRefine, Pk, PkStanding, SafeZone, Upgrade, Charg
 object Describe:
   private def r(v: Span): String  = if v.lo == v.hi then s"${v.lo}" else s"${v.lo}-${v.hi}"
   private def has(v: Span): Boolean = v.lo > 0 || v.hi > 0
+  /**
+   * 一件装备加的一项：原版「攻击 1-0」这种下限比上限大的（1.80 雷霆腰带、靴子，#1312）只抬高全身合计的下限，
+   * 写成「攻击下限 +1」；其余写「攻击 +3-7」。
+   */
+  private def plus(label: String, v: Span): String =
+    if v.hi < v.lo then s"${label}下限 +${v.lo}" + (if v.hi > 0 then s"、上限 +${v.hi}" else "")
+    else s"$label +${r(v)}"
   private def pct(x: Double): String = s"${math.round(x * 100)}%"
   private def sec(ms: Int): String =
     if ms % 1000 == 0 then s"${ms / 1000} 秒" else s"${BigDecimal(ms) / 1000} 秒"
@@ -24,11 +31,11 @@ object Describe:
   def effectLines(e: ItemEffects): List[Line] =
     val step = Rules.HitIntervalStepMs
     List(
-      Option.when(has(e.dc))(Line(s"攻击 +${r(e.dc)}　普攻每刀 = 攻击区间内随机 − 目标防御")),
-      Option.when(has(e.mc))(Line(s"魔法 +${r(e.mc)}　法师攻击技能的伤害加成（见技能说明）")),
-      Option.when(has(e.sc))(Line(s"道术 +${r(e.sc)}　道士技能的威力、治疗量、持续时间加成（见技能说明）")),
-      Option.when(has(e.ac))(Line(s"防御 +${r(e.ac)}　挨物理攻击时伤害减去防御区间内随机值")),
-      Option.when(has(e.mac))(Line(s"魔防 +${r(e.mac)}　挨魔法攻击时伤害减去魔防区间内随机值")),
+      Option.when(has(e.dc))(Line(s"${plus("攻击", e.dc)}　普攻每刀 = 攻击区间内随机 − 目标防御")),
+      Option.when(has(e.mc))(Line(s"${plus("魔法", e.mc)}　法师攻击技能的伤害加成（见技能说明）")),
+      Option.when(has(e.sc))(Line(s"${plus("道术", e.sc)}　道士技能的威力、治疗量、持续时间加成（见技能说明）")),
+      Option.when(has(e.ac))(Line(s"${plus("防御", e.ac)}　挨物理攻击时伤害减去防御区间内随机值")),
+      Option.when(has(e.mac))(Line(s"${plus("魔防", e.mac)}　挨魔法攻击时伤害减去魔防区间内随机值")),
       Option.when(e.hit != 0)(Line(s"准确 ${signed(e.hit)}　命中率 =（准确+1）÷ 目标敏捷")),
       Option.when(e.agility != 0)(Line(s"敏捷 ${signed(e.agility)}　被打中率 =（对方准确+1）÷ 你的敏捷")),
       Option.when(e.attackSpeed != 0)(Line(
