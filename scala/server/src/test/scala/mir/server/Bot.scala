@@ -37,6 +37,8 @@ final class Http(port: Int):
 final class Bot(http: Http, cookie: String):
   val inbox = LinkedBlockingQueue[ServerMsg]()
   @volatile var closed = false
+  /** 服务端关连接时带的关闭码（#1290：停服重启是 1012） */
+  @volatile var closeCode: Option[Int] = None
 
   private val ws: WebSocket = http.client.newWebSocketBuilder()
     .header("Cookie", cookie)
@@ -50,6 +52,7 @@ final class Bot(http: Http, cookie: String):
         w.request(1)
         null
       override def onClose(w: WebSocket, code: Int, reason: String): CompletionStage[?] =
+        closeCode = Some(code)
         closed = true
         null
     ).get(5, TimeUnit.SECONDS)

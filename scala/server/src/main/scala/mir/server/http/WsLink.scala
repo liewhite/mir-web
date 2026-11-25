@@ -1,8 +1,8 @@
 package mir.server.http
 
-import mir.protocol.ServerMsg
+import mir.protocol.{CloseCode, ServerMsg}
 import mir.server.{Account, LinkId}
-import mir.server.game.Link
+import mir.server.game.{Farewell, Link}
 import zio.*
 import zio.http.*
 import zio.json.*
@@ -18,7 +18,7 @@ final class WsLink(val id: LinkId, val account: Account) extends Link:
   private val queue = LinkedBlockingQueue[Out]()
 
   def send(msg: ServerMsg): Unit = queue.add(Out.Msg(msg)): Unit
-  def close(): Unit              = queue.add(Out.Close): Unit
+  def close(why: Farewell): Unit = queue.add(Out.Close(why)): Unit
   /** 发一个协议层 ping 帧（判掉线用，见 Liveness）；和消息走同一个队列，一个 fiber 写 */
   def ping(): Unit               = queue.add(Out.Ping): Unit
 
@@ -27,11 +27,15 @@ final class WsLink(val id: LinkId, val account: Account) extends Link:
     ZIO.attemptBlockingInterrupt(queue.take()).flatMap {
       case Out.Msg(m) => channel.send(ChannelEvent.Read(WebSocketFrame.text(m.toJson))).as(true)
       case Out.Ping   => channel.send(ChannelEvent.Read(WebSocketFrame.Ping)).as(true)
-      case Out.Close  => channel.shutdown.as(false)
+      case Out.Close(Farewell.Dropped) => channel.shutdown.as(false)
+      case Out.Close(Farewell.Restarting) =>
+        // 先发关闭帧带上「重启」关闭码，浏览器的 onclose 才拿得到它（直接断 TCP 拿到的是 1006）
+        channel.send(ChannelEvent.Read(WebSocketFrame.Close(CloseCode.Restarting, Some("server restart")))).ignore *>
+          channel.shutdown.as(false)
     }.repeatWhile(identity).unit
 
 object WsLink:
   private enum Out:
     case Msg(msg: ServerMsg)
     case Ping
-    case Close
+    case Close(why: Farewell)

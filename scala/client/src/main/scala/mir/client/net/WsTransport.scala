@@ -6,11 +6,13 @@ import zio.json.*
 
 /**
  * WebSocket 连服务端（#1154 约定：页面同目录下的 ws，升级时按登录 cookie 认人；一帧一条 JSON）。
- * 断了自动重连（1、2、4 秒…最多 5 秒一次），重连期间发的指令丢掉（游戏指令都是「此刻的意图」，重发旧的反而错）。
+ * 断了自动重连（节奏和提示见 Reconnect：服务器重启时每 0.5 秒一次），重连期间发的指令丢掉（游戏指令都是「此刻的意图」，重发旧的反而错）。
  */
 final class WsTransport(listener: LinkEvent => Unit) extends Transport:
   private var socket  = Option.empty[dom.WebSocket]
   private var retries = 0
+  /** 这次断线是哪种（连上就清掉） */
+  private var outage  = Option.empty[Outage]
   private var closed  = false
 
   connect()
@@ -25,6 +27,7 @@ final class WsTransport(listener: LinkEvent => Unit) extends Transport:
     socket = Some(ws)
     ws.onopen = _ =>
       retries = 0
+      outage = None
       listener(LinkEvent.Up)
     ws.onmessage = e =>
       e.data match
@@ -38,8 +41,11 @@ final class WsTransport(listener: LinkEvent => Unit) extends Transport:
     ws.onclose = e =>
       socket = None
       if !closed then
-        listener(LinkEvent.Down(if e.code == 1008 || e.code == 4401 then "登录已失效" else "连接断开，正在重连"))
-        val wait = math.min(5000, 1000 * (1 << math.min(retries, 3)))
+        val now = dom.window.performance.now()
+        val o   = Reconnect.classify(e.code, outage, now)
+        outage = Some(o)
+        listener(LinkEvent.Down(Reconnect.notice(o)))
+        val wait = Reconnect.delayMs(o, retries, now)
         retries += 1
         dom.window.setTimeout(() => if !closed then connect(), wait): Unit
 

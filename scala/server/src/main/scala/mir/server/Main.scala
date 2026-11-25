@@ -8,7 +8,7 @@ import mir.server.game.{GameServer, Headcount, Maps}
 import mir.server.http.{BoardApi, HttpServer}
 import mir.server.store.*
 import mir.server.tools.{Migration, Smoke}
-import zio.{Exit, Runtime, Scope, Unsafe, ZEnvironment, ZIO, ZLayer}
+import zio.{durationInt, Exit, Runtime, Scope, Unsafe, ZEnvironment, ZIO, ZLayer}
 import zio.http.Server
 
 import java.nio.file.{Files, Paths}
@@ -25,8 +25,15 @@ object Store:
   def open(cfg: ServerConfig): ZIO[Scope, Throwable, Store] =
     ZIO.acquireRelease(ZIO.attemptBlocking(Store(Db.open(cfg.dbFile))))(s => ZIO.succeed(s.db.close()))
 
-/** 起服务：游戏线程 + HTTP。返回实际监听的端口（PORT=0 时随机，测试用）。离开 Scope 时先停 HTTP，再存档停游戏，最后关库。 */
+/**
+ * 起服务：游戏线程 + HTTP。返回实际监听的端口（PORT=0 时随机，测试用）。
+ * 离开 Scope（停服）的顺序（#1290）：先停游戏（在线角色存档、存停服快照，再叫每个连接带「重启」关闭码断开），
+ * 等连接关完（最多 1 秒），再停 HTTP，最后关库。先停 HTTP 的话连接先断、人先按掉线下线，快照里就没有他们带的宝宝和状态。
+ */
 object Boot:
+  /** Netty 停机不等默认的 2 秒「安静期」：连接都已经关了，多等只会拉长重启时间（#1290） */
+  private val netty = zio.http.netty.NettyConfig.defaultWithFastShutdown
+
   def start(cfg: ServerConfig): ZIO[Scope, Throwable, Int] =
     for
       tokens  <- ZIO.attempt(SessionTokens(cfg.sessionSecret))
@@ -39,14 +46,16 @@ object Boot:
       game     = GameServer(catalog, maps, store.chars, store.uids, Some(Backups(store.db, cfg.backupDir)), clock,
                    idleTimeoutMs = cfg.liveness.idleTimeoutMs, social = social,
                    headcount = Some(Headcount(() => store.accounts.count(), clock())), freezer = store.frozen)
-      _       <- ZIO.acquireRelease(ZIO.succeed(GameServer.run(game)))(stop => ZIO.attemptBlocking(stop()).orDie)
+      stopGame <- ZIO.acquireRelease(ZIO.succeed(GameServer.run(game)))(stop => ZIO.attemptBlocking(stop()).orDie)
       _       <- AdminSocket.serve(cfg.adminSocket, game.adminAndWait)
       boardApi = BoardApi(store.board, store.chars, cfg.boardAdmins)
       http     = HttpServer(store.accounts, tokens, game, boardApi, cfg.assetsDir, cfg.webDir, cfg.liveness.pingEveryMs)
-      env     <- (ZLayer.succeed(Server.Config.default.binding(cfg.host, cfg.port)) >>> Server.live).build
+      env     <- ((ZLayer.succeed(Server.Config.default.binding(cfg.host, cfg.port)) ++ ZLayer.succeed(netty)) >>> Server.customized).build
       server   = env.get[Server]
       // 环境里只有 Scope 时 zio 2.1.27 的 ZEnvironment.prune 会误报缺 Any（测试里环境不空所以不出错），给它空环境
       _       <- server.install(http.routes).provideEnvironment(ZEnvironment.empty)
+      // 收尾是倒着执行的：这一条在 HTTP 停之前跑。停游戏的函数只停一次，上面那条到时什么也不做
+      _       <- ZIO.addFinalizer(ZIO.attemptBlocking(stopGame()).orDie *> http.drained(1.second))
       port    <- server.port
       _       <- ZIO.logInfo(s"mir176 listening on ${cfg.host}:$port, assets=${cfg.assetsDir}, web=${cfg.webDir}, data=${cfg.dataDir}")
     yield port

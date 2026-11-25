@@ -5,7 +5,7 @@ import mir.data.Catalog
 import mir.model.*
 import mir.protocol.*
 import mir.server.admin.{AdminCmd, AdminReply}
-import mir.server.game.{BossReport, GameServer, Headcount, Link, LinkEvent, Maps}
+import mir.server.game.{BossReport, Farewell, GameServer, Headcount, Link, LinkEvent, Maps}
 import mir.server.store.{Db, Freezer, Frozen, Snapshots}
 import mir.social.Social
 import mir.world.{BossAlive, BossSpot, CharacterData, Chronicle, Loot}
@@ -25,9 +25,10 @@ object GameServerSpec extends ZIOSpecDefault:
   /** 记下发来的消息和是否被关的连接。 */
   private final class FakeLink(val id: LinkId, val account: Account) extends Link:
     val got    = mutable.ArrayBuffer.empty[ServerMsg]
-    var closed = false
+    var farewell = Option.empty[Farewell]
+    def closed: Boolean            = farewell.isDefined
     def send(msg: ServerMsg): Unit = got += msg
-    def close(): Unit              = closed = true
+    def close(why: Farewell): Unit = farewell = Some(why)
 
   /** 一套假时钟的游戏服务端 + 一个已有角色的账号。 */
   private final class Fixture(dbFile: Path = Files.createTempDirectory("mir-game-test").resolve("mir.db"), freezer: Freezer = Freezer.Off):
@@ -64,7 +65,7 @@ object GameServerSpec extends ZIOSpecDefault:
       f.advance(30_000)
       val at30 = (!a.closed, f.game.onlineCount == 1)
       f.advance(100)
-      val after = (a.closed, f.game.onlineCount == 0)
+      val after = (a.farewell == Some(Farewell.Dropped), f.game.onlineCount == 0)
       // 迟到的消息和关闭事件都忽略
       val before = a.got.size
       f.say(a, SessionCmd.ListChars)

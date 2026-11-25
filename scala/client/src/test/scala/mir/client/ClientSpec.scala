@@ -564,5 +564,19 @@ object ClientSpec extends ZIOSpecDefault:
         c.receive(LinkEvent.Received(ServerMsg.LoggedIn("me", "x")))
         logins
       assertTrue(run(Freshness.Current) == 1, run(Freshness.Reload) == 0, run(Freshness.Stuck) == 1)
+    },
+    test("断线重连（#1290）：服务器说在重启就每 0.5 秒试、重启期间连不上也不变，1 分钟没回来按普通断线；普通断线退避到 5 秒") {
+      import mir.client.net.{Outage, Reconnect}
+      val bye      = Reconnect.classify(CloseCode.Restarting, None, 1000)
+      val stillUp  = Reconnect.classify(1006, Some(bye), 20_000)          // 新服还没起来，连不上
+      val gaveUp   = Reconnect.classify(1006, Some(bye), 62_000)
+      val lost     = Reconnect.classify(1006, None, 1000)
+      val lostWaits = (0 to 6).map(Reconnect.delayMs(lost, _, 1000)).toList
+      assertTrue(
+        bye == Outage.Restarting(1000), stillUp == bye, gaveUp == Outage.Lost,
+        Reconnect.delayMs(stillUp, 30, 20_000) == 500, Reconnect.notice(bye).contains("更新中"),
+        Reconnect.classify(4401, None, 0) == Outage.Unauthorized,
+        lostWaits == List(500, 1000, 2000, 4000, 5000, 5000, 5000)
+      )
     }
   )

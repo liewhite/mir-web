@@ -21,8 +21,15 @@ trait Link:
   def id: LinkId
   def account: Account
   def send(msg: ServerMsg): Unit
-  /** 把已排队的消息发完后断开 */
-  def close(): Unit
+  /** 把已排队的消息发完后断开；why 决定告诉客户端什么（见 Farewell） */
+  def close(why: Farewell): Unit
+
+/** 服务端为什么主动断开一个连接：客户端据此决定提示和重连节奏（#1290）。 */
+enum Farewell:
+  /** 这个连接不要了（掉线超时、被顶号）：只断开，客户端按普通掉线重连 */
+  case Dropped
+  /** 正常停服、马上重启：带关闭码 CloseCode.Restarting，客户端提示「更新中」并快速重连 */
+  case Restarting
 
 /** 网络层交给游戏线程的事。 */
 enum LinkEvent:
@@ -112,7 +119,7 @@ final class GameServer(
       guard(s"掉线超时 ${c.link.id.value}") {
         System.err.println(s"连接 ${c.link.id.value}（${c.link.account.name}）${now - c.heardAt} 毫秒没有消息，按掉线处理")
         disconnect(c)
-        c.link.close()
+        c.link.close(Farewell.Dropped)
       }
     }
     val active = maps.loaded.filter(w => w.hasPlayers || touched.contains(w.mapId)).toVector
@@ -168,8 +175,9 @@ final class GameServer(
       System.err.println(s"停服快照：${f.carried.size} 个角色带的宝宝和状态等重连领回，恢复 ${f.parties.size} 个小组")
 
   /**
-   * 停服：全部在线角色存档下线，再存停服快照。
+   * 停服：全部在线角色存档下线，再存停服快照，最后告诉每个连接「服务器重启」并断开（#1290）。
    * 顺序：先取各人带的和小组（下线会解散小组、带走宝宝），再下线存档，最后各图只剩野怪和地上的东西时拍下来。
+   * 要在网络层停之前调（Boot 里的收尾顺序）：否则连接先断、人先按掉线下了，快照里就没有他们带的宝宝和状态。
    */
   def shutdown(): Unit =
     step()
@@ -184,6 +192,8 @@ final class GameServer(
       freezer.put(f)
       System.err.println(s"停服快照：${f.maps.size} 张图、${f.carried.size} 个角色带的东西、${f.parties.size} 个小组")
     }
+    conns.values.foreach(c => c.link.close(Farewell.Restarting))
+    conns.clear()
 
   private def handle(e: LinkEvent | AdminRequest, now: Millis): Unit = e match
     case AdminRequest(cmd, reply) => reply(execute(cmd))
@@ -254,7 +264,7 @@ final class GameServer(
         if old.conn ne c then
           old.conn.playing = None
           old.conn.link.send(ServerMsg.Kicked("这个角色在别处登录了"))
-          old.conn.link.close()
+          old.conn.link.close(Farewell.Dropped)
         val kept = maps.get(old.map).toOption.flatMap(_.carriedOf(old.actor)).getOrElse(Carried())
         (takeOut(old).getOrElse(sc.data), kept)
       case None => (sc.data, unclaimed.remove(sc.data.name).getOrElse(Carried()))
@@ -342,7 +352,7 @@ object GameServer:
 
   def summary(sc: StoredChar): CharSummary = CharSummary(sc.id, sc.data.name, sc.data.job, sc.data.sex, sc.data.level)
 
-  /** 在自己的线程里每 50 毫秒走一步；返回停服函数（存档后返回）。 */
+  /** 在自己的线程里每 50 毫秒走一步；返回停服函数（存档后返回；调几次都只停一次）。 */
   def run(game: GameServer): () => Unit =
     @volatile var running = true
     val slow = SlowSteps()
@@ -359,7 +369,9 @@ object GameServer:
         if left > 0 then Thread.sleep(left)
     , "mir-game")
     thread.start()
+    val stopped = java.util.concurrent.atomic.AtomicBoolean(false)
     () =>
-      running = false
-      thread.join()
-      game.shutdown()
+      if stopped.compareAndSet(false, true) then
+        running = false
+        thread.join()
+        game.shutdown()

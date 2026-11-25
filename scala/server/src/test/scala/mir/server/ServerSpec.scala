@@ -335,6 +335,29 @@ object ServerSpec extends ZIOSpecDefault:
         down.left.exists(_.startsWith("页面："))
       )
     },
+    test("停服（#1290）：先停游戏存快照（在线的人还算在线），再给每个连接发关闭码 1012「服务器重启」") {
+      val cfg = tempConfig()
+      cli(cfg, "account", "add", "ivan")("secret1"): Unit
+      cli(cfg, "account", "add", "judy")("secret1"): Unit
+      withServer(cfg) { http =>
+        val g = Bot(http, http.login("ivan", "secret1").get)
+        enter(g, "停服甲", Job.Warrior)
+        val h = Bot(http, http.login("judy", "secret1").get) // 停在选人
+        h.await("LoggedIn") { case ServerMsg.LoggedIn(_, _) => () }
+        (g, h)
+      }.flatMap { (g, h) =>
+        // 关闭帧在停服过程中就发出了，回调稍后才到：最多等 2 秒
+        ZIO.attemptBlocking {
+          val deadline = java.lang.System.currentTimeMillis() + 2000
+          while (g.closeCode.isEmpty || h.closeCode.isEmpty) && java.lang.System.currentTimeMillis() < deadline do Thread.sleep(20)
+          val store = Store(mir.server.store.Db.open(cfg.dbFile))
+          val frozen = try store.frozen.take() finally store.db.close()
+          (g.closeCode, h.closeCode, frozen.carried.keySet)
+        }
+      }.map { case (gc, hc, carried) =>
+        assertTrue(gc == Some(CloseCode.Restarting), hc == Some(CloseCode.Restarting), carried == Set("停服甲"))
+      }
+    },
     test("迁移旧单机存档") {
       val cfg  = tempConfig()
       val save = Files.createTempFile("save", ".json")

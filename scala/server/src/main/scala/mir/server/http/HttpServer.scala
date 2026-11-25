@@ -11,7 +11,7 @@ import zio.json.*
 import zio.stream.{ZPipeline, ZStream}
 
 import java.nio.file.{Files, Path}
-import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger, AtomicLong}
 
 /**
  * HTTP 与 WebSocket（接管旧 server/server.mjs 的职责）：
@@ -42,6 +42,12 @@ final class HttpServer(
   private val reportByIp      = RateLimiter.clientErrorsPerIp()
   private val badCmdLimiter   = RateLimiter.badCommands()
   private val linkIds = AtomicLong(0)
+  /** 还开着的 WebSocket 连接数（停服时等它们把关闭帧发完，#1290） */
+  private val openSockets = AtomicInteger(0)
+
+  /** 停服用：等全部 WebSocket 连接关完（游戏已经叫它们带「重启」关闭码断开），最多等 within。 */
+  def drained(within: Duration): UIO[Unit] =
+    ZIO.succeed(openSockets.get).repeat(Schedule.spaced(20.millis) && Schedule.recurWhile(_ > 0)).unit.timeout(within).unit
 
   val routes: Routes[Any, Nothing] =
     Routes(Method.ANY / trailing -> handler((_: zio.http.Path, req: Request) => dispatch(req)))
@@ -167,6 +173,7 @@ final class HttpServer(
     Handler.webSocket { channel =>
       ZIO.scoped {
         for
+          _ <- ZIO.acquireRelease(ZIO.succeed(openSockets.incrementAndGet()))(_ => ZIO.succeed(openSockets.decrementAndGet()))
           _ <- link.pump(channel).ignore.forkScoped
           // 协议层 ping（#1238）：浏览器自动回 pong，后台标签页也照回；pong 交给游戏线程刷新「最后听到」的时刻
           _ <- ZIO.succeed(link.ping()).repeat(Schedule.spaced(pingEveryMs.millis)).delay(pingEveryMs.millis).forkScoped
