@@ -16,9 +16,15 @@ object DropRules:
     if ItemKind.stacks(item) then List(Piece(row, item, n)) else List.fill(n)(Piece(row, item, 1))
 
   /**
-   * 超过 Rates.maxDropsPerKill 件时只留最稀有的：按数据表原版爆率（不乘倍率）从低到高排，
-   * 同爆率保持数据表顺序（sortBy 是稳定排序），取前 N 件。没超就原样返回。
+   * 超过 Rates.maxDropsPerKill 件时只留最稀有的：按数据表原版爆率（不乘倍率）从低到高排，取前 N 件。
+   * 同爆率的先随机打乱（#1282）：否则名额不够时永远是表里靠前的几件，排后面的永远不掉。没超就原样返回。
    */
-  def cap(all: List[Piece]): List[Piece] =
+  def cap(all: List[Piece])(using Rng): List[Piece] =
     if all.sizeIs <= Rates.maxDropsPerKill then all
-    else all.sortBy(p => p.row.numerator.toDouble / p.row.denominator).take(Rates.maxDropsPerKill)
+    else
+      all.groupBy(rarity).toList.sortBy(_._1)
+        .flatMap((_, same) => Rng.shuffle(same))
+        .take(Rates.maxDropsPerKill)
+
+  /** 原版爆率（不乘倍率），越小越稀有；比值相同的算同一档（如 1/10 和 2/20）。 */
+  private def rarity(p: Piece): Double = p.row.numerator.toDouble / p.row.denominator

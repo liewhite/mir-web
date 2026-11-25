@@ -159,7 +159,8 @@ object RulesSpec extends ZIOSpecDefault:
           Rates.respawnMinutes(MonsterName("祖玛卫士3"), 360) == 360
         )
       },
-      test("一只怪最多掉 10 件：多了留原版爆率最低的，同爆率按表顺序；可叠的一叠算一件（#1241）") {
+      test("一只怪最多掉 10 件：多了留原版爆率最低的；可叠的一叠算一件（#1241）") {
+        given Rng = Rng.seeded(1)
         def item(n: String) = catalog.item(ItemName(n)).get
         def row(n: String, den: Int, amount: Int = 1) = DropDef(ItemName(n), 1, den, amount)
         val potions = (1 to 12).toList.flatMap(i => DropRules.pieces(row("金创药(中量)", 10 + i), item("金创药(中量)")))
@@ -178,6 +179,23 @@ object RulesSpec extends ZIOSpecDefault:
           kept.drop(3).map(_.row.denominator) == List(22, 21, 20, 19, 18, 17, 16),
           !kept.exists(_.item.name.value == "护身符"),
           DropRules.cap(few) == few
+        )
+      },
+      test("同爆率超名额时随机取，排表后面的也能掉；更稀有的仍必留（#1282）") {
+        def item(n: String) = catalog.item(ItemName(n)).get
+        // 触龙神那样：12 件同为 1/10（乘倍率后都必掉），再加 1 件 1/800
+        val common = List("木剑", "青铜剑", "铁剑", "重盔甲(男)", "重盔甲(女)", "魔法长袍(男)",
+          "魔法长袍(女)", "灵魂战衣(男)", "灵魂战衣(女)", "力量戒指", "绿色项链", "金创药(中量)")
+          .flatMap(n => DropRules.pieces(DropDef(ItemName(n), 1, 10, 1), item(n)))
+        val rare = DropRules.pieces(DropDef(ItemName("裁决之杖"), 1, 800, 1), item("裁决之杖"))
+        val runs = (1 to 200).map(seed => DropRules.cap(common ++ rare)(using Rng.seeded(seed)))
+        val seen = runs.flatMap(_.map(_.item.name.value)).toSet
+        assertTrue(
+          common.size == 12,
+          runs.forall(_.size == 10),
+          runs.forall(_.head.item.name.value == "裁决之杖"),
+          common.forall(p => seen(p.item.name.value)),
+          runs.map(_.map(_.item.name.value)).toSet.size > 1
         )
       }
     ),

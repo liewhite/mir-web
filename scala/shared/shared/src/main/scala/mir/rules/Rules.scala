@@ -20,6 +20,15 @@ object Rng:
 
   def fromScala(r: scala.util.Random): Rng = n => if n > 0 then r.nextInt(n) else 0
 
+  /** 用 rng 把列表随机打乱（Fisher–Yates，每种排列等可能）。 */
+  def shuffle[A](xs: List[A])(using rng: Rng): List[A] =
+    val a = xs.toArray[Any]
+    (a.length - 1 until 0 by -1).foreach { i =>
+      val j = rng.random(i + 1)
+      val t = a(i); a(i) = a(j); a(j) = t
+    }
+    a.toList.asInstanceOf[List[A]]
+
   /** 每次都取最小值 0：配合单调的公式求下限（技能说明用）。 */
   val lowest: Rng = _ => 0
 
