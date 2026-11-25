@@ -196,6 +196,7 @@ object Describe:
       Some(Line(s"攻击 ${r(s.dc)}：普攻每刀在 ${s.dc.lo}-${s.dc.hi} 间随机，再减目标防御，≤0 算打空")),
       luck.map(Line(_, if s.luck > 0 then Tint.Good else Tint.Bad)),
       Option.when(has(s.mc))(Line(s"魔法 ${r(s.mc)}：法师攻击技能的伤害加成（见技能说明）")),
+      Option.when(job == Job.Wizard)(Line(s"本服法师加强：攻击魔法的伤害 ×${Rates.mageSpell}，技能说明里的威力已算进去", Tint.Good)),
       Option.when(has(s.sc))(Line(s"道术 ${r(s.sc)}：道士技能的威力、治疗量、持续时间加成（见技能说明）")),
       Some(Line(s"防御 ${r(s.ac)}：挨物理攻击时伤害减去 ${s.ac.lo}-${s.ac.hi} 间随机值")),
       Some(Line(s"魔防 ${r(s.mac)}：挨魔法攻击时伤害减去 ${s.mac.lo}-${s.mac.hi} 间随机值")),

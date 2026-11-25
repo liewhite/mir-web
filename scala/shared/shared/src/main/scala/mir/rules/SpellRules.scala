@@ -22,6 +22,24 @@ final case class Summoning(level: Int, scMax: Int):
   def body(d: MonsterDef): PetBody = SpellRules.summonedBody(d, level, scMax)
 
 /**
+ * 召唤宝宝的成长（千分数，免得算出 1.5400000001 这种尾数）：
+ * basePermille 数据表攻击、防御、魔防打几折（血不打），levelPermille 每级技能加血、攻多少，scPermille 每点道术上限加血攻防魔防多少（不封顶）。
+ */
+final case class SummonGrowth(basePermille: Int, levelPermille: Int, scPermille: Int):
+  def base: Double                   = basePermille / 1000.0
+  def levelBoost(level: Int): Double = (1000 + level * levelPermille) / 1000.0
+  def scBoost(scMax: Int): Double    = (1000 + math.max(scMax, 0) * scPermille) / 1000.0
+  /** 技能说明用：每点道术加的百分数（「1.8」） */
+  def scPctText: String = SummonGrowth.pct(scPermille)
+  /** 技能说明用：底数折扣（「0.85」），不打折为 None */
+  def baseText: Option[String] = Option.when(basePermille != 1000)(SummonGrowth.ratio(basePermille))
+
+object SummonGrowth:
+  private def plain(d: BigDecimal): String = d.bigDecimal.stripTrailingZeros.toPlainString
+  def pct(permille: Int): String   = plain(BigDecimal(permille) / 10)
+  def ratio(permille: Int): String = plain(BigDecimal(permille) / 1000)
+
+/**
  * 技能的数值公式：威力、持续秒数、成功率、范围。出处 ref/Mir176 MagicManager.cs（配置取 GameSvrConf 默认值），
  * 野蛮冲撞出自 PlayObject.Base.cs DoMotaebo。
  * 只算数、不改状态；随机数经 Rng 传入（技能说明用「全取最小 / 全取最大」的 Rng 求精确上下限，#1165）。
@@ -72,9 +90,12 @@ object SpellRules:
 
   // ---------------- 威力 ----------------
 
-  /** 法师攻击魔法的威力：GetAttackPower(GetPower(MPow) + 魔法下限, 魔法上限 - 下限 + 1)（火球、雷电、地狱火、疾光电影、爆裂火焰、地狱雷光、冰咆哮、火墙每跳）。 */
+  /**
+   * 法师攻击魔法的威力：GetAttackPower(GetPower(MPow) + 魔法下限, 魔法上限 - 下限 + 1)（火球、雷电、地狱火、疾光电影、爆裂火焰、地狱雷光、冰咆哮、火墙每跳），
+   * 再 × Rates.mageSpell（本服法师加强，#1285），四舍五入。
+   */
   def mcDamage(d: SkillDef, level: Int, mc: Span)(using Rng): Int =
-    Rules.attackPower(Rules.skillPower(Rules.magicBase(d.power), level, d.defPower) + mc.lo, mc.hi - mc.lo + 1)
+    round(Rules.attackPower(Rules.skillPower(Rules.magicBase(d.power), level, d.defPower) + mc.lo, mc.hi - mc.lo + 1) * Rates.mageSpell)
 
   /** 灵魂火符的威力（道术）。 */
   def scDamage(d: SkillDef, level: Int, sc: Span)(using Rng): Int =
@@ -272,28 +293,25 @@ object SpellRules:
   /** 魔法盾挡掉的伤害比例：技能 0–3 级 30%/40%/50%/60%（挨打至少还掉 1 点）。 */
   def shieldAbsorb(level: Int): Double = Vector(0.3, 0.4, 0.5, 0.6).lift(level).getOrElse(0.3)
 
-  /** 召唤骷髅、神兽：血量和攻击 ×(1 + 技能等级×0.35)。 */
-  def summonBoost(level: Int): Double = 1 + level * 0.35
+  /**
+   * 召唤骷髅（原版每级 +35%）；道术加成是本服加的（#1209），#1258 用户 11-25 定每点道术上限 +1.8%、不封顶。
+   * 神兽另有一份（Rates.shinsuGrowth，#1285 削弱）。
+   */
+  val StandardGrowth = SummonGrowth(basePermille = 1000, levelPermille = 350, scPermille = 18)
+
+  /** 召唤出来的这种宝宝按哪份成长算（神兽两种形态同一份）。 */
+  def growthOf(pet: MonsterName): SummonGrowth =
+    if summonedAs(pet).contains(ShinsuPet) then Rates.shinsuGrowth else StandardGrowth
 
   /**
-   * 道术加成（#1209，本服加的）：召唤那一刻主人道术上限每点加千分之几，不封顶。
-   * #1258 用户 11-25 定：从每点 2%、最多 +60% 改成每点 1.8%、取消上限，道术越高宝宝越强。
+   * 召唤出来的宝宝：数据表攻击、防御、魔防先 × 底数折扣；技能等级加成乘血量和攻击，道术加成乘血量、攻击、防御、魔防。
+   * 几个倍数先乘在一起再四舍五入一次。
    */
-  val SummonScPermillePerPoint = 18
-  /** 技能说明用：每点加的百分数（「1.8」） */
-  def summonScPctText: String = BigDecimal(SummonScPermillePerPoint) / 10 match
-    case p if p.isWhole => p.toInt.toString
-    case p              => p.toString
-
-  /** 道术加成的倍数：1 + 道术上限×1.8%（一次除法，显示不出 1.5400000001 这种尾数）。 */
-  def summonScBoost(scMax: Int): Double =
-    (1000 + math.max(scMax, 0) * SummonScPermillePerPoint) / 1000.0
-
-  /** 召唤出来的宝宝：技能等级加成乘血量和攻击，道术加成乘血量、攻击、防御、魔防。 */
   def summonedBody(base: MonsterDef, level: Int, scMax: Int): PetBody =
-    val sc   = summonScBoost(scMax)
-    val both = summonBoost(level) * sc
-    PetBody(scaled(base.hp, both), scaled(base.dc, both), scaled(base.ac, sc), scaled(base.mac, sc))
+    val g    = growthOf(base.name)
+    val sc   = g.scBoost(scMax)
+    val both = g.levelBoost(level) * sc
+    PetBody(scaled(base.hp, both), scaled(base.dc, g.base * both), scaled(base.ac, g.base * sc), scaled(base.mac, g.base * sc))
 
   private def scaled(v: Int, k: Double): Int    = math.floor(v * k + 0.5).toInt
   private def scaled(s: Span, k: Double): Span = Span(scaled(s.lo, k), scaled(s.hi, k))

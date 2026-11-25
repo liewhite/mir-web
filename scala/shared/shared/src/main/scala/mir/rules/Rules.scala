@@ -127,7 +127,7 @@ object Rules:
   private def addCapped(a: Span, b: Span): Span = Span(math.min(255, a.lo + b.lo), math.min(255, a.hi + b.hi))
 
   /**
-   * 汇总：等级属性 + 装备 + 被动技能，最后乘职业倍率（Rates.jobSpan：战士攻击、防御、魔防 ×1.5）。
+   * 汇总：等级属性 + 装备 + 被动技能，最后乘职业倍率（Rates.jobSpan：战士攻击、防御、魔防 ×Rates.warriorBody）。
    * 准确默认 5、敏捷默认 15（道士 +3）（PlayObject.RecalcHitSpeed）。
    * 攻速：装备攻速合计 x，x>0 取 x/2，否则 (x-1)/2（向零取整），上限 15；攻击间隔 = 900 - 攻速×60，至少 300。
    */

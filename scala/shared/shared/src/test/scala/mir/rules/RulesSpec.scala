@@ -87,11 +87,11 @@ object RulesSpec extends ZIOSpecDefault:
           ItemKind.slots(kind("护身符")) == List(EquipSlot.BraceletL)
         )
       },
-      test("战士攻击、防御、魔防（含装备）×1.5 四舍五入，别的职业不变（#1176）") {
+      test("战士攻击、防御、魔防（含装备）×1.8 四舍五入，别的职业不变（#1176、#1285）") {
         val e  = ItemEffects.of(catalog.item(ItemName("裁决之杖")).get)
         val w  = Rules.computeStats(Job.Warrior, 30, List(e), PassiveSkills())
         val lv = Rules.levelAbility(Job.Warrior, 30)
-        def x(v: Int) = math.floor(v * 1.5 + 0.5).toInt
+        def x(v: Int) = math.floor(v * 1.8 + 0.5).toInt
         val t  = Rules.computeStats(Job.Taoist, 30, List(e), PassiveSkills())
         val tl = Rules.levelAbility(Job.Taoist, 30)
         assertTrue(
@@ -207,6 +207,19 @@ object RulesSpec extends ZIOSpecDefault:
         assertTrue(
           SpellRules.mcDamage(fire, 2, mc)(using Rng.lowest) == all.min,
           SpellRules.mcDamage(fire, 2, mc)(using Rng.highest) == all.max
+        )
+      },
+      test("法师攻击魔法伤害 ×1.3 四舍五入（#1285）") {
+        val fire = catalog.skill(SkillId(1)).get
+        val mc   = Span(3, 9)
+        def orig(r: Rng) =
+          given Rng = r
+          Rules.attackPower(Rules.skillPower(Rules.magicBase(fire.power), 2, fire.defPower) + mc.lo, mc.hi - mc.lo + 1)
+        def x(v: Int)    = math.floor(v * 1.3 + 0.5).toInt
+        assertTrue(
+          SpellRules.mcDamage(fire, 2, mc)(using Rng.lowest) == x(orig(Rng.lowest)),
+          SpellRules.mcDamage(fire, 2, mc)(using Rng.highest) == x(orig(Rng.highest)),
+          x(orig(Rng.highest)) > orig(Rng.highest)
         )
       },
       test("Odds：概率和为 1，简单情况与手算一致") {

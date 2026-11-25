@@ -105,13 +105,14 @@ object SkillInfo:
     private def turnUndead(l: Int, below: Int) = chance(r => SpellRules.turnUndeadKills(L, L - below, l)(using r))
 
     private def petLines(name: String, l: Int): List[String] =
-      val scBoost = SpellRules.summonScBoost(sc.hi)
-      val rule = s"道术上限每点 +${SpellRules.summonScPctText}% 宝宝血量、攻击、防御、魔防，不封顶（召唤时定下，之后换装不变）；你现在道术上限 ${sc.hi}，×$scBoost"
+      val g    = SpellRules.growthOf(MonsterName(name))
+      val rule = s"道术上限每点 +${g.scPctText}% 宝宝血量、攻击、防御、魔防，不封顶（召唤时定下，之后换装不变）；你现在道术上限 ${sc.hi}，×${g.scBoost(sc.hi)}"
+      val cut  = g.baseText.fold("")(k => s"；本服攻击、防御、魔防先×$k")
       rule :: catalog.monster(MonsterName(name)).fold(List(name)) { md =>
         val b = SpellRules.summonedBody(md, l, sc.hi)
         List(
           s"$name 血 ${b.hp}、攻击 ${b.dc.lo}-${b.dc.hi}、防御 ${b.ac.lo}-${b.ac.hi}、魔防 ${b.mac.lo}-${b.mac.hi}",
-          s"（基础 血 ${md.hp}、攻击 ${md.dc.lo}-${md.dc.hi}、防御 ${md.ac.lo}-${md.ac.hi}、魔防 ${md.mac.lo}-${md.mac.hi}；血和攻击再×技能等级加成 ${SpellRules.summonBoost(l)}）"
+          s"（基础 血 ${md.hp}、攻击 ${md.dc.lo}-${md.dc.hi}、防御 ${md.ac.lo}-${md.ac.hi}、魔防 ${md.mac.lo}-${md.mac.hi}$cut；血和攻击再×技能等级加成 ${g.levelBoost(l)}）"
         )
       }
 
@@ -129,7 +130,8 @@ object SkillInfo:
       case Skill.Poisoning  => Some(l => s"绿毒 ${poisonSecs(l, PoisonKind.Green)} 秒、红毒 ${poisonSecs(l, PoisonKind.Red)} 秒")
       case Skill.SoulShield | Skill.HolyArmor => Some(l => s"${span(r => SpellRules.defenceUpSecs(d, l, sc)(using r))} 秒")
       case Skill.HolyCurtain => Some(l => s"${span(r => SpellRules.holyCurtainSecs(d, l, sc)(using r))} 秒")
-      case Skill.SummonSkeleton | Skill.SummonShinsu => Some(l => s"×${SpellRules.summonBoost(l)}（血、攻）")
+      case Skill.SummonSkeleton => Some(l => s"×${SpellRules.growthOf(SpellRules.SkeletonPet).levelBoost(l)}（血、攻）")
+      case Skill.SummonShinsu   => Some(l => s"×${SpellRules.growthOf(SpellRules.ShinsuPet).levelBoost(l)}（血、攻）")
       case Skill.Invisible | Skill.GroupInvisible => Some(l => s"${span(r => SpellRules.invisibleSecs(d, l, sc)(using r))} 秒")
       case Skill.ShowHp => Some(l => s"成功 ${chance(r => SpellRules.showHpWorks(l)(using r))}")
       case Skill.TurnUndead => Some(l => s"低 2 级的 ${turnUndead(l, 2)}")
