@@ -538,6 +538,31 @@ object ClientSpec extends ZIOSpecDefault:
         }
       )
     },
+    test("技能说明排版（#1295）：一件事一行、不靠自动折行，各级每级一行、当前级绿字；折行断在标点后") {
+      import mir.client.ui.{Describe, Gfx, Tint}
+      import mir.rules.Stats
+      // 宋体 12 像素：汉字和全角符号 12，半角 6
+      def w(s: String): Double = s.map(c => if c < '\u2e80' then 6 else 12).sum.toDouble
+      val stats = Stats(300, 200, Span(5, 20), Span(5, 15), Span(10, 40), Span(8, 35), Span(8, 35), 15, 15, 1000, 0, 0, 0, 0, 0)
+      val me    = SelfStats(35, Exp(0), None, Hp(1), Mp(1), Gold(0), stats)
+      val all   = catalog.data.skills.map(d => d -> Describe.skillLines(catalog, d, LearnedSkill(d.id, 1, 0, None), me))
+      val fire  = all.find(_._1.id == SkillId(1)).get._2
+      val levelRows = fire.filter(_.text.matches("\\d 级：.*"))
+      assertTrue(
+        // 说明框最宽 360 像素：普通属性下每行都放得下
+        all.forall((_, ls) => ls.forall(l => w(l.text) <= 360)),
+        // 手机横屏（如 667×375）说明框按触屏倍数放大后约放 25 行，再多就要缩小字
+        all.forall((_, ls) => ls.size <= 25),
+        levelRows.map(_.text.take(1)) == List("0", "1", "2", "3"),
+        levelRows.filter(_.tint == Tint.Good).map(_.text.take(1)) == List("1"),
+        levelRows(1).text.startsWith("1 级：耗魔法 "),
+        // 折行：断在后半行的标点后，续行缩进；没有合适标点就按字硬断；空行保留
+        Gfx.breakText("一二三四，五六七八", 60, w) == List("一二三四，", "　五六七八"),
+        Gfx.breakText("一，二三四五六七", 60, w) == List("一，二三四", "　五六七"),
+        Gfx.breakText("威力 18-55", 360, w) == List("威力 18-55"),
+        Gfx.breakText("", 60, w) == List("")
+      )
+    },
     test("设置：百分比每次 5，卡在 0–95；每一行改的是自己那一项") {
       import mir.client.render.ViewOptions
       import mir.client.ui.SettingRow

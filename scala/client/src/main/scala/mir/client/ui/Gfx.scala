@@ -130,23 +130,9 @@ final class Gfx(val ctx: dom.CanvasRenderingContext2D, sprites: SpriteStore):
       rect(hx, hy, w, h, "rgba(0,0,0,.85)")
       lines.zipWithIndex.foreach((l, i) => text(l.text, hx + 5, hy + 3 + i * 14, l.tint.color))
 
-  /** 超过 maxW 像素宽的行按字折开，续行缩进一个全角空格、颜色不变。 */
+  /** 超过 maxW 像素宽的行折开（尽量断在标点后，见 Gfx.breakText），续行缩进一个全角空格、颜色不变。 */
   def wrap(lines: List[Line], maxW: Double): List[Line] =
-    lines.flatMap { l =>
-      if width(l.text) <= maxW then List(l)
-      else
-        val out = List.newBuilder[Line]
-        val cur = new StringBuilder
-        l.text.foreach { c =>
-          if cur.nonEmpty && width(cur.toString + c) > maxW then
-            out += l.copy(text = cur.toString)
-            cur.clear()
-            cur.append('　')
-          cur.append(c)
-        }
-        if cur.nonEmpty then out += l.copy(text = cur.toString)
-        out.result()
-    }
+    lines.flatMap(l => breakText(l.text, maxW, width).map(t => l.copy(text = t)))
 
   /** 在 (x, y) 处放大 s 倍画（原版底栏在手机上缩得很小，自己画的面板按触屏倍数放大）。 */
   def scaled(x: Double, y: Double, s: Double)(draw: => Unit): Unit =
@@ -157,6 +143,27 @@ final class Gfx(val ctx: dom.CanvasRenderingContext2D, sprites: SpriteStore):
     ctx.restore()
 
 object Gfx:
+  /** 这些字后面可以断行（#1295：折行别把「60%」「1/10」这种拆开，也别让下一行以标点开头） */
+  private val BreakAfter = "，、；：。）」".toSet
+
+  /**
+   * 把一行字折成每行不超过 maxW 宽：先按字塞满一行，再往回找最近的断点（全角标点后；不断在空格，那样会把「威力 18-55」拆开）；
+   * 断点在这一行后半段才用，不然一行太短，就照字硬断。续行开头加一个全角空格缩进。
+   */
+  def breakText(text: String, maxW: Double, width: String => Double): List[String] =
+    @scala.annotation.tailrec
+    def go(rest: String, indent: String, acc: List[String]): List[String] =
+      val s = indent + rest
+      if rest.isEmpty && acc.nonEmpty then acc.reverse
+      else if width(s) <= maxW then (s :: acc).reverse
+      else
+        val start = indent.length + 1
+        val fit   = (start + 1 to s.length).takeWhile(i => width(s.take(i)) <= maxW).lastOption.getOrElse(start)
+        val soft  = (fit until math.max(start, (fit + indent.length) / 2) by -1).find(i => BreakAfter(s(i - 1)))
+        val cut   = soft.getOrElse(fit)
+        go(s.drop(cut), "　", s.take(cut) :: acc)
+    go(text, "", Nil)
+
   val Font = "12px \"SimSun\",\"宋体\",\"Songti SC\",\"STSong\",\"PingFang SC\",serif"
   /** 原版 g_WMainImages */
   val Main = "prguse"

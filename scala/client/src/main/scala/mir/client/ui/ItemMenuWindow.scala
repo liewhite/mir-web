@@ -72,8 +72,8 @@ final class ItemMenuWindow(ui: ClassicUi) extends Window:
     val lh   = 15.0
     val btnH = 32.0
     val pad  = 6.0
-    val s    = math.min(ui.ctlScale, (ui.W - 8) / 200)
-    val maxW = (ui.W - 8) / s
+    val s0   = math.min(ui.ctlScale, (ui.W - 8) / 200)
+    val maxW = (ui.W - 8) / s0
     val menu = m0.copy(lines = g.wrap(m0.lines, math.min(360, maxW - pad * 2)))
     val btnW = menu.actions.map(a => math.max(56, g.width(a.label) + 20))
     val textW = menu.lines.map(l => g.width(l.text)).maxOption.getOrElse(0.0)
@@ -85,6 +85,8 @@ final class ItemMenuWindow(ui: ClassicUi) extends Window:
       if cur.nonEmpty && used + ab._2 > w - pad * 2 then acc :+ Vector(ab) else acc.init :+ (cur :+ ab)
     }.filter(_.nonEmpty)
     val h = pad + menu.lines.size * lh + 4 + rows.size * (btnH + 6) + pad - 6
+    // 太高放不下（矮屏手机横屏看长说明，#1295）就缩小到刚好放下，不让底下几行出屏；缩小后更宽裕，折行不用重算
+    val s = math.min(s0, (ui.H - ui.safe.top - ui.safe.bottom - 4) / h)
     // 优先摆在格子右边，放不下就左边；纵向尽量和格子顶对齐
     val (sw, sh) = (w * s, h * s)
     val a  = menu.anchor
