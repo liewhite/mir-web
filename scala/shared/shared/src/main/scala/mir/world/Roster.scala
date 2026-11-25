@@ -42,6 +42,7 @@ final class Roster(w: World):
       w.catalog.monster(pd.kind).flatMap(w.spawner.spawnMonster(_, None, p.cell, 1)).foreach { m =>
         m.master = Some(p.id)
         m.petLevel = pd.level
+        MonsterAi.petPace(m)
         m.summoning = pd.summoning
         w.vitals.shape(m, pd.body, Some(pd.hp))
         m.cover = Cover.Open

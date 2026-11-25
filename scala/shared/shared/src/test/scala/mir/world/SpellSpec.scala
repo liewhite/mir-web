@@ -132,6 +132,25 @@ object SpellSpec extends ZIOSpecDefault:
         count(SpellRules.ShinsuPet) == 2
       )
     },
+    test("召唤骷髅走路按原版 1200 - 等级×250（3 级 450 毫秒/格）；没仗打往主人身边赶时每格 300 毫秒，跟得上跑步（#1275）") {
+      val s = sim()
+      val p = caster(s, Job.Taoist, List(17), charm = true)
+      s.cast(p, 17, None, p.cell); s.run(3000)
+      val m = p.pets.flatMap(s.w.actor).collectFirst { case m: Monster => m }.get
+      val walk = m.walkInterval
+      s.w.grid.teleportActor(p, Cell(p.cell.x + 12, p.cell.y))
+      val from = m.cell.chebyshev(p.cell)
+      s.run(2400) // 300 毫秒一格约走 8 格；照 450 毫秒一格只能走 5 格多
+      val left = m.cell.chebyshev(p.cell)
+      assertTrue(
+        SpellRules.skeletonWalkMs(0) == 1200,
+        walk == SpellRules.skeletonWalkMs(3),
+        walk == 450,
+        SpellRules.catchUpMs(SpellRules.SkeletonPet).contains(300),
+        SpellRules.catchUpMs(SpellRules.ShinsuPet).isEmpty,
+        from - left >= 7
+      )
+    },
     test("道士自动召唤（设置道士页）：勾了骷髅和神兽就各补到 3 只；不勾不召") {
       val s = sim()
       val p = caster(s, Job.Taoist, List(17, 30), charm = true)

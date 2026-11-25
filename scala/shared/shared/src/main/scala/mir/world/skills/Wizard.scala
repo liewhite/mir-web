@@ -182,8 +182,7 @@ object Wizard:
       m.statuses.remove(StatusKind.Seized)
       m.statuses.remove(StatusKind.Crazy)
       m.petLevel = c.lv
-      m.walkInterval = math.min(m.walkInterval, SpellRules.petWalkCap(c.lv))
-      m.attackInterval = math.min(m.attackInterval, SpellRules.petAttackCap(c.lv))
+      MonsterAi.petPace(m)
       c.p.pets += m.id
 
   /** 圣言术：有机会直接打死不死系（MagTurnUndead）。 */

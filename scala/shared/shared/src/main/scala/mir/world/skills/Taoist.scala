@@ -132,6 +132,7 @@ object Taoist:
               w.spawner.spawnMonster(md, None, p.cell.step(p.dir), 1).foreach { m =>
                 m.master = Some(p.id)
                 m.petLevel = lv
+                MonsterAi.petPace(m)
                 val how = Summoning(lv, sc.hi)
                 m.summoning = Some(how)
                 w.vitals.shape(m, how.body(md))

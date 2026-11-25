@@ -96,7 +96,10 @@ object MonsterAi:
         if !attack(w, m, b, t) && !m.isGuard && !b.rooted then stepToward(w, m, t.cell)
       case None =>
         master match
-          case Some(ms) => if m.cell.chebyshev(ms.cell) > 2 then stepToward(w, m, ms.cell)
+          case Some(ms) =>
+            if m.cell.chebyshev(ms.cell) > 2 then
+              val pace = SpellRules.catchUpMs(m.defn.name).fold(m.walkInterval)(math.min(_, m.walkInterval))
+              stepToward(w, m, ms.cell, pace)
           case None if m.isGuard || b.rooted => ()
           case None =>
             // 闲逛
@@ -451,6 +454,18 @@ object MonsterAi:
         s.copy(engagedAt = w.now)
       case ShiftWhen.Calm(_) => s
 
+  /**
+   * 认了主的宝宝按宝宝等级定走路、出手间隔：召唤时、诱惑收服时、跟主人换图重新放出来时都调。
+   * 召唤骷髅按 WhiteSkeleton 公式定走路（出手照数据表）；神兽在 shinsuPace 里每回合定；
+   * 收服的按 petWalkCap / petAttackCap 压到上限以内。
+   */
+  def petPace(m: Monster): Unit = SpellRules.summonedAs(m.defn.name) match
+    case Some(SpellRules.SkeletonPet) => m.walkInterval = SpellRules.skeletonWalkMs(m.petLevel)
+    case Some(_)                      => shinsuPace(m)
+    case None =>
+      m.walkInterval = math.min(m.defn.walkSpeed, SpellRules.petWalkCap(m.petLevel))
+      m.attackInterval = math.min(m.defn.attackSpeed, SpellRules.petAttackCap(m.petLevel))
+
   /** 神兽按宝宝等级定走路、出手间隔（ResetElfMon）。 */
   private def shinsuPace(m: Monster): Unit =
     m.walkInterval = SpellRules.shinsuWalkMs(m.petLevel)
@@ -499,12 +514,15 @@ object MonsterAi:
 
   // ---------------- 移动 ----------------
 
-  def stepToward(w: World, m: Monster, t: Cell): Unit =
-    if w.grid.move(m, m.cell.dirTo(t), run = false) then m.busyUntil = w.now + m.walkInterval
+  /** 朝 t 走一格，走成了歇 pace 毫秒（默认自己的走路间隔）。 */
+  def stepToward(w: World, m: Monster, t: Cell, pace: Int): Unit =
+    if w.grid.move(m, m.cell.dirTo(t), run = false) then m.busyUntil = w.now + pace
     else
       Path.find(w.canEnter, m.cell, t, 200, adjacent = true).flatMap(_.headOption) match
-        case Some(d) if w.grid.move(m, d, run = false) => m.busyUntil = w.now + m.walkInterval
+        case Some(d) if w.grid.move(m, d, run = false) => m.busyUntil = w.now + pace
         case _                                    => m.busyUntil = w.now + 500
+
+  def stepToward(w: World, m: Monster, t: Cell): Unit = stepToward(w, m, t, m.walkInterval)
 
   private def stepAway(w: World, m: Monster, t: Cell): Boolean =
     val away = m.cell.dirTo(t).opposite

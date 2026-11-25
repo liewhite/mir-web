@@ -298,6 +298,13 @@ object SpellRules:
   private def scaled(v: Int, k: Double): Int    = math.floor(v * k + 0.5).toInt
   private def scaled(s: Span, k: Double): Span = Span(scaled(s.lo, k), scaled(s.hi, k))
 
+  /** 召唤骷髅的走路间隔（毫秒）：1200 - 技能等级×250，0 级 1200、3 级 450（WhiteSkeleton.cs RecalcAbilitys）。 */
+  def skeletonWalkMs(level: Int): Int = 1200 - level * 250
+
+  /** 宝宝往主人身边赶时每格最多多少毫秒：只有召唤骷髅加快（Rates.petCatchUpMs，#1275），别的宝宝照自己的走路间隔。 */
+  def catchUpMs(pet: MonsterName): Option[Int] =
+    summonedAs(pet).filter(_ == SkeletonPet).map(_ => Rates.petCatchUpMs)
+
   /** 收服后宝宝走路、出手间隔的上限（毫秒）：1500 - 等级×200、2000 - 等级×200。 */
   def petWalkCap(level: Int): Int   = 1500 - level * 200
   def petAttackCap(level: Int): Int = 2000 - level * 200
