@@ -2,7 +2,7 @@ package mir.client
 
 import mir.client.assets.MapData
 import mir.client.game.*
-import mir.client.input.{Joystick, KeyMove, KeyStick, MoveKey, Pt, Stick}
+import mir.client.input.{Input, Joystick, KeyMove, KeyStick, MoveKey, Pt, Stick}
 import mir.client.net.{LinkEvent, ServerClock, Transport}
 import mir.client.render.{Frames, Hit, Picking}
 import mir.core.*
@@ -202,6 +202,19 @@ object ClientSpec extends ZIOSpecDefault:
         ws == KeyMove.Stop,
         MoveKey.of("KeyW").contains(MoveKey.W),
         MoveKey.of("KeyQ").isEmpty
+      )
+    },
+    test("按键事件（#1298）：浏览器自动填充发的不带 key/code 的事件不算真按键；F 键照常认") {
+      def ev(fields: (String, js.Any)*) = js.Dynamic.literal(fields*).asInstanceOf[org.scalajs.dom.KeyboardEvent]
+      assertTrue(
+        Input.realKey(ev("key" -> "w", "code" -> "KeyW")),
+        !Input.realKey(ev()),
+        !Input.realKey(ev("key" -> "w")),
+        !Input.realKey(ev("code" -> "KeyW")),
+        !Input.realKey(ev("key" -> null, "code" -> null)),
+        Input.fKey("F3").contains(3),
+        Input.fKey("F9").isEmpty,
+        Input.fKey("f").isEmpty
       )
     },
     test("对时：按往返的一半校正，往返太慢的不采信") {
