@@ -485,6 +485,22 @@ object ClientSpec extends ZIOSpecDefault:
         !Hand.valid(view, Hand(ItemPlace.Belt(0), potion))
       )
     },
+    test("物品出声照原版 ItemClickSound：拿起、放到装备位按物品种类出声，放回包裹不出声") {
+      import mir.client.ui.Hand
+      val r = Rig()
+      r.join(Cell(10, 10))
+      val sword  = r.client.view.worn.get(EquipSlot.Weapon).get
+      val pickUp = Hand.click(None, ItemPlace.Worn(EquipSlot.Weapon), Some(sword), double = false)
+      val held   = pickUp.hand.get
+      val toBag  = Hand.click(Some(held), ItemPlace.Bag(3), None, double = false)
+      val toWorn = Hand.click(Some(held.copy(from = ItemPlace.Bag(3))), ItemPlace.Worn(EquipSlot.Weapon), None, double = false)
+      def sound(name: String) = mir.rules.ItemSounds.click(catalog.item(ItemName(name)).get)
+      assertTrue(
+        pickUp.clink.contains(sword), toBag.clink.isEmpty, toWorn.clink.contains(sword),
+        sound("木剑") == 111, sound("金创药(小量)") == 108, sound("铁手镯") == 117, sound("金项链") == 115,
+        sound("青铜头盔") == 116, sound("古铜戒指") == 113, sound("布衣(男)") == 112, sound("鹤嘴锄") == 111, sound("回城卷") == 118, sound("铁矿") == 118
+      )
+    },
     test("物品、属性、技能说明：装备写清加成和穿戴要求，换下旧装备的差值，药写回多少") {
       import mir.client.ui.{Describe, Tint}
       val r = Rig()

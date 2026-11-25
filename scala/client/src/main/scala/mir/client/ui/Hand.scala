@@ -9,8 +9,8 @@ import mir.view.ViewState
  */
 final case class Hand(from: ItemPlace, item: ItemInstance)
 
-/** 点一下的结果：手上变成什么、要发的指令、要提示的话。 */
-final case class HandStep(hand: Option[Hand], cmds: List[GameCmd] = Nil, note: Option[String] = None)
+/** 点一下的结果：手上变成什么、要发的指令、要提示的话、要按哪件物品出声（ItemClickSound）。 */
+final case class HandStep(hand: Option[Hand], cmds: List[GameCmd] = Nil, note: Option[String] = None, clink: Option[ItemInstance] = None)
 
 object Hand:
   /** 身上某个位置现在的物品（按服务端发来的视野副本）。 */
@@ -25,14 +25,16 @@ object Hand:
   /**
    * 点物品格（电脑原版操作）：没拿东西时点一下拿起，再点别的格子放下（服务端挪过去，有东西就互换），点回原处放回；
    * 双击使用；拿着装备点装备格就是穿上。（包裹关着时点快捷栏直接用，由底栏处理，不走这里。）
+   * 出声照原版 FState.pas：拿起和放到装备位按物品出声，放回包裹、快捷栏不出声（原版那里的 ItemClickSound 注释掉了）。
    */
   def click(hand: Option[Hand], place: ItemPlace, there: Option[ItemInstance], double: Boolean): HandStep =
     (hand, place) match
       case (Some(h), _) if h.from == place =>
         if double then HandStep(None, List(GameCmd.UseItem(h.item.uid))).filterUsable(place) else HandStep(None)
       case (Some(h), ItemPlace.Worn(_)) if isWorn(h.from) => HandStep(None)
+      case (Some(h), ItemPlace.Worn(_)) => HandStep(None, List(GameCmd.MoveItem(h.item.uid, place)), clink = Some(h.item))
       case (Some(h), _) => HandStep(None, List(GameCmd.MoveItem(h.item.uid, place)))
-      case (None, _) => HandStep(there.map(Hand(place, _)))
+      case (None, _) => HandStep(there.map(Hand(place, _)), clink = there)
 
   /** 拿着东西点地面：扔掉（身上穿着的要先脱下来）。 */
   def dropOnGround(h: Hand): HandStep =

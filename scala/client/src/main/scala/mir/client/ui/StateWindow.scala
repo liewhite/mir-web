@@ -65,7 +65,7 @@ final class StateWindow(ui: ClassicUi) extends Window:
     drawFigure(ui, o, m.sex, m.hair, m.view.worn.filterNot((slot, _) => ui.handFrom(ItemPlace.Worn(slot))))
     EquipSlot.values.foreach { slot =>
       val r = equipRect(slot)
-      ui.hit(r)(ui.clickPlace(ItemPlace.Worn(slot), ui.client.view.worn.get(slot), r))
+      ui.itemHit(r)(ui.clickPlace(ItemPlace.Worn(slot), ui.client.view.worn.get(slot), r))
     }
 
   private def drawAbilityPage(m: Me, o: Pt): Unit =

@@ -7,7 +7,7 @@ import mir.core.*
 import mir.data.{Catalog, ItemDef}
 import mir.model.*
 import mir.protocol.*
-import mir.rules.{ItemKind, Pricing}
+import mir.rules.{ItemKind, ItemSounds, Pricing}
 import mir.view.ViewState
 import org.scalajs.dom
 
@@ -263,6 +263,12 @@ final class ClassicUi(
 
   def hit(r: Rect)(onClick: => Unit): Unit = hits.button(Button(r, () => onClick))
 
+  /** 登记物品格：点了不出按钮声，出不出物品声由 onClick 定（见 clink）。 */
+  def itemHit(r: Rect)(onClick: => Unit): Unit = hits.button(Button(r, () => onClick, sound = ClickSound.ItemSlot))
+
+  /** 物品碰一下的声音（拿起、放到装备位、放进买卖/交易框），按物品种类，原版 ItemClickSound。 */
+  def clink(it: ItemInstance): Unit = catalog.item(it.name).foreach(d => env.sound(ItemSounds.click(d)))
+
   def isPressed(r: Rect): Boolean = pressed.exists(_.rect == r)
 
   def isDouble(key: String): Boolean =
@@ -282,7 +288,9 @@ final class ClassicUi(
 
   /** 点身上一格（包裹、快捷栏、装备位）。 */
   def clickPlace(place: ItemPlace, there: Option[ItemInstance], anchor: Rect): Unit =
-    if touch && hand.isEmpty then itemMenu.forItem(place, there, anchor)
+    if touch && hand.isEmpty then
+      there.foreach(clink)
+      itemMenu.forItem(place, there, anchor)
     else
       val key = place.toString
       apply(Hand.click(hand, place, there, isDouble(key)))
@@ -304,6 +312,7 @@ final class ClassicUi(
 
   def apply(step: HandStep): Unit =
     hand = step.hand
+    step.clink.foreach(clink)
     step.cmds.foreach(send)
     step.note.foreach(message(_, Tone.Bad))
 
@@ -437,7 +446,9 @@ final class ClassicUi(
           b.onHold.filter(_ => held) match
             case Some(hold) => hold()
             case None =>
-              env.sound(ClassicUi.ButtonSound)
+              b.sound match
+                case ClickSound.Glass    => env.sound(ClassicUi.ButtonSound)
+                case ClickSound.ItemSlot => ()
               b.onClick()
         }
 

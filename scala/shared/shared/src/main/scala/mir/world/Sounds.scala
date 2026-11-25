@@ -8,10 +8,8 @@ object Sounds:
   val runCave: (Int, Int)    = (23, 24)
   val hitFist      = 57
   val money        = 106
-  val eatDrug      = 107
   val spaceOut     = 109
   val spaceIn      = 110
-  val itemClick    = 118
   val yedoMan      = 130
   val yedoWoman    = 131
   val longHit      = 132

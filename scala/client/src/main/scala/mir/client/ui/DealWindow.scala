@@ -55,7 +55,7 @@ final class DealWindow(ui: ClassicUi) extends Window:
       val r  = cell(o, i)
       val it = offer.items.lift(i)
       it.foreach(x => catalog.item(x.name).foreach(dd => g.item(dd.look, x.count, r.moved(-1, 1))))
-      if mine then ui.hit(r)(clickMine(it, r)) else it.foreach(x => ui.hit(r)(showTheirs(x, r)))
+      if mine then ui.itemHit(r)(clickMine(it, r)) else it.foreach(x => ui.hit(r)(showTheirs(x, r)))
     }
     if mine then
       ui.button(Button(Rect(o.x + 220, o.y + 42, 16, 23), () => close(), img = Some(64)))
@@ -68,10 +68,12 @@ final class DealWindow(ui: ClassicUi) extends Window:
   private def clickMine(there: Option[ItemInstance], r: Rect): Unit = ui.hand match
     case Some(Hand(ItemPlace.Worn(_), _)) => ui.message("先把装备脱下来放进包裹", Tone.Bad)
     case Some(h) =>
+      ui.clink(h.item)
       ui.hand = None
       put(h.item)
     case None =>
       there.foreach { it =>
+        ui.clink(it)
         if ui.touch then
           ui.me.foreach(m => ui.itemMenu.show(ItemMenu(ui.describe(m, it), List(MenuAction("拿回", () => ui.send(GameCmd.DealTake(it.uid)))), r)))
         else ui.send(GameCmd.DealTake(it.uid))

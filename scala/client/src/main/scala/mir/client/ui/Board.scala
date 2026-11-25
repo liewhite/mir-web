@@ -106,7 +106,7 @@ final class Board(ui: ClassicUi):
         if ui.deal.offers(i.uid) then g.rect(r.x, r.y, r.w, r.h, DealWindow.Dim)
       }
       g.text((i + 1).toString, r.x + 13, r.y + 19, "#fff", bold = true)
-      ui.hit(r)(beltClicked(i, r))
+      ui.itemHit(r)(beltClicked(i, r))
     }
     // 底栏小按钮：小地图、交易（#1222）、行会（还没做，只画样子）、组队、好友、退出
     ui.button(Button(Rect(bx + 219, by + 104, 28, 13), () => ui.run(UiAction.MiniMap), img = Some(130), always = true))

@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.{ItemDef, MerchantService}
 import mir.model.*
 import mir.protocol.{Anchor, GameCmd, InspectView, ServerMsg, ChatKind, Tone}
-import mir.rules.{ItemKind, Pace, PotionRules, Pricing, Requirement, Rng, ScrollEffect, Skill, WeaponRefine}
+import mir.rules.{ItemKind, ItemSounds, Pace, PotionRules, Pricing, Requirement, Rng, ScrollEffect, Skill, WeaponRefine}
 
 /**
  * 玩家指令的执行：移动、攻击、施法、物品、NPC 买卖存取、设置、说话。
@@ -150,7 +150,7 @@ object PlayerOps:
           w.removeGround(g.id)
           true
         case Loot.Item(it) =>
-          w.out.selfSound(p, Sounds.itemClick)
+          w.catalog.item(it.name).foreach(d => w.out.selfSound(p, ItemSounds.click(d)))
           defOf(w, it).flatMap(fits(p, _)) match
             case Left(why) =>
               w.out.notice(p, why, Tone.Bad)
@@ -173,7 +173,7 @@ object PlayerOps:
       r          <- ItemKind.of(d) match
         case ItemKind.Potion(hp, mp, instant) =>
           consumeOne(w, p, uid)
-          w.out.selfSound(p, Sounds.eatDrug)
+          ItemSounds.use(d).foreach(w.out.selfSound(p, _))
           if instant then
             val h = w.vitals.heal(p, hp, mp)
             if h > 0 then w.out.nearby(p.cell, ServerMsg.Heal(p.id, h))

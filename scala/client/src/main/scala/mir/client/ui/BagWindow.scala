@@ -29,7 +29,7 @@ final class BagWindow(ui: ClassicUi) extends ToggleWindow:
           // 放进交易栏的画暗（#1222）
           if ui.deal.offers(it.uid) then g.rect(r.x, r.y, r.w, r.h, DealWindow.Dim)
         }
-      ui.hit(r)(ui.clickPlace(ItemPlace.Bag(i), ui.client.view.bag.lift(i).flatten, r))
+      ui.itemHit(r)(ui.clickPlace(ItemPlace.Bag(i), ui.client.view.bag.lift(i).flatten, r))
     }
     g.text(Gfx.gold(m.stats.gold.value), o.x + 64, o.y + 185)
     // 物品信息栏（电脑：鼠标停在哪件上，包裹、装备、快捷栏都算）

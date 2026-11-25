@@ -204,7 +204,7 @@ final class MerchantPanel(ui: ClassicUi) extends Window:
     g.img(Gfx.Main, 392, x, y)
     g.text(if store then "放入要保管的物品" else "放入要出售的物品", x + 12, y + 30)
     val spot = Rect(x + 27, y + 67, 61, 52)
-    ui.hit(spot)(clickSpot())
+    ui.itemHit(spot)(clickSpot())
     sellSpot.flatMap(h => catalog.item(h.item.name)).foreach { d =>
       val count = sellSpot.fold(1)(_.item.count)
       g.item(d.look, count, spot)
@@ -217,10 +217,11 @@ final class MerchantPanel(ui: ClassicUi) extends Window:
   private def clickSpot(): Unit = (ui.hand, sellSpot) match
     case (Some(Hand(ItemPlace.Worn(_), _)), _) => ui.message("先把装备脱下来放进包裹", mir.protocol.Tone.Bad)
     case (Some(h), _) =>
+      ui.clink(h.item)
       sellSpot = Some(h)
       ui.hand = None
     case (None, Some(h)) =>
-      ui.hand = Some(h)
+      ui.apply(HandStep(Some(h), clink = Some(h.item)))
       sellSpot = None
     case (None, None) => ()
 

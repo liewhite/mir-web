@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.MapFlag
 import mir.model.*
 import mir.protocol.{Anchor, Tone}
-import mir.rules.{Mining, Pace, Rng}
+import mir.rules.{ItemSounds, Mining, Pace, Rng}
 
 import scala.collection.mutable
 
@@ -52,6 +52,6 @@ final class Quarry(w: World):
   private def give(p: Player, o: Mining.Ore, purity: Int): Unit =
     w.newItem(o.item).foreach { it =>
       if Inventory.add(w.catalog, p, it.copy(dura = purity)) then
-        w.out.selfSound(p, Sounds.itemClick)
+        w.catalog.item(o.item).foreach(d => w.out.selfSound(p, ItemSounds.click(d)))
         w.out.notice(p, s"挖到 ${o.item.value}（纯度 ${Mining.shownPurity(purity)}）", Tone.Item)
     }
