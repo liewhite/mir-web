@@ -56,7 +56,7 @@ def monster(name, race, race_img, appr, lvl, hp, ac, dc, hit, attack_ms, exp, sp
 # RaceImg（客户端画法，见 Actor.pas）：19 普通（TCatMon，MA19）；45 弓箭手（TArcherMon）；78 魔龙教主（TBanyaGuardMon，MA40）。
 # 战将 GeeM2 是 RaceImg 21（沃玛教主的画法，会放 mon4 的沃玛特效），这里按普通的 19 画。
 LOW = dict(lvl=54, hp=1200, ac=15, dc=(50, 90), hit=18, attack_ms=1800, exp=1500)
-HIGH = dict(lvl=57, hp=2000, ac=20, dc=(70, 130), hit=20, attack_ms=1500, exp=2500)
+HIGH = dict(lvl=57, hp=6000, ac=20, dc=(70, 130), hit=20, attack_ms=1500, exp=2500)
 MONSTERS = [
     monster("魔龙刀兵", 81, 19, 213, speed=16, walk_ms=900, cool_eye=10, **LOW),
     monster("魔龙破甲兵", 81, 19, 214, speed=16, walk_ms=900, cool_eye=10, **LOW),
