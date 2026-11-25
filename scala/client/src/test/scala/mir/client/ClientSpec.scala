@@ -264,6 +264,17 @@ object ClientSpec extends ZIOSpecDefault:
       val gray = r.client.self.map(_.look).collect { case h: Look.Human => h.pk }.contains(mir.rules.PkStanding.Brawler)
       assertTrue(noMonster, attackable, !r.client.isEnemy(r.client.actor(other).get), hurt, gray)
     },
+    test("同队（#1274）：队友不算能打的，点了只锁定") {
+      val r = Rig()
+      r.join(Cell(10, 10))
+      val d     = CharacterData.newbie(catalog, "乙", Job.Taoist, Sex.Male, UidSource.counter(5000))
+      val other = r.world.join(d.copy(place = Place(r.mapDef.id, Cell(13, 10))))
+      r.run(3000)
+      val before = r.client.actor(other).exists(r.client.canAttack)
+      r.client.view = r.client.view.copy(group = mir.protocol.GroupView(members = List("乙")))
+      val mate = r.client.actor(other).get
+      assertTrue(before, r.client.teammate(mate), !r.client.canAttack(mate))
+    },
     test("点全景地图走过去：寻路走到那一格停下") {
       val r = Rig(blocked = (8 to 14).map(y => Cell(12, y)).toSet)
       r.join(Cell(10, 10))

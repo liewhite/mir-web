@@ -42,7 +42,7 @@ final class Book:
 /**
  * 服务端的社交：牵涉别的在线玩家、不管在哪张图的事（组队、私聊、好友）。人按角色名字认（全服唯一）。
  * 只在一个线程里用；每个操作返回要发出去的消息（Letter），由调用方送到连接。
- * 世界只经 Company.mates 查队友来分经验。
+ * 世界只经 Company.mates 查队友来分经验、判敌我。
  */
 final class Social extends Company:
   private val book    = Book()

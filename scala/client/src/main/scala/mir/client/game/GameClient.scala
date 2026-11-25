@@ -189,12 +189,20 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
   /**
    * 锁定了能亲手打的：敌人，加上守卫（#1205，同原版；服务端同一条规则 Look.attackable），
    * 加上安全区外的别的玩家和别人的宝宝（PK，#1225，服务端 Justice.duel 同一条 Look.duel + SafeZone）。
-   * 自动找怪仍只找 isEnemy，不会自己挑上人。
+   * 自动找怪仍只找 isEnemy，不会自己挑上人；队友和队友的宝宝不能打（#1274，服务端 Hostility.allied），点了只锁定。
    */
   def canAttack(a: ActorView): Boolean =
-    !a.dead && self.exists { me =>
+    !a.dead && !teammate(a) && self.exists { me =>
       me.id != a.id && (Look.attackable(me.look, a.look, catalog.isGuard) ||
         view.map.flatMap(catalog.map).exists(Look.duel(_, me.look, me.id, me.cell, a.look, a.cell)))
+    }
+
+  /** 同队的（#1274）：队友本人，或主人是队友的宝宝（主人要在视野里才认得出名字；认不出就当不是，服务端照样挡下）。 */
+  def teammate(a: ActorView): Boolean =
+    val owner = a.look.master.fold(Option(a))(actor)
+    owner.map(_.look).exists {
+      case h: Look.Human => view.group.members.contains(h.name)
+      case _             => false
     }
 
   /** 自己人（治疗、加防的对象）：活着的别的玩家和宝宝（所有玩家都算；和服务端 SpellCtx.isFriend 同一口径）。 */

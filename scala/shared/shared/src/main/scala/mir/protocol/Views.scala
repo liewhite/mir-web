@@ -74,7 +74,7 @@ object Look:
 
   /**
    * PK（#1225）：编号 aId、长这样的 a 能不能打 b——a 是玩家，b 是别的玩家或别人的宝宝（自己的宝宝不打）。
-   * 不分攻击模式（用户定），队友也打得到；双方都要在安全区外（原版 IsProtectTarget；打宝宝看宝宝站在哪，同原版 IsProperTarget）。
+   * 不分攻击模式（用户定）；队友打不着（#1274）不在这里看（外观里没有组队），由调用方另加：Hostility.allied / GameClient.teammate；双方都要在安全区外（原版 IsProtectTarget；打宝宝看宝宝站在哪，同原版 IsProperTarget）。
    * 服务端结算（Justice.duel）和客户端锁定攻击（GameClient.canAttack）共用。
    */
   def duel(map: MapDef, a: Look, aId: ActorId, aCell: Cell, b: Look, bCell: Cell): Boolean =

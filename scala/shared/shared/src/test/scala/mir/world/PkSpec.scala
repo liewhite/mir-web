@@ -11,7 +11,7 @@ import zio.json.*
 import zio.json.ast.Json
 import zio.test.*
 
-/** PK（#1225）：安全区、灰名、PK 值涨落、红名掉东西、守卫砍红名、宝宝护主、范围技能误伤。 */
+/** PK（#1225）：安全区、灰名、PK 值涨落、红名掉东西、守卫砍红名、宝宝护主、范围技能误伤、同队互不伤害。 */
 object PkSpec extends ZIOSpecDefault:
   private lazy val catalog: Catalog =
     Catalog.decode(TestFiles.gameJson).fold(e => throw new AssertionError(e), identity)
@@ -39,8 +39,11 @@ object PkSpec extends ZIOSpecDefault:
     private def merge(a: Map[ActorId, Vector[String]], b: Map[ActorId, Vector[String]]) =
       (a.keySet ++ b.keySet).map(k => k -> (a.getOrElse(k, Vector.empty) ++ b.getOrElse(k, Vector.empty))).toMap
 
-  private def sim(map: MapDef = open): Sim =
-    Sim(World(catalog, map, Terrain.open(map.width, map.height), Rng.seeded(7), UidSource.counter(1_000_000), Millis(0)))
+  private def sim(map: MapDef = open, company: Company = Company.Alone): Sim =
+    Sim(World(catalog, map, Terrain.open(map.width, map.height), Rng.seeded(7), UidSource.counter(1_000_000), Millis(0), company))
+
+  /** 只有一队的组队 */
+  private def party(names: String*): Company = n => if names.contains(n) then names.toVector else Vector.empty
 
   private def join(w: World, name: String, at: Cell): Player =
     val d  = CharacterData.newbie(catalog, name, Job.Warrior, Sex.Male, UidSource.counter(name.hashCode.abs.toLong * 1000))
@@ -178,7 +181,7 @@ object PkSpec extends ZIOSpecDefault:
       s.run(5000)
       assertTrue(s.w.isEnemy(g, red), !s.w.isEnemy(g, yellow), red.hp < 100_000, yellow.hp == 100_000)
     },
-    test("半月弯刀打怪时把旁边的队友也砍到（不分攻击模式）") {
+    test("半月弯刀打怪时把旁边不同队的玩家也砍到（不分攻击模式）") {
       val s = sim()
       val a = join(s.w, "甲", Cell(30, 30))
       val b = join(s.w, "乙", Cell(31, 31))
@@ -190,6 +193,32 @@ object PkSpec extends ZIOSpecDefault:
       s.w.vitals.setMaxHp(m, 100_000) // 鸡不死：打死了会升级、重算属性，把上面改的准确冲掉
       Combat.attack(s.w, a, Dir.Right)
       assertTrue(m.hp < m.maxHp, b.hp < 100_000, a.brawler)
+    },
+    test("同队互不伤害（#1274）：队友和队友的宝宝打不着、半月不误伤、宝宝不互咬、不变灰；不同队的照打") {
+      val s    = sim(company = party("甲", "乙"))
+      val a    = join(s.w, "甲", Cell(30, 30))
+      val b    = join(s.w, "乙", Cell(31, 31))
+      val c    = join(s.w, "丙", Cell(40, 40)) // 离得远，半月砍不到
+      val petA = put(s.w, "蛤蟆", Cell(29, 31))
+      petA.master = Some(a.id)
+      a.pets += petA.id
+      val petB = put(s.w, "蛤蟆", Cell(30, 31))
+      petB.master = Some(b.id)
+      b.pets += petB.id
+      val m = put(s.w, "鸡", Cell(31, 30))
+      s.w.vitals.setMaxHp(m, 100_000)
+      val rules = !s.w.canAttack(a, b) && !s.w.harms(a, b) && !s.w.canAttack(a, petB) && !s.w.harms(petA, b) &&
+        !s.w.isEnemy(petA, petB) && s.w.allied(petA, b) && s.w.canAttack(a, c) && !s.w.allied(a, c)
+      val strikes = hit(s.w, a, b) == StrikeResult.Ignored && hit(s.w, petA, petB) == StrikeResult.Ignored
+      a.skills += LearnedSkill(Skill.WideHit.id, 3, 0, None)
+      a.wideHitOn = true
+      a.mp = 1000
+      a.stats = a.stats.copy(dc = mir.data.Span(50, 50), hit = 200)
+      Combat.attack(s.w, a, Dir.Right)
+      val spared = b.hp == 100_000 && petB.hp == petB.maxHp && m.hp < m.maxHp && !a.brawler
+      // 队友打不着，宝宝护主也不会去咬队友；不同队的丙打了甲，宝宝照咬丙
+      hit(s.w, c, a)
+      assertTrue(rules, strikes, spared, s.w.isEnemy(petA, c), !s.w.isEnemy(petA, b))
     },
     test("刚进图、传送的 3 秒内不能打人也不挨人打") {
       val s = sim()

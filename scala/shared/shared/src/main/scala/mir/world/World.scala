@@ -35,7 +35,7 @@ final case class Carried(
 )
 
 /**
- * 组队（#1220）在世界这边的样子：队伍本身跨地图、归服务端（mir.social.Social），世界只问「这个人和谁一队」来分打怪经验。
+ * 组队（#1220）在世界这边的样子：队伍本身跨地图、归服务端（mir.social.Social），世界只问「这个人和谁一队」来分打怪经验、判敌我（队友互不伤害，Hostility.allied）。
  */
 trait Company:
   /** 和这个角色同队的全部人名（含他自己）；没组队为空 */
@@ -100,7 +100,7 @@ final class World(
   // 对外（服务端、测试）开放的查询和进出图
   export grid.{occupant, occupants, canEnter, walkableFor, freeCellNear, randomSpot}
   export conditions.activeFields
-  export hostility.{canAttack, harms, isEnemy}
+  export hostility.{allied, canAttack, harms, isEnemy}
   export roster.{join, leave, snapshot}
   export visibility.{viewOf, visibleTo, fieldsVisibleTo}
 
