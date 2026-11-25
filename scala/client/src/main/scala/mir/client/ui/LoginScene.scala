@@ -25,6 +25,8 @@ final class LoginScene(canvas: dom.HTMLCanvasElement, assets: Assets):
   private val form     = $[dom.HTMLFormElement]("#login")
   private val account  = $[dom.HTMLInputElement]("#account")
   private val password = $[dom.HTMLInputElement]("#password")
+  /** 右上角「留言板」链接（#1280，不登录也能看） */
+  private val boardLink = $[dom.HTMLElement]("#board-link")
   private val done     = Promise[Unit]()
   private var phase: Phase = Phase.Form(busy = false)
   private var pressed      = Option.empty[Btn]
@@ -38,6 +40,7 @@ final class LoginScene(canvas: dom.HTMLCanvasElement, assets: Assets):
 
   def run(): Future[Unit] =
     form.classList.remove("hidden")
+    Option(boardLink).foreach(_.classList.remove("hidden"))
     form.onsubmit = e =>
       e.preventDefault()
       act(Btn.Ok)
@@ -102,6 +105,7 @@ final class LoginScene(canvas: dom.HTMLCanvasElement, assets: Assets):
   private def open(): Unit =
     note = None
     form.classList.add("hidden")
+    Option(boardLink).foreach(_.classList.add("hidden"))
     account.blur()
     password.blur()
     phase = Phase.Opening(now)

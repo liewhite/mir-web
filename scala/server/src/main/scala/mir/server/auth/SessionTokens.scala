@@ -76,5 +76,7 @@ object RateLimiter:
   def clientErrorsPerAccount(): RateLimiter = RateLimiter(30, 3_600_000L)
   /** 客户端报错上报（按 IP）：1 小时 60 条 */
   def clientErrorsPerIp(): RateLimiter = RateLimiter(60, 3_600_000L)
+  /** 留言板发帖和回复（按账号，#1280）：10 分钟 10 条 */
+  def boardWrites(): RateLimiter = RateLimiter(10, 600_000L)
   /** 看不懂的指令记日志（按账号）：1 分钟 5 条 */
   def badCommands(): RateLimiter = RateLimiter(5, 60_000L)

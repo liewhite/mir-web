@@ -9,6 +9,7 @@ import java.nio.file.{Path, Paths}
  *   WEB_DIR     客户端页面（scala/client/web：index.html、main.js ……），不用登录
  *   DATA_DIR    数据库和备份（mir.db、backup/）
  *   MIR_SESSION_SECRET  会话 cookie 的签名密钥（至少 16 字符）
+ *   BOARD_ADMINS  留言板管理员账号（逗号分隔，能删任何人的帖子，#1280；默认 liewhite）
  */
 final case class ServerConfig(
     host: String,
@@ -17,7 +18,8 @@ final case class ServerConfig(
     webDir: Path,
     dataDir: Path,
     sessionSecret: String,
-    liveness: Liveness = Liveness()
+    liveness: Liveness = Liveness(),
+    boardAdmins: Set[String] = ServerConfig.DefaultBoardAdmins
 ):
   def dbFile: Path    = dataDir.resolve("mir.db")
   def backupDir: Path = dataDir.resolve("backup")
@@ -33,6 +35,8 @@ final case class ServerConfig(
 final case class Liveness(pingEveryMs: Long = 10_000L, idleTimeoutMs: Long = 30_000L)
 
 object ServerConfig:
+  val DefaultBoardAdmins: Set[String] = Set("liewhite")
+
   /** 没设的用默认值（相对 sbt 的工作目录 scala/）；命令行开号、迁移只用到 DATA_DIR。 */
   def fromEnv(env: Map[String, String] = sys.env): ServerConfig =
     def path(k: String, default: String) = Paths.get(env.getOrElse(k, default)).toAbsolutePath.normalize
@@ -42,5 +46,6 @@ object ServerConfig:
       assetsDir = path("ASSETS_DIR", "../public/assets"),
       webDir = path("WEB_DIR", "client/web"),
       dataDir = path("DATA_DIR", "server/data"),
-      sessionSecret = env.getOrElse("MIR_SESSION_SECRET", "")
+      sessionSecret = env.getOrElse("MIR_SESSION_SECRET", ""),
+      boardAdmins = env.get("BOARD_ADMINS").map(_.split(',').map(_.trim).filter(_.nonEmpty).toSet).getOrElse(DefaultBoardAdmins)
     )

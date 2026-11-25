@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="format-detection" content="telephone=no">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-180.png">
+<title>留言板 - 热血传奇 1.76</title>
+<!--
+  留言板（#1280）：玩家给服主反馈的渠道，全公开。看帖不用登录；发帖、回复、删除走 api/board（服务端 BoardApi），
+  登录用游戏同一个账号（同一个 cookie）。页面独立于游戏（不加载 main.js），所有内容一律按纯文本插入（textContent），不拼 HTML。
+-->
+<style>
+* { box-sizing: border-box; }
+.hidden { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: #120d07; color: #e8dcc0; font: 15px/1.55 "PingFang SC", "Microsoft YaHei", sans-serif;
+  padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }
+main { max-width: 760px; margin: 0 auto; }
+header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+header h1 { flex: 1; margin: 0; font-size: 20px; color: #ffcf6b; letter-spacing: 2px; }
+a { color: #ffcf6b; }
+.box { background: #1e160c; border: 1px solid #5a4424; border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; }
+.muted { color: #9a8a6a; font-size: 13px; }
+.err { color: #ff8a8a; font-size: 14px; min-height: 0; }
+.err:empty { display: none; }
+button { font: inherit; font-size: 15px; color: #f4e6c4; background: linear-gradient(#5b4426, #3a2a16); border: 1px solid #8a6a3a;
+  border-radius: 4px; padding: 6px 14px; cursor: pointer; }
+button:disabled { opacity: .5; }
+button.link { background: none; border: none; padding: 2px 6px; color: #c9a060; font-size: 13px; }
+button.link.danger { color: #d27a6a; }
+input, select, textarea { font: inherit; font-size: 16px; color: #fff; background: #0b0804; border: 1px solid #6a5030; border-radius: 4px; padding: 6px 8px; }
+textarea { width: 100%; resize: vertical; min-height: 84px; display: block; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+.row .grow { flex: 1; }
+#login input { flex: 1; min-width: 120px; }
+.topic { background: #1a130a; border: 1px solid #3e2e18; border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; }
+.meta { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.who { color: #ffe08a; font-weight: bold; }
+.when { color: #8a7a5a; font-size: 12px; }
+.meta .sp { flex: 1; }
+.body { white-space: pre-wrap; word-break: break-word; margin-top: 4px; }
+.replies { margin-top: 8px; border-left: 2px solid #4a3820; padding-left: 10px; }
+.reply { padding: 4px 0; border-top: 1px dashed #3a2c18; }
+.reply:first-child { border-top: none; }
+.reply .body { margin-top: 0; font-size: 14px; }
+.reply-form textarea { min-height: 56px; }
+.pager { display: flex; justify-content: center; align-items: center; gap: 12px; margin: 12px 0; }
+.empty { text-align: center; color: #9a8a6a; padding: 30px 0; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>留言板</h1>
+    <a href="./">回游戏</a>
+  </header>
+  <div class="box muted">有问题、建议、发现 bug 都可以在这里说，所有人都看得到。看帖不用登录，发帖、回复要登录（用游戏账号）。</div>
+
+  <!-- 没登录：登录 / 注册（和游戏同一个账号） -->
+  <form id="login" class="box hidden" autocomplete="on">
+    <div class="row" style="margin-top:0">
+      <input id="account" name="account" placeholder="账号" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="16">
+      <input id="password" name="password" type="password" placeholder="密码" autocomplete="current-password" maxlength="64">
+    </div>
+    <div class="row">
+      <button type="submit">登录</button>
+      <button type="button" id="register">注册新账号</button>
+      <span class="muted">注册用框里的账号密码</span>
+    </div>
+    <div class="err" id="login-err"></div>
+  </form>
+
+  <!-- 登录了：发帖 -->
+  <form id="compose" class="box hidden">
+    <textarea id="text" maxlength="1000" placeholder="想说点什么？（最多 1000 字）"></textarea>
+    <div class="row">
+      <label class="muted">署名 <select id="name"></select></label>
+      <span class="grow"></span>
+      <button type="submit" id="send">发表</button>
+    </div>
+    <div class="err" id="compose-err"></div>
+  </form>
+
+  <div id="list"></div>
+  <div class="pager hidden" id="pager">
+    <button type="button" id="prev">上一页</button>
+    <span id="pageno" class="muted"></span>
+    <button type="button" id="next">下一页</button>
+  </div>
+</main>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const NameKey = "mir.board.name";
+let state = { page: 1, pages: 1, me: null };
+
+/** 调接口：成功回 JSON，失败抛出带中文说明的 Error */
+async function api(method, path, body) {
+  const res = await fetch("api/board" + path, {
+    method, credentials: "same-origin",
+    headers: body ? { "content-type": "application/json" } : {},
+    body: body ? JSON.stringify(body) : undefined
+  });
+  let data = null;
+  try { data = await res.json(); } catch (_) {}
+  if (!res.ok) throw new Error((data && data.error) || ("出错了（" + res.status + "）"));
+  return data;
+}
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+function when(ms) {
+  const d = new Date(ms), now = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  const hm = pad(d.getHours()) + ":" + pad(d.getMinutes());
+  const md = (d.getMonth() + 1) + "-" + d.getDate();
+  if (d.toDateString() === now.toDateString()) return "今天 " + hm;
+  return (d.getFullYear() === now.getFullYear() ? md : d.getFullYear() + "-" + md) + " " + hm;
+}
+
+async function load(page) {
+  try {
+    const data = await api("GET", "?page=" + page);
+    state = { page: data.page, pages: data.pages, me: data.me || null };
+    renderMe();
+    renderList(data);
+    history.replaceState(null, "", data.page > 1 ? "?page=" + data.page : location.pathname);
+  } catch (e) {
+    $("list").replaceChildren(el("div", "empty", "加载失败：" + e.message));
+  }
+}
+
+function renderMe() {
+  const me = state.me;
+  $("login").classList.toggle("hidden", !!me);
+  $("compose").classList.toggle("hidden", !me);
+  if (!me) return;
+  const sel = $("name");
+  const keep = sel.value || localStorage.getItem(NameKey);
+  sel.replaceChildren(...me.names.map((n, i) => {
+    const o = el("option", null, i === me.names.length - 1 ? n + "（账号）" : n);
+    o.value = n;
+    return o;
+  }));
+  if (keep && me.names.includes(keep)) sel.value = keep;
+}
+
+function renderList(data) {
+  const list = $("list");
+  if (data.topics.length === 0) {
+    list.replaceChildren(el("div", "empty", "还没有留言，来发第一帖吧"));
+  } else {
+    list.replaceChildren(...data.topics.map(topicView));
+  }
+  $("pager").classList.toggle("hidden", data.pages <= 1);
+  $("pageno").textContent = data.page + " / " + data.pages + " 页";
+  $("prev").disabled = data.page <= 1;
+  $("next").disabled = data.page >= data.pages;
+}
+
+function metaRow(item, onDelete) {
+  const m = el("div", "meta");
+  m.append(el("span", "who", item.author), el("span", "when", when(item.at)), el("span", "sp"));
+  if (item.canDelete) {
+    const del = el("button", "link danger", "删除");
+    del.type = "button";
+    del.onclick = onDelete;
+    m.append(del);
+  }
+  return m;
+}
+
+function topicView(t) {
+  const box = el("div", "topic");
+  box.append(metaRow(t, () => remove("/topics/" + t.id, "删除这个帖子（连同下面的回复）？")), el("div", "body", t.body));
+  const replies = el("div", "replies");
+  t.replies.forEach((r) => {
+    const row = el("div", "reply");
+    row.append(metaRow(r, () => remove("/replies/" + r.id, "删除这条回复？")), el("div", "body", r.body));
+    replies.append(row);
+  });
+  if (t.replies.length === 0) replies.classList.add("hidden");
+  box.append(replies);
+  if (state.me) {
+    const open = el("button", "link", "回复");
+    open.type = "button";
+    open.onclick = () => { bar.remove(); replies.append(replyForm(t.id)); replies.classList.remove("hidden"); };
+    const bar = el("div", "meta");
+    bar.append(el("span", "sp"), open);
+    box.append(bar);
+  }
+  return box;
+}
+
+function replyForm(topicId) {
+  const f = el("form", "reply-form");
+  const text = el("textarea");
+  text.maxLength = 500;
+  text.placeholder = "回复（最多 500 字）";
+  const err = el("div", "err");
+  const send = el("button", null, "回复");
+  send.type = "submit";
+  const row = el("div", "row");
+  row.append(el("span", "muted", "署名：" + $("name").value), el("span", "grow"), send);
+  f.append(text, row, err);
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    send.disabled = true;
+    err.textContent = "";
+    try {
+      await api("POST", "/topics/" + topicId + "/replies", { name: $("name").value, body: text.value });
+      await load(state.page);
+    } catch (x) {
+      err.textContent = x.message;
+      send.disabled = false;
+    }
+  };
+  setTimeout(() => text.focus(), 0);
+  return f;
+}
+
+async function remove(path, question) {
+  if (!confirm(question)) return;
+  try {
+    await api("DELETE", path);
+    await load(state.page);
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+$("compose").onsubmit = async (e) => {
+  e.preventDefault();
+  const send = $("send");
+  send.disabled = true;
+  $("compose-err").textContent = "";
+  try {
+    await api("POST", "/topics", { name: $("name").value, body: $("text").value });
+    $("text").value = "";
+    await load(1);
+  } catch (x) {
+    $("compose-err").textContent = x.message;
+  } finally {
+    send.disabled = false;
+  }
+};
+$("name").onchange = () => localStorage.setItem(NameKey, $("name").value);
+
+async function signIn(register) {
+  const account = $("account").value.trim(), password = $("password").value;
+  if (!account || !password) { $("login-err").textContent = "请填账号和密码"; return; }
+  if (register && !confirm("用账号「" + account + "」注册新用户？\n密码请记牢，忘了只能找管理员改。")) return;
+  $("login-err").textContent = "";
+  try {
+    const res = await fetch(register ? "api/register" : "api/login", {
+      method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ account, password })
+    });
+    if (!res.ok) {
+      let msg = res.status === 401 ? "账号或密码不对" : res.status === 429 ? "试得太多了，过一会儿再来" : "出错了（" + res.status + "）";
+      try { const d = await res.json(); if (register && d.error) msg = d.error; } catch (_) {}
+      throw new Error(msg);
+    }
+    $("password").value = "";
+    await load(state.page);
+  } catch (x) {
+    $("login-err").textContent = x.message;
+  }
+}
+$("login").onsubmit = (e) => { e.preventDefault(); signIn(false); };
+$("register").onclick = () => signIn(true);
+$("prev").onclick = () => { load(state.page - 1); scrollTo(0, 0); };
+$("next").onclick = () => { load(state.page + 1); scrollTo(0, 0); };
+
+load(Number(new URLSearchParams(location.search).get("page")) || 1);
+</script>
+</body>
+</html>

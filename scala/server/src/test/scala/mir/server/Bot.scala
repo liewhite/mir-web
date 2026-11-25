@@ -23,6 +23,11 @@ final class Http(port: Int):
     headers.foreach((k, v) => b.header(k, v))
     client.send(b.build(), HttpResponse.BodyHandlers.ofString())
 
+  def delete(path: String, headers: (String, String)*): HttpResponse[String] =
+    val b = HttpRequest.newBuilder(uri(path)).DELETE()
+    headers.foreach((k, v) => b.header(k, v))
+    client.send(b.build(), HttpResponse.BodyHandlers.ofString())
+
   /** 登录，返回 cookie（「名=值」）。 */
   def login(account: String, password: String): Option[String] =
     val r = post("/api/login", Map("account" -> account, "password" -> password).toJson)

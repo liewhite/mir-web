@@ -5,7 +5,7 @@ import mir.data.Catalog
 import mir.server.admin.{AdminCmd, AdminReply, AdminSocket}
 import mir.server.auth.SessionTokens
 import mir.server.game.{GameServer, Headcount, Maps}
-import mir.server.http.HttpServer
+import mir.server.http.{BoardApi, HttpServer}
 import mir.server.store.*
 import mir.server.tools.Migration
 import zio.{Exit, Runtime, Scope, Unsafe, ZEnvironment, ZIO, ZLayer}
@@ -18,6 +18,7 @@ final class Store(val db: Db):
   val accounts = Accounts(db)
   val chars    = Characters(db)
   val uids     = UidBlocks(db, chars)
+  val board    = BoardStore(db)
 
 object Store:
   def open(cfg: ServerConfig): ZIO[Scope, Throwable, Store] =
@@ -39,7 +40,8 @@ object Boot:
                    headcount = Some(Headcount(() => store.accounts.count(), clock())))
       _       <- ZIO.acquireRelease(ZIO.succeed(GameServer.run(game)))(stop => ZIO.attemptBlocking(stop()).orDie)
       _       <- AdminSocket.serve(cfg.adminSocket, game.adminAndWait)
-      http     = HttpServer(store.accounts, tokens, game, cfg.assetsDir, cfg.webDir, cfg.liveness.pingEveryMs)
+      boardApi = BoardApi(store.board, store.chars, cfg.boardAdmins)
+      http     = HttpServer(store.accounts, tokens, game, boardApi, cfg.assetsDir, cfg.webDir, cfg.liveness.pingEveryMs)
       env     <- (ZLayer.succeed(Server.Config.default.binding(cfg.host, cfg.port)) >>> Server.live).build
       server   = env.get[Server]
       // 环境里只有 Scope 时 zio 2.1.27 的 ZEnvironment.prune 会误报缺 Any（测试里环境不空所以不出错），给它空环境

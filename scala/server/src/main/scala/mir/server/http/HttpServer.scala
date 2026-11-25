@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
  *   「看不懂的指令」（多半是页面和服务端版本不一致；每账号每分钟最多记 5 条）。
  * - `POST api/client-error {message,stack?,char?,version?}`：登录了才收，玩家浏览器里的报错打进日志（见 `ClientError`）；
  *   成功 204，每账号每小时 30 条、每 IP 每小时 60 条（超了 429，不记），请求体超过 16KB 413。
+ * - `api/board…`：留言板（#1280，见 `BoardApi`），看不用登录，发帖、回复、删除要登录。
  * - `assets/…`：素材，登录后才能取（登录画面本身要用的几个文件除外，见 `LoginScreenAssets`），
  *   浏览器缓存一周（version.json 除外）；其余路径是客户端页面（WEB_DIR），不用登录。
  * - 都带 ETag（304），文本类大于 1KB 的 gzip。
@@ -30,6 +31,7 @@ final class HttpServer(
     accounts: Accounts,
     tokens: SessionTokens,
     game: GameServer,
+    board: BoardApi,
     assetsDir: Path,
     webDir: Path,
     pingEveryMs: Long
@@ -57,6 +59,8 @@ final class HttpServer(
       case (Method.GET, "/api/me") =>
         account(req).map(_.fold(unauthorized)(a => json(Status.Ok, Map("account" -> a.name).toJson)))
       case (Method.GET, "/ws") => account(req).flatMap(_.fold(ZIO.succeed(unauthorized))(webSocket))
+      case _ if p == "/api/board" || p.startsWith("/api/board/") =>
+        account(req).flatMap(board.route(req, req.path.segments.drop(2).toList, _))
       case (Method.GET | Method.HEAD, _) if p == "/assets" || p.startsWith("/assets/") =>
         val rel = req.path.segments.drop(1)
         if session(req).isEmpty && !LoginScreenAssets.allows(rel) then ZIO.succeed(unauthorized)
@@ -194,12 +198,9 @@ final class HttpServer(
 
   // ---------------- 小工具 ----------------
 
-  private def json(status: Status, body: String): Response =
-    Response(status = status, body = Body.fromString(body))
-      .addHeader("content-type", "application/json")
-      .addHeader("cache-control", "no-store")
+  private def json(status: Status, body: String): Response = JsonReply(status, body)
 
-  private def unauthorized = json(Status.Unauthorized, """{"error":"login required"}""")
+  private def unauthorized = JsonReply.unauthorized
 
 /**
  * 不登录也给的素材：原版登录画面要用的图和声音（#1197）——

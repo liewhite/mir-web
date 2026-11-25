@@ -23,9 +23,14 @@ enum UiAction:
   case Trade
   /** 私聊：聊天框预填「/最近私聊的人 」（原版按「/」键） */
   case Whisper
+  /** 在新标签页打开留言板（#1280，左上角「留言」键） */
+  case MessageBoard
   case CloseAll
 
 object UiAction:
+  /** 留言板页面（client/web/board.html，和游戏同一个登录） */
+  val MessageBoardPage = "board.html"
+
   /** 键盘键位（KeyboardEvent.key → 操作） */
   val Keys: Map[String, UiAction] =
     def all(a: UiAction, ks: String*) = ks.map(_ -> a)

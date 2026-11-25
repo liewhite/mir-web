@@ -5,7 +5,7 @@ import java.sql.{Connection, DriverManager, PreparedStatement, ResultSet}
 import scala.util.Using
 
 /**
- * SQLite 数据库：账号、角色、全服物品编号。一个文件 DATA_DIR/mir.db。
+ * SQLite 数据库：账号、角色、全服物品编号、留言板。一个文件 DATA_DIR/mir.db。
  *
  * - 一条连接，所有访问串行（synchronized）：用的人少，游戏线程和 HTTP 线程偶尔才查一次，没必要上连接池。
  * - WAL 模式：服务端在跑时也能用命令行开号（另一个进程），互不锁死。
@@ -80,6 +80,31 @@ object Db:
       "CREATE INDEX characters_account ON characters(account_id)",
       // 全服物品编号：下一个可发的编号（服务端和命令行按块领取）
       "CREATE TABLE counters(name TEXT PRIMARY KEY, next INTEGER NOT NULL)"
+    ),
+    // 留言板（#1280）：帖子按最后活跃（bumped_at：发帖或最新回复的时刻）排；删除只做标记，deleted_by 是删的人的账号
+    List(
+      """CREATE TABLE board_topics(
+        |  id INTEGER PRIMARY KEY,
+        |  account_id INTEGER NOT NULL REFERENCES accounts(id),
+        |  author TEXT NOT NULL,
+        |  body TEXT NOT NULL,
+        |  created_at INTEGER NOT NULL,
+        |  bumped_at INTEGER NOT NULL,
+        |  deleted_at INTEGER,
+        |  deleted_by INTEGER
+        |)""".stripMargin,
+      "CREATE INDEX board_topics_bumped ON board_topics(bumped_at) WHERE deleted_at IS NULL",
+      """CREATE TABLE board_replies(
+        |  id INTEGER PRIMARY KEY,
+        |  topic_id INTEGER NOT NULL REFERENCES board_topics(id),
+        |  account_id INTEGER NOT NULL REFERENCES accounts(id),
+        |  author TEXT NOT NULL,
+        |  body TEXT NOT NULL,
+        |  created_at INTEGER NOT NULL,
+        |  deleted_at INTEGER,
+        |  deleted_by INTEGER
+        |)""".stripMargin,
+      "CREATE INDEX board_replies_topic ON board_replies(topic_id)"
     )
   )
 

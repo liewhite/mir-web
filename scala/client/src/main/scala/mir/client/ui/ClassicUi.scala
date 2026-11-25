@@ -219,6 +219,10 @@ final class ClassicUi(
     case UiAction.Whisper        => lastWhisper.fold(openChat(Speech.WhisperPrefix))(whisperTo)
     case UiAction.MiniMap        => miniMap.cycle()
     case UiAction.WorldMap       => itemMenu.close(); worldMap.toggle()
+    // 新标签页打开，游戏继续连着；被浏览器拦了就提示网址
+    case UiAction.MessageBoard =>
+      if dom.window.open(UiAction.MessageBoardPage, "_blank") == null then
+        message(s"浏览器拦了新窗口，留言板在：${dom.window.location.origin}/${UiAction.MessageBoardPage}", Tone.Bad)
     case UiAction.CloseAll       => closeAll()
 
   def logout(): Unit = env.logout()

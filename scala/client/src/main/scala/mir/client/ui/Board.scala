@@ -174,7 +174,7 @@ final class Board(ui: ClassicUi):
     g.imgPart(Gfx.Main, 4, x + half + 1, y + mtop, half + 1, mtop, w - half - 2, h - mtop)
   }
 
-  /** 左上角「传送」键（原版没有，用户 #1139 要的传送菜单）；按触屏操作件的倍数放大。 */
+  /** 左上角「传送」键（原版没有，用户 #1139 要的传送菜单）和它右边的「留言」键（#1280）；按触屏操作件的倍数放大。 */
   private def drawTeleportButton(): Unit =
     val s = ui.ctlScale
     val r = Rect(ui.safe.left + 6, ui.safe.top + 6, 52 * s, 28 * s)
@@ -184,6 +184,14 @@ final class Board(ui: ClassicUi):
     }
     ui.area(r)
     ui.button(Button(r, () => ui.run(UiAction.Teleport)))
+    // 右边「留言」键：新标签页开留言板（#1280）
+    val b = Rect(r.x + r.w + 6, r.y, r.w, r.h)
+    g.scaled(b.x, b.y, s) {
+      g.frame(Rect(0, 0, 52, 28), if ui.isPressed(b) then "rgba(90,70,30,.9)" else "rgba(0,0,0,.6)", "#c9a060")
+      g.text("留言", (52 - g.width("留言")) / 2, 8, "#ffe08a", bold = true)
+    }
+    ui.area(b)
+    ui.button(Button(b, () => ui.run(UiAction.MessageBoard)))
 
   // ---------------- 触屏操作件（用户 #1140） ----------------
 
