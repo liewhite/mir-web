@@ -46,6 +46,30 @@ final class Spawner(w: World, start: Millis):
       BossSpot(s.monster, s.at, s.count, livingOf(i).map(m => BossAlive(m.cell, m.hp, m.maxHp)), due.get(i))
   }
 
+  private def keyOf(s: SpawnDef, i: Int): SpawnKey = SpawnKey(i, s.monster, s.at)
+
+  /** 停服快照（#1279）：刷怪点刷出来、还活着的野怪（宝宝、被收服的、boss 召出的小怪不算），各刷怪点下次补怪的时刻。 */
+  private[world] def freeze(): (List[FrozenMonster], List[FrozenRefill]) =
+    val byIndex = spawns.map((s, i) => i -> keyOf(s, i)).toMap
+    val alive = w.eachActor.collect {
+      case m: Monster if !m.dead && m.master.isEmpty => m.spawn.flatMap(byIndex.get).map(FrozenMonster(_, m.cell, m.dir, m.hp))
+    }.flatten.toList
+    (alive, due.toList.flatMap((i, at) => byIndex.get(i).map(FrozenRefill(_, at))))
+
+  /**
+   * 开图后接上快照：放回活着的野怪（原位被占就放附近）、改回补怪时刻。认不出的刷怪点（数据表改过）的怪丢掉、
+   * 补怪时刻不改（开图就补满，同没有快照）。返回放回了几只。
+   */
+  private[world] def thaw(monsters: List[FrozenMonster], refills: List[FrozenRefill]): Int =
+    val known = spawns.map((s, i) => keyOf(s, i)).toSet
+    refills.filter(r => known(r.spawn)).foreach(r => due(r.spawn.index) = r.at)
+    monsters.filter(m => known(m.spawn)).flatMap { f =>
+      w.catalog.monster(f.spawn.monster).flatMap(spawnMonster(_, Some(f.spawn.index), f.cell, 0)).map { m =>
+        w.grid.face(m, f.dir)
+        w.vitals.setMaxHp(m, m.maxHp, Some(math.max(1, f.hp)))
+      }
+    }.size
+
   /** 在 at 周围 radius 格内找空格放一只怪（找不到就扩大范围找）。 */
   private[world] def spawnMonster(d: MonsterDef, spawn: Option[Int], at: Cell, radius: Int): Option[Monster] =
     val rng   = w.rngOf

@@ -83,15 +83,22 @@ final class Roster(w: World):
       w.out.tell(p, ServerMsg.EnterMap(p.id, w.mapId, p.cell, p.dir, w.now))
       w.out.sound(p.cell, Sounds.spaceIn)
     else
-      val pets = p.pets.flatMap(w.actor).collect {
-        case m: Monster if !m.dead => PetData(m.defn.name, m.hp, m.body, m.petLevel, m.summoning)
-      }.toList
       w.out.sound(p.cell, Sounds.spaceOut)
-      // 下毒的人留在这张图：编号到了别的图不算数
-      val statuses = p.statuses.all.map {
-        case Timed(q: Status.Poisoned, until) => Timed(q.copy(by = None), until)
-        case t                                 => t
-      }
-      w.out.depart(Departure(p.id, snapshot(p).copy(place = to), Carried(pets, statuses, p.potions, Some(p.pkDecayAt))))
+      w.out.depart(Departure(p.id, snapshot(p).copy(place = to), carried(p)))
       w.remove(p)
       p.pets.flatMap(w.actor).foreach(w.remove)
+
+  /** 在线玩家不进存档、要跟着人走的东西（停服快照用，#1279）。 */
+  def carriedOf(id: ActorId): Option[Carried] = w.player(id).map(carried)
+
+  /** 换图、停服时带走的：活着的宝宝、身上的限时状态、没回完的药、下次降 PK 值的时刻。 */
+  private def carried(p: Player): Carried =
+    val pets = p.pets.flatMap(w.actor).collect {
+      case m: Monster if !m.dead => PetData(m.defn.name, m.hp, m.body, m.petLevel, m.summoning)
+    }.toList
+    // 下毒的人留在这张图：编号到了别的图（或重启后）不算数
+    val statuses = p.statuses.all.map {
+      case Timed(q: Status.Poisoned, until) => Timed(q.copy(by = None), until)
+      case t                                 => t
+    }
+    Carried(pets, statuses, p.potions, Some(p.pkDecayAt))

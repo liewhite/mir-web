@@ -6,11 +6,12 @@ import mir.model.*
 import mir.protocol.*
 import mir.server.admin.{AdminCmd, AdminReply}
 import mir.server.game.{BossReport, GameServer, Headcount, Link, LinkEvent, Maps}
-import mir.server.store.Db
-import mir.world.{BossAlive, BossSpot, CharacterData, Chronicle}
+import mir.server.store.{Db, Freezer, Frozen, Snapshots}
+import mir.social.Social
+import mir.world.{BossAlive, BossSpot, CharacterData, Chronicle, Loot}
 import zio.test.*
 
-import java.nio.file.{Files, Paths}
+import java.nio.file.{Files, Path, Paths}
 import scala.collection.mutable
 
 /**
@@ -29,14 +30,16 @@ object GameServerSpec extends ZIOSpecDefault:
     def close(): Unit              = closed = true
 
   /** 一套假时钟的游戏服务端 + 一个已有角色的账号。 */
-  private final class Fixture:
+  private final class Fixture(dbFile: Path = Files.createTempDirectory("mir-game-test").resolve("mir.db"), freezer: Freezer = Freezer.Off):
     var now   = Millis(1_000_000L)
-    val store = Store(Db.open(Files.createTempDirectory("mir-game-test").resolve("mir.db")))
-    val acc   = store.accounts.add("alice", "secret1").fold(e => throw AssertionError(e.toString), identity)
-    val char  = store.chars.create(acc.id, CharacterData.newbie(catalog, "阿狸", Job.Warrior, Sex.Male, store.uids))
-      .fold(e => throw AssertionError(e), identity)
-    val game  = GameServer(catalog, Maps(catalog, assets, store.uids, () => now), store.chars, store.uids, None, () => now,
-      headcount = Some(Headcount(() => store.accounts.count(), now)))
+    val store = Store(Db.open(dbFile))
+    val acc   = store.accounts.find("alice").getOrElse(store.accounts.add("alice", "secret1").fold(e => throw AssertionError(e.toString), identity))
+    val char  = store.chars.list(acc.id).headOption.getOrElse(
+      store.chars.create(acc.id, CharacterData.newbie(catalog, "阿狸", Job.Warrior, Sex.Male, store.uids)).fold(e => throw AssertionError(e), identity))
+    val social = Social()
+    val maps  = Maps(catalog, assets, store.uids, () => now, social)
+    val game  = GameServer(catalog, maps, store.chars, store.uids, None, () => now,
+      social = social, headcount = Some(Headcount(() => store.accounts.count(), now)), freezer = freezer)
     def advance(ms: Long): Unit = { now = now + ms; game.step() }
     def connect(n: Long): FakeLink =
       val l = FakeLink(LinkId(n), acc)
@@ -104,6 +107,56 @@ object GameServerSpec extends ZIOSpecDefault:
       val sb = f.store.chars.get(c2.id).get.data
       f.store.db.close()
       assertTrue(opened, red(sa) == 1, red(sb) == 7, sa.gold == Gold(200), sb.gold == Gold(400))
+    },
+    test("无感重启（#1279）：停服写快照、开服接上：地上的东西还在且不复制，角色带的等重连领回，小组接上、过 2 分钟没回来的队员按下线处理；快照只用一次") {
+      val dbFile = Files.createTempDirectory("mir-game-test").resolve("mir.db")
+      /** 存进数据库，顺便记下存了什么 */
+      final class Recording(db: Db) extends Freezer:
+        val inner = Snapshots(db)
+        var last  = Option.empty[Frozen]
+        def put(f: Frozen): Unit = { last = Some(f); inner.put(f) }
+        def take(): Frozen       = inner.take()
+      val first = Fixture(dbFile)
+      val rec   = Recording(first.store.db)
+      val f1    = Fixture(dbFile, rec) // 同一个库上带快照的服务端
+      val c2 = f1.store.chars.create(f1.acc.id, CharacterData.newbie(catalog, "阿乙", Job.Taoist, Sex.Female, f1.store.uids))
+        .fold(e => throw AssertionError(e), identity)
+      val a = f1.connect(1)
+      val b = f1.connect(2)
+      f1.say(a, SessionCmd.EnterGame(f1.char.id))
+      f1.say(b, SessionCmd.EnterGame(c2.id))
+      f1.say(b, SocialCmd.AllowGroup(true))
+      f1.say(a, SocialCmd.CreateGroup("阿乙"))
+      val pot = f1.char.data.belt.flatten.head
+      f1.say(a, GameCmd.UpdateSettings(f1.char.data.settings.copy(autoPickup = false))) // 不然扔下就自动捡回来
+      f1.say(a, GameCmd.DropItem(pot.uid))
+      val map = f1.char.data.place.map
+      val dropped = f1.maps.opened(map).exists(_.groundItems.exists(_.loot == Loot.Item(pot)))
+      f1.game.shutdown()
+      val saved = rec.last.get
+      val stillHeld = f1.store.chars.get(f1.char.id).get.data.allItems.exists(_.uid == pot.uid)
+
+      // 开服：新的游戏服务端（新 Maps、新 Social）接上快照
+      val f2 = Fixture(dbFile, Snapshots(first.store.db))
+      f2.game.resume()
+      val onGround = f2.maps.opened(map).toVector.flatMap(_.groundItems).count(_.loot == Loot.Item(pot))
+      val a2 = f2.connect(3)
+      f2.say(a2, SessionCmd.EnterGame(f2.char.id))
+      val regrouped = a2.got.collect { case ServerMsg.Group(g) => g.members }.lastOption
+      // 阿乙一直没回来：2 分钟后按下线处理，小组只剩一人就散了（阿狸照常在线：每 10 秒回 pong）
+      (1 to 13).foreach { _ => f2.game.post(LinkEvent.Alive(a2)); f2.advance(10_000) }
+      val afterWait = (f2.game.onlineCount, f2.social.mates("阿狸"), a2.got.collect { case ServerMsg.Notice(t, _) => t }.contains("小组解散了。"))
+      // 快照只用一次：再开一次什么也没有
+      val again = Snapshots(first.store.db).take()
+      first.store.db.close()
+      assertTrue(
+        dropped, !stillHeld,
+        saved.carried.keySet == Set("阿狸", "阿乙"), saved.parties == Vector(Vector("阿狸", "阿乙")), saved.maps.contains(map),
+        onGround == 1,
+        regrouped.contains(List("阿狸", "阿乙")),
+        afterWait == (1, Vector.empty, true),
+        again.isEmpty
+      )
     },
     test("定时人数公告（#1244）：每 5 分钟给所有连接发一行注册/在线人数；游戏里没人在线的那一轮不发") {
       val f = Fixture()

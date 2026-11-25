@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.Catalog
 import mir.protocol.*
 import mir.server.{Account, LinkId}
-import mir.server.store.{Backups, Characters, StoredChar}
+import mir.server.store.{Backups, Characters, Freezer, Frozen, StoredChar}
 import mir.social.{Directory, Letter, Seen, Social}
 import mir.server.admin.{AdminCmd, AdminReply}
 import mir.world.{Carried, CharacterData, Place, UidSource}
@@ -48,6 +48,10 @@ enum LinkEvent:
  * （默认 30 秒）既没指令也没 pong 就当它断了：关连接、存档下线。误判了也没关系，客户端会自动重连并回到游戏。
  *
  * 定时人数公告（#1244）：给了 `headcount` 就每 5 分钟（有人在线时）全服公告一行注册/在线人数。
+ *
+ * 无感重启（#1279）：正常停服（shutdown）时把在线角色带的宝宝和状态、小组、开着的每张图（野怪、地上的东西、刷怪计时）存进 `freezer`，
+ * 开服（resume）时取出来：图原样开好，角色重连进游戏时领回自己带的，小组等 `RegroupMs` 还没回来的人按下线处理。
+ * 崩溃不写快照：定时快照和角色定时存档错开，恢复后会出现「已捡进包裹、地上还有一份」。
  */
 final class GameServer(
     catalog: Catalog,
@@ -59,7 +63,8 @@ final class GameServer(
     saveEveryMs: Long = 30_000L,
     idleTimeoutMs: Long = 30_000L,
     social: Social = Social(),
-    headcount: Option[Headcount] = None
+    headcount: Option[Headcount] = None,
+    freezer: Freezer = Freezer.Off
 ):
   import GameServer.*
 
@@ -92,6 +97,10 @@ final class GameServer(
   /** 这一步里有人进出的图：没人了也要再 flush 一次 */
   private val touched = mutable.Set.empty[MapId]
   private var lastSave = clock()
+  /** 停服快照里还没回来的角色带的东西（按角色名）：进游戏时领走；下次停服还没领的接着存 */
+  private val unclaimed = mutable.Map.empty[String, Carried]
+  /** 恢复的小组等到这时还没回来的人按下线处理 */
+  private var regroupAt: Option[Millis] = None
 
   def onlineCount: Int = online.size
 
@@ -127,15 +136,54 @@ final class GameServer(
       lastSave = now
       online.values.foreach(o => snapshot(o).foreach(save(o.id, _)))
       backups.foreach(b => guard("备份数据库")(b.daily(System.currentTimeMillis())))
+    regroupAt.filter(_ <= now).foreach { _ =>
+      regroupAt = None
+      guard("清掉没回来的队员")(post(social.dropAbsent()))
+    }
     headcount.foreach(h => guard("人数公告")(h.due(now, online.size).foreach { text =>
       broadcast(text)
       System.err.println(s"人数公告：$text（发给 ${conns.size} 个连接）")
     }))
 
-  /** 停服：全部在线角色存档下线。 */
+  /**
+   * 开服（第一步之前）：接上停服快照。快照里的图现在就开好并放回怪和地上的东西（开不了的图跳过），
+   * 角色带的等他们重连，小组先恢复、等 RegroupMs。
+   */
+  def resume(): Unit =
+    val f = attempt("读停服快照")(freezer.take()).getOrElse(Frozen())
+    f.maps.foreach { (id, fm) =>
+      maps.get(id) match
+        case Right(w) =>
+          guard(s"恢复地图 $id") {
+            val (monsters, items) = w.thaw(fm)
+            System.err.println(s"停服快照：地图 ${id.value} 放回 $monsters 只怪、$items 件地上的东西")
+          }
+        case Left(why) => System.err.println(s"停服快照：地图 ${id.value} 开不了，跳过（$why）")
+    }
+    unclaimed ++= f.carried
+    if f.parties.nonEmpty then
+      social.restoreParties(f.parties)
+      regroupAt = Some(clock() + RegroupMs)
+    if !f.isEmpty then
+      System.err.println(s"停服快照：${f.carried.size} 个角色带的宝宝和状态等重连领回，恢复 ${f.parties.size} 个小组")
+
+  /**
+   * 停服：全部在线角色存档下线，再存停服快照。
+   * 顺序：先取各人带的和小组（下线会解散小组、带走宝宝），再下线存档，最后各图只剩野怪和地上的东西时拍下来。
+   */
   def shutdown(): Unit =
     step()
+    val carried = online.values.toVector.flatMap { o =>
+      attempt(s"取 ${o.name} 带的东西")(maps.get(o.map).toOption.flatMap(_.carriedOf(o.actor))).flatten.map(o.name -> _)
+    }
+    val parties = social.parties
     online.values.toVector.foreach(o => guard(s"停服存档 ${o.id}")(logout(o)))
+    val frozenMaps = maps.loaded.toVector.flatMap(w => attempt(s"拍地图 ${w.mapId}")(w.mapId -> w.freeze()))
+    val f = Frozen(frozenMaps.toMap, unclaimed.toMap ++ carried, parties)
+    guard("存停服快照") {
+      freezer.put(f)
+      System.err.println(s"停服快照：${f.maps.size} 张图、${f.carried.size} 个角色带的东西、${f.parties.size} 个小组")
+    }
 
   private def handle(e: LinkEvent | AdminRequest, now: Millis): Unit = e match
     case AdminRequest(cmd, reply) => reply(execute(cmd))
@@ -200,19 +248,21 @@ final class GameServer(
   /** 进游戏：先下掉这个连接正在玩的别的角色；角色已在别处在线就踢掉旧连接，接着用它在线的状态。 */
   private def enterGame(c: Conn, sc: StoredChar): Unit =
     c.playing.filter(_ != sc.id).flatMap(online.get).foreach(logout)
-    val data = online.get(sc.id) match
+    // 顶号、掉线重连（旧连接还没超时）：接着用在线的状态，宝宝和身上状态跟过来；停服后第一次进：领回停服时带的
+    val (data, carried) = online.get(sc.id) match
       case Some(old) =>
         if old.conn ne c then
           old.conn.playing = None
           old.conn.link.send(ServerMsg.Kicked("这个角色在别处登录了"))
           old.conn.link.close()
-        takeOut(old).getOrElse(sc.data)
-      case None => sc.data
+        val kept = maps.get(old.map).toOption.flatMap(_.carriedOf(old.actor)).getOrElse(Carried())
+        (takeOut(old).getOrElse(sc.data), kept)
+      case None => (sc.data, unclaimed.remove(sc.data.name).getOrElse(Carried()))
     val o = Online(sc.id, sc.data.name, c, data.place.map, ActorId(0))
     c.playing = Some(sc.id)
     online(sc.id) = o
     System.err.println(s"上线 ${o.name}（${c.link.account.name}），在线 ${online.size} 人")
-    enter(o, data)
+    enter(o, data, carried)
     if online.contains(sc.id) then post(social.online(o.name, data.social))
 
   /** 把角色放进存档里那张图；那张图开不了（数据表或素材缺了）就送回城，再不行送新手村。 */
@@ -284,6 +334,8 @@ final class GameServer(
 
 object GameServer:
   val StepMs: Long = 50
+  /** 开服后等队员重连多久：过了还没回来的按下线处理（队长没回来全队解散） */
+  val RegroupMs: Long = 2 * 60_000L
 
   /** 一条管理指令和回话的去处（在游戏线程里调） */
   private final case class AdminRequest(cmd: AdminCmd, reply: AdminReply => Unit)
@@ -295,6 +347,8 @@ object GameServer:
     @volatile var running = true
     val slow = SlowSteps()
     val thread = Thread(() =>
+      try game.resume()
+      catch case NonFatal(e) => e.printStackTrace()
       while running do
         val t0 = System.nanoTime()
         try game.step()

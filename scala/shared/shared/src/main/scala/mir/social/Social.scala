@@ -69,6 +69,16 @@ final class Social extends Company:
     book.leave(name)
     (left ++ friends.offline(name)).filterNot(_.to == name)
 
+  /** 全部小组（第一个是队长）：停服快照用（#1279） */
+  def parties: Vector[Vector[String]] = groups.all
+
+  /** 开服接上停服前的小组：队员重连上线时就在组里；过一会儿还没回来的用 dropAbsent 按下线处理。 */
+  def restoreParties(parties: Seq[Vector[String]]): Unit = groups.restore(parties)
+
+  /** 小组里不在线的人按下线处理（队员退出、队长不在全队解散）。 */
+  def dropAbsent(): Vector[Letter] =
+    groups.members.filterNot(book.isOnline).toVector.flatMap(groups.offline).filter(l => book.isOnline(l.to))
+
   /** 处理一个社交指令。 */
   def handle(me: String, cmd: SocialCmd, dir: Directory): Vector[Letter] = cmd match
     case SocialCmd.AllowGroup(on)      => groups.allow(me, on)

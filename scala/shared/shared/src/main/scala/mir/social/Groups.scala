@@ -82,6 +82,19 @@ final class Groups(book: Book):
         case Some(who) => removeFrom(me, who)
         case None      => refuse(me, s"${name.trim} 不在本小组里。")
 
+  /** 全部小组（每组第一个是队长）：停服快照用（#1279） */
+  def all: Vector[Vector[String]] = groups.values.toVector
+
+  /** 开服接上停服前的小组（队员还没重连）。和已有小组重人的、不到 2 人的不要。 */
+  def restore(parties: Seq[Vector[String]]): Unit =
+    parties.filter(g => g.size >= 2 && g.distinct.size == g.size && !g.exists(leaderOf.contains)).foreach { g =>
+      groups(g.head) = g
+      g.foreach(leaderOf(_) = g.head)
+    }
+
+  /** 在小组里的全部人 */
+  def members: Iterable[String] = leaderOf.keys
+
   /** 队伍聊天 */
   def say(me: String, text: String): Vector[Letter] =
     val t = text.trim

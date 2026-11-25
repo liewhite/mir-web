@@ -5,7 +5,7 @@ import java.sql.{Connection, DriverManager, PreparedStatement, ResultSet}
 import scala.util.Using
 
 /**
- * SQLite 数据库：账号、角色、全服物品编号、留言板。一个文件 DATA_DIR/mir.db。
+ * SQLite 数据库：账号、角色、全服物品编号、留言板、停服快照。一个文件 DATA_DIR/mir.db。
  *
  * - 一条连接，所有访问串行（synchronized）：用的人少，游戏线程和 HTTP 线程偶尔才查一次，没必要上连接池。
  * - WAL 模式：服务端在跑时也能用命令行开号（另一个进程），互不锁死。
@@ -105,6 +105,15 @@ object Db:
         |  deleted_by INTEGER
         |)""".stripMargin,
       "CREATE INDEX board_replies_topic ON board_replies(topic_id)"
+    ),
+    // 停服快照（#1279）：停服时写、开服时读完就删；part 是一张图、一个角色或全部小组，format 是快照格式版本
+    List(
+      """CREATE TABLE snapshot(
+        |  part TEXT PRIMARY KEY,
+        |  format INTEGER NOT NULL,
+        |  data TEXT NOT NULL,
+        |  saved_at INTEGER NOT NULL
+        |)""".stripMargin
     )
   )
 

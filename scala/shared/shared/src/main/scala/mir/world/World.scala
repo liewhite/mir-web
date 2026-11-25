@@ -103,7 +103,7 @@ final class World(
   export grid.{occupant, occupants, canEnter, walkableFor, freeCellNear, randomSpot}
   export conditions.activeFields
   export hostility.{allied, canAttack, harms, isEnemy}
-  export roster.{join, leave, snapshot}
+  export roster.{join, leave, snapshot, carriedOf}
   export spawner.bossSpots
   export visibility.{viewOf, visibleTo, fieldsVisibleTo}
 
@@ -205,6 +205,28 @@ final class World(
     val g = GroundItem(GroundId(nextGround), cell, loot, clock, ward)
     nextGround += 1
     ground(g.id) = g
+
+  // ---------------- 停服快照（#1279） ----------------
+
+  /** 停服前（玩家和宝宝已下线）：本图活着的野怪、地上的东西、各刷怪点的补怪时刻。 */
+  def freeze(): FrozenMap =
+    val (alive, refills) = spawner.freeze()
+    FrozenMap(alive, ground.values.map(g => FrozenGround(g.cell, g.loot, g.droppedAt, g.ward)).toList, refills)
+
+  /**
+   * 刚开的图接上快照（在第一次 tick 之前调）。数据表里已没有的物品、怪丢掉。返回放回了几只怪、几件东西。
+   */
+  def thaw(f: FrozenMap): (Int, Int) =
+    val monsters = spawner.thaw(f.monsters, f.refills)
+    val items = f.ground.filter {
+      case FrozenGround(_, Loot.Item(it), _, _) => catalog.item(it.name).isDefined
+      case _                                    => true
+    }
+    items.foreach { g =>
+      ground(GroundId(nextGround)) = GroundItem(GroundId(nextGround), g.cell, g.loot, g.droppedAt, g.ward)
+      nextGround += 1
+    }
+    (monsters, items.size)
 
   private[world] def removeGround(id: GroundId): Unit = ground.remove(id).foreach(_ => ())
 

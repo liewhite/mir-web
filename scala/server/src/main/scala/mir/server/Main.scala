@@ -19,6 +19,7 @@ final class Store(val db: Db):
   val chars    = Characters(db)
   val uids     = UidBlocks(db, chars)
   val board    = BoardStore(db)
+  val frozen   = Snapshots(db)
 
 object Store:
   def open(cfg: ServerConfig): ZIO[Scope, Throwable, Store] =
@@ -37,7 +38,7 @@ object Boot:
       maps     = Maps(catalog, cfg.assetsDir, store.uids, clock, social)
       game     = GameServer(catalog, maps, store.chars, store.uids, Some(Backups(store.db, cfg.backupDir)), clock,
                    idleTimeoutMs = cfg.liveness.idleTimeoutMs, social = social,
-                   headcount = Some(Headcount(() => store.accounts.count(), clock())))
+                   headcount = Some(Headcount(() => store.accounts.count(), clock())), freezer = store.frozen)
       _       <- ZIO.acquireRelease(ZIO.succeed(GameServer.run(game)))(stop => ZIO.attemptBlocking(stop()).orDie)
       _       <- AdminSocket.serve(cfg.adminSocket, game.adminAndWait)
       boardApi = BoardApi(store.board, store.chars, cfg.boardAdmins)
