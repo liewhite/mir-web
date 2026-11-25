@@ -1,0 +1,3269 @@
+{
+ "_说明": "1.80 爆率（#1314），由 tools/import_v180_drops.py 生成，格式同 ref/Mir176 catalog.json 的 drops，见 tools/catalog.py",
+ "drops": {
+  "魔龙刀兵": [
+   {
+    "item": "金币",
+    "numerator": 10,
+    "denominator": 30,
+    "amount": 1000
+   },
+   {
+    "item": "强效金创药",
+    "numerator": 10,
+    "denominator": 40,
+    "amount": 1
+   },
+   {
+    "item": "强效魔法药",
+    "numerator": 10,
+    "denominator": 40,
+    "amount": 1
+   },
+   {
+    "item": "太阳水",
+    "numerator": 10,
+    "denominator": 80,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 160,
+    "amount": 1
+   },
+   {
+    "item": "祝福油",
+    "numerator": 10,
+    "denominator": 80000,
+    "amount": 1
+   },
+   {
+    "item": "战神油",
+    "numerator": 10,
+    "denominator": 80000,
+    "amount": 1
+   },
+   {
+    "item": "绿色项链",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "骑士手镯",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "力量戒指",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "恶魔铃铛",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "龙之手镯",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "紫碧螺",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "灵魂项链",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "心灵手镯",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "泰坦戒指",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "阎罗手套",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "黑铁头盔",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "战神盔甲(男)",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "战神盔甲(女)",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "恶魔长袍(男)",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "恶魔长袍(女)",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "幽灵战衣(男)",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "幽灵战衣(女)",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "裁决之杖",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "骨玉权杖",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "无极棍",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "龙纹剑",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "血饮",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   }
+  ],
+  "魔龙破甲兵": [
+   {
+    "item": "金币",
+    "numerator": 10,
+    "denominator": 30,
+    "amount": 1000
+   },
+   {
+    "item": "强效金创药",
+    "numerator": 10,
+    "denominator": 40,
+    "amount": 1
+   },
+   {
+    "item": "强效魔法药",
+    "numerator": 10,
+    "denominator": 40,
+    "amount": 1
+   },
+   {
+    "item": "太阳水",
+    "numerator": 10,
+    "denominator": 80,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 160,
+    "amount": 1
+   },
+   {
+    "item": "祝福油",
+    "numerator": 10,
+    "denominator": 80000,
+    "amount": 1
+   },
+   {
+    "item": "战神油",
+    "numerator": 10,
+    "denominator": 80000,
+    "amount": 1
+   },
+   {
+    "item": "绿色项链",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "骑士手镯",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "力量戒指",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "恶魔铃铛",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "龙之手镯",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "紫碧螺",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "灵魂项链",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "心灵手镯",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "泰坦戒指",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "阎罗手套",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "黑铁头盔",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "战神盔甲(男)",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "战神盔甲(女)",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "恶魔长袍(男)",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "恶魔长袍(女)",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "幽灵战衣(男)",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "幽灵战衣(女)",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "裁决之杖",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "骨玉权杖",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "无极棍",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "龙纹剑",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "血饮",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   }
+  ],
+  "魔龙射手": [
+   {
+    "item": "金币",
+    "numerator": 10,
+    "denominator": 30,
+    "amount": 1000
+   },
+   {
+    "item": "强效金创药",
+    "numerator": 10,
+    "denominator": 40,
+    "amount": 1
+   },
+   {
+    "item": "强效魔法药",
+    "numerator": 10,
+    "denominator": 40,
+    "amount": 1
+   },
+   {
+    "item": "太阳水",
+    "numerator": 10,
+    "denominator": 80,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 160,
+    "amount": 1
+   },
+   {
+    "item": "祝福油",
+    "numerator": 10,
+    "denominator": 80000,
+    "amount": 1
+   },
+   {
+    "item": "战神油",
+    "numerator": 10,
+    "denominator": 80000,
+    "amount": 1
+   },
+   {
+    "item": "绿色项链",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "骑士手镯",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "力量戒指",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "恶魔铃铛",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "龙之手镯",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "紫碧螺",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "灵魂项链",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "心灵手镯",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "泰坦戒指",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "阎罗手套",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "黑铁头盔",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "战神盔甲(男)",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "战神盔甲(女)",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "恶魔长袍(男)",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "恶魔长袍(女)",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "幽灵战衣(男)",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "幽灵战衣(女)",
+    "numerator": 10,
+    "denominator": 200000,
+    "amount": 1
+   },
+   {
+    "item": "裁决之杖",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "骨玉权杖",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "无极棍",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "龙纹剑",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "血饮",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   }
+  ],
+  "魔龙力士": [
+   {
+    "item": "金币",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1000
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "太阳水",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "强效金创药",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "强效魔法药",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "祝福油",
+    "numerator": 10,
+    "denominator": 8000,
+    "amount": 1
+   },
+   {
+    "item": "战神油",
+    "numerator": 10,
+    "denominator": 8000,
+    "amount": 1
+   },
+   {
+    "item": "圣战头盔",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "圣战项链",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "圣战手镯",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "圣战戒指",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "法神头盔",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "法神项链",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "法神手镯",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "法神戒指",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "天尊头盔",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "天尊项链",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "天尊手镯",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "天尊戒指",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "天魔神甲",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "圣战宝甲",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "法神披风",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "霓裳羽衣",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "天尊道袍",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "天师长袍",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "屠龙",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "嗜魂法杖",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "龙牙",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "怒斩",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "逍遥扇",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆战甲(男)",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆战甲(女)",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆项链",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆护腕",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆战戒",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆腰带",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆战靴",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰魔衣(男)",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰魔衣(女)",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰项链",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰护腕",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰魔戒",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰腰带",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰魔靴",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "光芒道袍(男)",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "光芒道袍(女)",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "光芒项链",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "光芒护腕",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "光芒道戒",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "光芒腰带",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "光芒道靴",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   }
+  ],
+  "魔龙战将": [
+   {
+    "item": "金币",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1000
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "太阳水",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "强效金创药",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "强效魔法药",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "祝福油",
+    "numerator": 10,
+    "denominator": 8000,
+    "amount": 1
+   },
+   {
+    "item": "战神油",
+    "numerator": 10,
+    "denominator": 8000,
+    "amount": 1
+   },
+   {
+    "item": "圣战头盔",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "圣战项链",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "圣战手镯",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "圣战戒指",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "法神头盔",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "法神项链",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "法神手镯",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "法神戒指",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "天尊头盔",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "天尊项链",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "天尊手镯",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "天尊戒指",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "天魔神甲",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "圣战宝甲",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "法神披风",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "霓裳羽衣",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "天尊道袍",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "天师长袍",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "屠龙",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "嗜魂法杖",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "龙牙",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "怒斩",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "逍遥扇",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆战甲(男)",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆战甲(女)",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆项链",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆护腕",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆战戒",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆腰带",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆战靴",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰魔衣(男)",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰魔衣(女)",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰项链",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰护腕",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰魔戒",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰腰带",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰魔靴",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "光芒道袍(男)",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "光芒道袍(女)",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "光芒项链",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "光芒护腕",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "光芒道戒",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "光芒腰带",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "光芒道靴",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   }
+  ],
+  "魔龙巨蛾": [
+   {
+    "item": "金币",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1000
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "太阳水",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "强效金创药",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "强效魔法药",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "祝福油",
+    "numerator": 10,
+    "denominator": 8000,
+    "amount": 1
+   },
+   {
+    "item": "战神油",
+    "numerator": 10,
+    "denominator": 8000,
+    "amount": 1
+   },
+   {
+    "item": "圣战头盔",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "圣战项链",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "圣战手镯",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "圣战戒指",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "法神头盔",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "法神项链",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "法神手镯",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "法神戒指",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "天尊头盔",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "天尊项链",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "天尊手镯",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "天尊戒指",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "天魔神甲",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "圣战宝甲",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "法神披风",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "霓裳羽衣",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "天尊道袍",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "天师长袍",
+    "numerator": 10,
+    "denominator": 100000,
+    "amount": 1
+   },
+   {
+    "item": "屠龙",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "嗜魂法杖",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "龙牙",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "怒斩",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "逍遥扇",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆战甲(男)",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆战甲(女)",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆项链",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆护腕",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆战戒",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆腰带",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆战靴",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰魔衣(男)",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰魔衣(女)",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰项链",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰护腕",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰魔戒",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰腰带",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰魔靴",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "光芒道袍(男)",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "光芒道袍(女)",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "光芒项链",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "光芒护腕",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "光芒道戒",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "光芒腰带",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   },
+   {
+    "item": "光芒道靴",
+    "numerator": 10,
+    "denominator": 600000,
+    "amount": 1
+   }
+  ],
+  "魔龙教主": [
+   {
+    "item": "金币",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 30000
+   },
+   {
+    "item": "强效金创药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效金创药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效金创药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效金创药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效金创药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效金创药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效金创药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效金创药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效魔法药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效魔法药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效魔法药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效魔法药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效魔法药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效魔法药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效魔法药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效魔法药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "祝福油",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "雷霆战甲(男)",
+    "numerator": 10,
+    "denominator": 2000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆战甲(女)",
+    "numerator": 10,
+    "denominator": 2000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆项链",
+    "numerator": 10,
+    "denominator": 2000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆护腕",
+    "numerator": 10,
+    "denominator": 2000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆战戒",
+    "numerator": 10,
+    "denominator": 2000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆腰带",
+    "numerator": 10,
+    "denominator": 2000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆战靴",
+    "numerator": 10,
+    "denominator": 2000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰魔衣(男)",
+    "numerator": 10,
+    "denominator": 2000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰魔衣(女)",
+    "numerator": 10,
+    "denominator": 2000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰项链",
+    "numerator": 10,
+    "denominator": 2000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰护腕",
+    "numerator": 10,
+    "denominator": 2000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰魔戒",
+    "numerator": 10,
+    "denominator": 2000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰腰带",
+    "numerator": 10,
+    "denominator": 2000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰魔靴",
+    "numerator": 10,
+    "denominator": 2000,
+    "amount": 1
+   },
+   {
+    "item": "光芒道袍(男)",
+    "numerator": 10,
+    "denominator": 2000,
+    "amount": 1
+   },
+   {
+    "item": "光芒道袍(女)",
+    "numerator": 10,
+    "denominator": 2000,
+    "amount": 1
+   },
+   {
+    "item": "光芒项链",
+    "numerator": 10,
+    "denominator": 2000,
+    "amount": 1
+   },
+   {
+    "item": "光芒护腕",
+    "numerator": 10,
+    "denominator": 2000,
+    "amount": 1
+   },
+   {
+    "item": "光芒道戒",
+    "numerator": 10,
+    "denominator": 2000,
+    "amount": 1
+   },
+   {
+    "item": "光芒腰带",
+    "numerator": 10,
+    "denominator": 2000,
+    "amount": 1
+   },
+   {
+    "item": "光芒道靴",
+    "numerator": 10,
+    "denominator": 2000,
+    "amount": 1
+   },
+   {
+    "item": "开天",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "镇天",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "玄天",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "凤天魔甲",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "凰天魔衣",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "战神项链",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "战神手镯",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "战神戒指",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "圣魔项链",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "圣魔手镯",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "圣魔戒指",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "真魂项链",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "真魂手镯",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "真魂戒指",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ]
+ },
+ "drops_append": {
+  "僵尸1": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "僵尸10": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "僵尸2": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "僵尸20": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "僵尸3": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "僵尸30": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "僵尸4": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "僵尸40": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "僵尸5": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "僵尸50": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "半兽人": [
+   {
+    "item": "布鞋",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "兽皮腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "半兽勇士": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "半兽战士": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "半兽统领": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "多角虫": [
+   {
+    "item": "布鞋",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "兽皮腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "大老鼠": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "大老鼠0": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "天狼蜘蛛": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "天狼蜘蛛0": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "威思而小虫": [
+   {
+    "item": "布鞋",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "兽皮腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "尸王": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "尸王2": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "山洞蝙蝠": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "山洞蝙蝠0": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "巨型多角虫": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "巨型多角虫1": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "巨型蠕虫": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "巨型蠕虫0": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "恶灵僵尸": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "恶灵僵尸0": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "恶灵尸王": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "恶灵尸王0": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "掷斧骷髅": [
+   {
+    "item": "布鞋",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "兽皮腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "掷斧骷髅0": [
+   {
+    "item": "布鞋",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "兽皮腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "暗黑战士": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "暗黑战士0": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "森林雪人": [
+   {
+    "item": "布鞋",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "兽皮腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "楔蛾": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "毒蜘蛛": [
+   {
+    "item": "布鞋",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "兽皮腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "沃玛勇士": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "沃玛勇士0": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "沃玛战士": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "沃玛战士0": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "沃玛战将": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "沃玛战将0": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "沙虫": [
+   {
+    "item": "布鞋",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "兽皮腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "洞蛆": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "火焰沃玛": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "火焰沃玛0": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "牛头魔": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "牛头魔0": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "牛魔侍卫": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "牛魔侍卫0": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "牛魔将军": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "牛魔战士": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "牛魔战士0": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "牛魔斗士": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "牛魔斗士0": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "牛魔法师": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "牛魔法师0": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "牛魔祭司": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "牛魔祭司0": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "狼": [
+   {
+    "item": "布鞋",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "兽皮腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "猎鹰": [
+   {
+    "item": "布鞋",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "兽皮腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "盔甲虫": [
+   {
+    "item": "布鞋",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "兽皮腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "祖玛卫士": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "祖玛卫士0": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "祖玛卫士3": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "祖玛弓箭手": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "祖玛弓箭手0": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "祖玛弓箭手3": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "祖玛雕像": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "祖玛雕像0": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "祖玛雕像3": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "粪虫": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "红蛇": [
+   {
+    "item": "布鞋",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "兽皮腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "红野猪": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "红野猪0": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "红野猪3": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "虎蛇": [
+   {
+    "item": "布鞋",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "兽皮腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "蜈蚣": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "蜈蚣0": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "蝎子": [
+   {
+    "item": "布鞋",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "兽皮腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "蝎蛇": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "蝎蛇0": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "蝎蛇3": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "角蝇": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "跳跳蜂": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "跳跳蜂0": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "钳虫": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "钳虫0": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "食人花": [
+   {
+    "item": "布鞋",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "兽皮腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "骷髅": [
+   {
+    "item": "布鞋",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "兽皮腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "骷髅0": [
+   {
+    "item": "布鞋",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "兽皮腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "骷髅刀斧手": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "骷髅刀斧手0": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "骷髅弓箭手": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "骷髅弓箭手0": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "骷髅战士": [
+   {
+    "item": "布鞋",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "兽皮腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "骷髅战士0": [
+   {
+    "item": "布鞋",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "兽皮腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "骷髅战将": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "骷髅战将0": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "骷髅精灵": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "骷髅锤兵": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "骷髅锤兵0": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "骷髅长枪兵": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "骷髅长枪兵0": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "黑色恶蛆": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "黑色恶蛆0": [
+   {
+    "item": "鹿皮靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "黑野猪": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "黑野猪0": [
+   {
+    "item": "紫绸靴",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "青铜腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ],
+  "黑野猪3": [
+   {
+    "item": "钢铁腰带",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
+  ]
+ }
+}

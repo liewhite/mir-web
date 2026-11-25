@@ -142,6 +142,6 @@ object RulesGoldenSpec extends ZIOSpecDefault:
         m -> rs.map(d => (d.item, Rates.dropChance(Rates.rankOf(m), d, if d.isGold then None else catalog.item(d.item))))
       }
       val diffs = (want.keySet ++ got.keySet).filter(m => want.getOrElse(m, Nil) != got.getOrElse(m, Nil))
-      assertTrue(golden.drops.size == 6833, diffs.isEmpty)
+      assertTrue(golden.drops.size == 6833 + 309 + 195, diffs.isEmpty) // + 1.80 爆率（#1314）
     }
   )

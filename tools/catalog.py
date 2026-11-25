@@ -2,7 +2,8 @@
 
 补充表是 1.76 数据表之外加的内容（如 1.80 魔龙系列，#1313），格式和 catalog.json 一样，按键合并：
 - 列表（maps、routes、spawns、merchants、guards、minimaps、monsters、items）接在后面；
-- 字典（drops、monster_display_names）按键补上。
+- 字典（drops、monster_display_names）按键补上；
+- drops_append（怪名 → 爆率行）接在已有怪的爆率表后面（全部补充表合并完再接，怪没有爆率表就报错）。
 地图条目的 asset 是地图文件名（不带 .map），在 MAP_DIRS 里按顺序找，可以指向 1.76 已有的地图文件
 （内容相同的地图共用素材）；没写 sha256 的按文件现算。同名的地图编号、怪物名、物品名重复就报错。
 """
@@ -30,10 +31,13 @@ def map_file(asset: str) -> Path | None:
     return None
 
 
-def _merge(cat: dict, extra: dict, source: str) -> None:
+def _merge(cat: dict, extra: dict, source: str, append: list[tuple[str, dict]]) -> None:
     for key, val in extra.items():
         if key.startswith("_"):
             continue  # 说明
+        if key == "drops_append":
+            append.append((source, val))
+            continue
         if isinstance(val, list):
             have = cat.setdefault(key, [])
             if key in _UNIQUE:
@@ -53,8 +57,14 @@ def _merge(cat: dict, extra: dict, source: str) -> None:
 
 def load_catalog() -> dict:
     cat = json.loads(CATALOG.read_text())
+    append: list[tuple[str, dict]] = []
     for f in sorted(EXTRA_DIR.glob("*.json")):
-        _merge(cat, json.loads(f.read_text()), f.name)
+        _merge(cat, json.loads(f.read_text()), f.name, append)
+    for source, rows_by_monster in append:
+        for monster, rows in rows_by_monster.items():
+            if monster not in cat["drops"]:
+                raise SystemExit(f"{source}: drops_append 的 {monster} 没有爆率表")
+            cat["drops"][monster].extend(rows)
     for m in cat["maps"]:
         if "sha256" not in m and (p := map_file(m["asset"])) is not None:
             m["sha256"] = hashlib.sha256(p.read_bytes()).hexdigest()

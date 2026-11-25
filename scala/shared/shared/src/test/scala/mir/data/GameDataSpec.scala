@@ -21,8 +21,8 @@ object GameDataSpec extends ZIOSpecDefault:
         d.minimaps.size == 117 + 14 + 9,
         d.items.size == 264 + 42, // + 1.80 新装备补充表（#1312）
         d.monsters.size == 188 + 7,
-        d.drops.size == 188,
-        d.drops.values.map(_.size).sum == 6833,
+        d.drops.size == 188 + 7, // + 魔龙怪爆率（#1314）
+        d.drops.values.map(_.size).sum == 6833 + 309 + 195, // + 魔龙 7 种 + 普通腰带靴子接在老怪后面的
         d.displayNames.size == 66,
         d.skills.size == 33,
         d.exp.size == 47,
@@ -120,6 +120,25 @@ object GameDataSpec extends ZIOSpecDefault:
         boss == List("66"),
         mir.rules.Rates.bosses(MonsterName("魔龙教主")),
         d.monsters.filter(_.name.value.startsWith("魔龙")).forall(m => catalog.actions(m).isDefined)
+      )
+    },
+    test("1.80 爆率（#1314）：低级魔龙怪掉祖玛档、高级掉赤月和雷霆档、教主掉雷霆和终极全套；普通腰带靴子有老怪掉") {
+      import mir.model.GearTier
+      import mir.rules.GearTiers
+      def tiers(m: String): Set[GearTier] =
+        catalog.data.drops(MonsterName(m)).flatMap(r => GearTiers.of(r.item)).toSet
+      def dropped(m: String): Set[String] = catalog.data.drops(MonsterName(m)).map(_.item.value).toSet
+      val lord = catalog.data.drops(MonsterName("魔龙教主")).flatMap(r => GearTiers.of(r.item).map(_ -> r.item)).groupMap(_._1)(_._2)
+      def tierSize(t: GearTier) = GearTiers.all.count(_._2 == t)
+      val belts = Set("布鞋", "兽皮腰带", "鹿皮靴", "铁腰带", "紫绸靴", "青铜腰带", "钢铁腰带")
+      assertTrue(
+        List("魔龙刀兵", "魔龙破甲兵", "魔龙射手").forall(tiers(_) == Set(GearTier.Zuma)),
+        List("魔龙力士", "魔龙战将", "魔龙巨蛾").forall(tiers(_) == Set(GearTier.Redmoon, GearTier.Thunder)),
+        lord.keySet == Set(GearTier.Thunder, GearTier.Ultimate),
+        lord(GearTier.Thunder).toSet.size == tierSize(GearTier.Thunder),
+        lord(GearTier.Ultimate).toSet.size == tierSize(GearTier.Ultimate),
+        dropped("骷髅")("布鞋"), dropped("僵尸1")("铁腰带"), dropped("沃玛战士")("紫绸靴"), dropped("祖玛卫士")("钢铁腰带"),
+        catalog.data.drops.values.flatten.map(_.item.value).toSet.intersect(belts) == belts
       )
     },
     test("幻境（#1317）：十层用现成地图的素材，传送菜单只有一层，一层走得到十层、出口回盟重，每层有 boss") {
