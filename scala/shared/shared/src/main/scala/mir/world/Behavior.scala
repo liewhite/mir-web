@@ -27,8 +27,8 @@ enum Strike:
   case Spit(poison: Boolean)
   /** 不出手（神兽小形态 TElfMonster NoAttackMode：跟着主人走，有仗打就变身，见 Extra.Shapeshift） */
   case Hold
-  /** 远程投掷（掷斧骷髅、弓箭手 DualAxeMonster） */
-  case Missile(range: Int, fly: Option[MissileFx])
+  /** 远程投掷（掷斧骷髅、弓箭手 DualAxeMonster）；poison：打到身上有机会中绿毒（魔龙巨蛾，本服加，#1313） */
+  case Missile(range: Int, fly: Option[MissileFx], poison: Boolean = false)
   /** 朝目标方向放一道 8 格电光，线上的都挨打；目标太近会后退（僵尸 LightingZombi） */
   case Lightning
   /** 打范围内所有敌人（赤月恶魔 BigHeart；触龙神 CentipedeKing 附带中毒、麻痹） */
@@ -143,6 +143,8 @@ object Behavior:
     case 82 | 119     => Behavior(Strike.Spit(poison = true))
     case 85           => Behavior(Strike.Melee, hiding = Hiding.Burrow(4, 4), rooted = true, retarget = Retarget.EachAttack)
     case 87 | 104 | 112 => Behavior(Strike.Missile(7, MonsterLook.of(d).missile))
+    // 本服加的编号（原版没有）：1.80 魔龙巨蛾，远程带毒（用户 11-25 认可的 #1245 强度，数据在 tools/data/v180-molong.json）
+    case 121           => Behavior(Strike.Missile(7, MonsterLook.of(d).missile, poison = true))
     case 90 | 105 | 106 => Behavior(Strike.Gas)
     case 91            => Behavior(Strike.Magic)
     case 92            => Behavior(Strike.Split(0.5), extras = List(Extra.CowKing))

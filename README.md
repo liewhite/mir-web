@@ -43,6 +43,17 @@ raw/m176/
   Wav/                      音效和 sound.lst
 ```
 
+1.80「魔龙」系列 16 张地图（魔龙城、东西郊、魔龙岭、魔龙血域等）的 `.map` 文件 1.76 素材里没有，从 1.80 官方客户端镜像 [qigedashen/mir2-1.80-mirror](https://github.com/qigedashen/mir2-1.80-mirror) 的 `Map/` 取（图库仍用上面的 1.76 素材）：
+
+```sh
+mkdir -p raw/c180/Map
+for m in 6 B357 GA1 61 62 611 621 612 613 622 63 632 631 64 65 66; do
+  curl -fL -o raw/c180/Map/$m.map https://raw.githubusercontent.com/qigedashen/mir2-1.80-mirror/master/Map/$m.map
+done
+```
+
+没有这些文件管线也能跑，游戏里少了魔龙系列（sbt 测试里按条数核对 game.json 的几项会对不上）。
+
 ### 2. 原版数据表 → `ref/Mir176/`
 
 怪物、物品、爆率、技能、刷怪点、商店、地图传送点、经验表都从 [suneveryday/Mir176](https://github.com/suneveryday/Mir176) 的 `content/` 里来：
@@ -52,7 +63,7 @@ git clone https://github.com/suneveryday/Mir176.git ref/Mir176
 git -C ref/Mir176 checkout 7ffa93f   # 现在用的版本；新版本格式变了的话 tools/build_data.py 可能要跟着改
 ```
 
-要用到的是 `ref/Mir176/content/catalog.json` 和 `ref/Mir176/content/level-experience.json`。
+要用到的是 `ref/Mir176/content/catalog.json` 和 `ref/Mir176/content/level-experience.json`。数据表之外加的内容（1.80 魔龙系列的地图、门、刷怪、NPC、怪物）在仓库的 `tools/data/*.json`，格式同 catalog.json，管线自动合并（见 `tools/catalog.py`）。
 
 另外，开发时对照原版行为用的 Delphi 客户端源码（`ref/mir2delphi`，来自 [baiyqukq/mir2](https://github.com/baiyqukq/mir2)）只是参考资料，跑游戏不需要。
 
@@ -79,7 +90,7 @@ public/assets/
   version.json        素材版本号，浏览器据此判断要不要重新下载
 ```
 
-只改了一部分时可以只重跑一部分：`build_assets.py --only maps|libs|ground`。
+只改了一部分时可以只重跑一部分：`build_assets.py --only maps|libs|ground`；新加了几张地图时 `build_assets.py --maps 6,61,62` 只做这几张（不删别的素材）。
 
 ## 本机自己玩
 

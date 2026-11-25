@@ -16,13 +16,12 @@ import numpy as np
 from PIL import Image
 
 from atlas import write_block
+from catalog import load_catalog, map_file
 from wemade import MapFile, open_library
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "raw/m176/Resource/Data"
-MAP_DIR = ROOT / "raw/m176/Map"
 OUT = ROOT / "public/assets"
-CATALOG = ROOT / "ref/Mir176/content/catalog.json"
 
 UNITX, UNITY = 48, 32
 GROUND_BLOCK = 16  # 每张地面图 16x16 格 = 768x512 像素
@@ -60,11 +59,10 @@ def object_areas(m: MapFile) -> np.ndarray:
 def game_maps(catalog: dict) -> dict[str, str]:
     """游戏里的地图 → 它用的素材名（map/<素材名>.bin、ground/<素材名>/）。
 
-    选图：数据表里有地图文件的全部放（用户 11-23 #1144）。从比奇走不到的（白日门、封魔谷、
+    选图：数据表（含补充表，见 catalog.py）里有地图文件的全部放（用户 11-23 #1144）。从比奇走不到的（白日门、封魔谷、
     苍月岛等原版靠 NPC 传送的）由传送菜单进（build_data.py TOWNS / ENTRIES）。
     素材名：内容相同的地图（sha256 一样，如祖玛阁 D5061–D5069）共用一份，取组里最小的文件名。"""
-    have = {p.stem for p in MAP_DIR.iterdir()}
-    meta = {m["id"]: m for m in catalog["maps"] if m["asset"] in have}
+    meta = {m["id"]: m for m in catalog["maps"] if map_file(m["asset"]) is not None}
     by_sha: dict[str, str] = {}
     for m in meta.values():
         by_sha[m["sha256"]] = min(by_sha.get(m["sha256"], m["asset"]), m["asset"])
@@ -123,7 +121,7 @@ def map_object_needs(m: MapFile) -> dict[str, set[int]]:
 
 def _render_ground(args):
     name, bx, by = args
-    m = MapFile.load(MAP_DIR / f"{name}.map")
+    m = MapFile.load(map_file(name))
     tiles = _lib_cache("tiles")
     out = OUT / "ground" / name
     W, H = GROUND_BLOCK * UNITX, GROUND_BLOCK * UNITY
@@ -166,7 +164,7 @@ def _lib_cache(name: str):
 def build_ground(maps: list[str]) -> None:
     jobs = []
     for name in maps:
-        m = MapFile.load(MAP_DIR / f"{name}.map")
+        m = MapFile.load(map_file(name))
         (OUT / "ground" / name).mkdir(parents=True, exist_ok=True)
         nbx = (m.width + GROUND_BLOCK - 1) // GROUND_BLOCK
         nby = (m.height + GROUND_BLOCK - 1) // GROUND_BLOCK
@@ -250,9 +248,15 @@ def whole(lib: str) -> set[int]:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", choices=["maps", "libs", "ground"])
+    ap.add_argument("--maps", help="只做这些地图（逗号分开的地图编号）：加新图时用，不删旧素材")
     args = ap.parse_args()
-    catalog = json.loads(CATALOG.read_text())
+    catalog = load_catalog()
     maps = game_maps(catalog)
+    if args.maps:
+        pick = set(args.maps.split(","))
+        if unknown := pick - set(maps):
+            raise SystemExit(f"没有这些地图（或本机没有地图文件）：{sorted(unknown)}")
+        maps = {i: a for i, a in maps.items() if i in pick}
     assets = sorted(set(maps.values()))
     print(f"maps: {len(maps)} 张，素材 {len(assets)} 份:", " ".join(assets), flush=True)
 
@@ -263,7 +267,7 @@ def main() -> None:
 
     if args.only in (None, "maps", "libs"):
         for name in assets:
-            m = MapFile.load(MAP_DIR / f"{name}.map")
+            m = MapFile.load(map_file(name))
             if args.only != "libs":
                 write_map_bin(name, m)
             for lib, fr in map_object_needs(m).items():
@@ -283,7 +287,7 @@ def main() -> None:
 
     if args.only in (None, "ground"):
         build_ground(assets)
-    if args.only is None:
+    if args.only is None and not args.maps:
         prune_stale(set(assets))
     bump_version()
 

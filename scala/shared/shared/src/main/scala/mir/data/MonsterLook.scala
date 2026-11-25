@@ -1,9 +1,12 @@
 package mir.data
 
-import mir.core.Dir
+import mir.core.{Cell, Dir}
 
-/** 飞行物特效：图库、起始帧、16 方向之间的帧间隔（飞斧 10，箭 1）、帧数。 */
-final case class MissileFx(lib: String, base: Int, stride: Int, frames: Int)
+/** 飞行物特效：图库、起始帧、方向之间的帧间隔（飞斧 10，箭 1）、帧数；eightDirs：素材只有 8 个方向（否则 16 个）。 */
+final case class MissileFx(lib: String, base: Int, stride: Int, frames: Int, eightDirs: Boolean = false):
+  /** 从 from 飞向 to 时用的起始帧 */
+  def frameFrom(from: Cell, to: Cell): Int =
+    base + stride * (if eightDirs then from.dirTo(to).code else from.dir16(to))
 
 /**
  * 攻击时身上的特效（原版 TGasKuDeGi.LoadSurface 等）：图库、起始帧（方向间隔 10）；
@@ -75,8 +78,18 @@ object MonsterLook:
     52 -> MonsterLook(attackFx = Some(AttackFx("mon4", 3590))), // 楔蛾
     53 -> MonsterLook(attackFx = Some(AttackFx("mon3", 3590))), // 粪虫
     // 大神兽（TWarriorElfMonster）：攻击第 5 帧在脚下喷火 Mon18 820 + 10×方向 + 1 起 5 帧、每帧 100ms（WARRIORELFFIREBASE）
-    55 -> MonsterLook(attackFx = Some(AttackFx("mon18", 821, frames = Some(5), atFrame = 5, frameTime = Some(100))), digDownReversed = true)
+    55 -> MonsterLook(attackFx = Some(AttackFx("mon18", 821, frames = Some(5), atFrame = 5, frameTime = Some(100))), digDownReversed = true),
+    // 魔龙教主（TBanyaGuardMon race 78）：普攻时身上 Mon22 3440 + 10×方向的刀光
+    78 -> MonsterLook(attackFx = Some(AttackFx("mon22", 3440)))
+  )
+
+  /**
+   * 同一种画法里个别外观另有的特效（按 Appr）。1.80 魔龙巨蛾 GeeM2 里是弓箭手的画法（RaceImg 45），
+   * 但射出去的不是箭，是它自己图库里的毒刺（Mon22 350 + 10×方向，8 方向各 6 帧）。
+   */
+  private val byAppr: Map[Int, MonsterLook] = Map(
+    210 -> MonsterLook(missile = Some(MissileFx("mon22", 350, 10, 6, eightDirs = true)))
   )
 
   def of(raceImg: Int): MonsterLook = table.getOrElse(raceImg, Plain)
-  def of(d: MonsterDef): MonsterLook = of(d.raceImg)
+  def of(d: MonsterDef): MonsterLook = byAppr.getOrElse(d.appr, of(d.raceImg))

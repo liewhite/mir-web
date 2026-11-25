@@ -124,6 +124,30 @@ object WorldSpec extends ZIOSpecDefault:
         s.run(10_000)
         assertTrue(sp.dead, p.exp == exp)
       },
+      test("魔龙巨蛾隔几格射毒刺：不走近也打得到，有时中绿毒（#1313）") {
+        val s  = sim()
+        val p  = join(s.w, "甲", Cell(30, 30))
+        val m  = put(s.w, "魔龙巨蛾", Cell(35, 30))
+        val at = m.cell
+        var poisoned = false
+        val hurt = (1 to 60).map { _ =>
+          val n = s.run(500, Some(p))
+          poisoned ||= p.statuses.has(StatusKind.GreenPoison)
+          n
+        }.sum
+        assertTrue(hurt > 0, poisoned, m.cell == at)
+      },
+      test("魔龙教主一下打掉两三百血（#1313，用户 11-25 定攻 250~350）") {
+        val s = sim()
+        val p = join(s.w, "甲", Cell(30, 30))
+        put(s.w, "魔龙教主", Cell(31, 30))
+        s.run(2500)
+        val hits = (0 until 300).flatMap { _ =>
+          s.w.tick(s.w.now + 50)
+          s.flush().getOrElse(p.id, Vector.empty).collect { case ServerMsg.Damage(t, n, _) if t == p.id && n > 0 => n }
+        }
+        assertTrue(hits.nonEmpty, hits.forall(n => n >= 150 && n <= 350), hits.sum.toDouble / hits.size > 200)
+      },
       test("祖玛教主掉血会召唤祖玛怪") {
         val s = sim()
         join(s.w, "甲", Cell(30, 30))

@@ -82,7 +82,7 @@ object SafeZone:
 
   def covers(map: MapDef, c: Cell): Boolean = wholeMap(map) || nearSpawn(map.id, c)
 
-  /** 出生点：比奇省（银杏村、边界村、比奇城）、毒蛇山谷、盟重、封魔谷、苍月岛、白日门 */
+  /** 出生点：比奇省（银杏村、边界村、比奇城）、毒蛇山谷、盟重、封魔谷、苍月岛、白日门；1.80 魔龙城（GeeM2 StartPoint，#1313） */
   val Points: List[(MapId, Cell)] = List(
     MapId("0")  -> Cell(289, 618),
     MapId("0")  -> Cell(650, 631),
@@ -91,7 +91,8 @@ object SafeZone:
     MapId("3")  -> Cell(330, 330),
     MapId("4")  -> Cell(240, 200),
     MapId("5")  -> Cell(141, 337),
-    MapId("11") -> Cell(178, 326)
+    MapId("11") -> Cell(178, 326),
+    MapId("6")  -> Cell(124, 156)
   )
 
   private def nearSpawn(map: MapId, c: Cell): Boolean =

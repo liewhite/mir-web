@@ -26,7 +26,8 @@ object Rates:
    */
   val bosses: Set[MonsterName] = Set(
     "沃玛教主", "祖玛教主", "千年树妖", "石墓尸王", "牛魔王", "赤月恶魔", "双头金刚", "双头血魔", "黄泉教主", "虹魔教主",
-    "暗之沃玛教主", "暗之牛魔王", "暗之双头金刚", "暗之双头血魔", "暗之黄泉教主", "暗之虹魔教主"
+    "暗之沃玛教主", "暗之牛魔王", "暗之双头金刚", "暗之双头血魔", "暗之黄泉教主", "暗之虹魔教主",
+    "魔龙教主" // 1.80 魔龙血域（#1313）
   ).map(MonsterName(_))
   def rankOf(m: MonsterName): MonsterRank = if bosses(m) then MonsterRank.Boss else MonsterRank.Common
   /** boss 刷新间隔最长几分钟（用户 11-25 在 #1262 定：最长 2 小时）；刷怪表里更短的不变，普通怪不变 */

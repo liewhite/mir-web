@@ -264,18 +264,21 @@ object MonsterAi:
                 if magical(w, m, a, pw, checkHit = true).connected && poison && !a.dead && rng.random(20) == 0 then poisonGreen(w, a, m, 30_000, 1)
               }
           true
-      case Strike.Missile(range, fly) =>
+      case Strike.Missile(range, fly, poison) =>
         if d < 1 || d > range then false
         else
           if ready(w, m) then
             swing(w, m, Some(t))
             val delay = d * 50 + 300
             fly.foreach { f =>
-              w.out.effect(f.lib, f.base + m.cell.dir16(t.cell) * f.stride, f.frames, 60, Anchor.OnActor(t.id),
+              w.out.effect(f.lib, f.frameFrom(m.cell, t.cell), f.frames, 60, Anchor.OnActor(t.id),
                 from = Some(m.cell), blend = false, duration = Some(delay))
             }
             val pw = power(w, m)
-            w.afterOn(t, delay)(physical(w, m, _, pw, checkHit = false): Unit)
+            w.afterOn(t, delay) { t =>
+              if physical(w, m, t, pw, checkHit = false).connected && poison && !t.dead && rng.random(4) == 0 then
+                poisonGreen(w, t, m, 20_000, 3)
+            }
           true
       case Strike.Lightning =>
         if d <= 2 && rng.random(3) == 0 && stepAway(w, m, t.cell) then true

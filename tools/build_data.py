@@ -7,7 +7,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from build_assets import CATALOG, OUT, bump_version, game_maps
+from build_assets import OUT, bump_version, game_maps
+from catalog import load_catalog
 from monsters import ACT, action_table, monster_lib, monster_offset
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -21,6 +22,8 @@ EXP = ROOT / "ref/Mir176/content/level-experience.json"
 TOWNS = [
     ("0", "比奇省", 333, 272), ("3", "盟重省", 350, 340),
     ("11", "白日门", 178, 325), ("4", "封魔谷", 241, 230), ("5", "苍月岛", 140, 325),
+    # 1.80 魔龙城（#1313，补充表 tools/data/v180-molong.json）：国服从盟重找 NPC 传过去，本服只从传送菜单进；落点是 GeeM2 StartPoint 的出生点
+    ("6", "魔龙城", 124, 156),
 ]
 # 不在任何城后面、也没有路进去的打怪地图：自成一个地区，落点取地图中间附近的可走格
 ENTRIES = [("M001", 139, 140), ("T1341", 20, 21)]
@@ -35,11 +38,14 @@ REGION_NAMES = {
 BOSSES = {
     "沃玛教主", "祖玛教主", "千年树妖", "石墓尸王", "牛魔王", "赤月恶魔", "双头金刚", "双头血魔", "黄泉教主", "虹魔教主",
     "暗之沃玛教主", "暗之牛魔王", "暗之双头金刚", "暗之双头血魔", "暗之黄泉教主", "暗之虹魔教主",
+    "魔龙教主",
 }
 # 迷宫（一个标题拆成很多张图、靠门互通的）：石墓阵 D716xx、祖玛阁 D506x
 MAZE_TITLES = {"石墓阵", "祖玛阁"}
 # 用户点名的最深一层：祖玛、牛魔到五层，赤月到抉择之地；这些图列，再往里的不列
 DEEPEST = {"D505", "D2076", "D1004"}
+# 魔龙（#1313）：只列魔龙城和东郊、西郊入口，往里自己走
+DEEPEST |= {"61", "62"}
 # 迷宫门照原版改的地方（Mir176 数据表与 1.76 服务端 MapInfo 不同处；核对见 #1315）：(图, x, y) -> (去的图, x, y)
 ROUTE_FIXES = {
     # 祖玛阁第一格的这扇门数据表直通祖玛六层大厅（等于跳过迷宫），原版通往迷宫另一格
@@ -68,8 +74,9 @@ def teleports(cat: dict, maps: dict[str, str]) -> list[dict]:
     比奇走不到的从 TOWNS、ENTRIES 依次接着搜（先搜完比奇，原有地图的来路不变）；
     ENTRIES 自己是地区入口，落点用表里给的。
     只列不穿过 boss 图、迷宫、DEEPEST 就走得到的图（城和 ENTRIES 本身总列：ENTRIES 没有路进去）。"""
-    town_ids = {t[0] for t in TOWNS}
-    seeds = {t[0]: (t[2], t[3]) for t in TOWNS} | {e[0]: (e[1], e[2]) for e in ENTRIES}
+    towns = [t for t in TOWNS if t[0] in maps]  # 本机没有地图文件的城（如没下 1.80 魔龙城）不列
+    town_ids = {t[0] for t in towns}
+    seeds = {t[0]: (t[2], t[3]) for t in towns} | {e[0]: (e[1], e[2]) for e in ENTRIES}
     titles = {m["id"]: m["title"] for m in cat["maps"]}
     routes: dict[str, list[dict]] = {}
     for r in fixed_routes(cat):
@@ -116,7 +123,7 @@ def teleports(cat: dict, maps: dict[str, str]) -> list[dict]:
         r = came[m]
         return seeds[m] if r is None else (r["tx"], r["ty"])
 
-    out = [{"group": "城市", "name": name, "map": m, "x": x, "y": y} for m, name, x, y in TOWNS]
+    out = [{"group": "城市", "name": name, "map": m, "x": x, "y": y} for m, name, x, y in towns]
     groups: dict[str, list[str]] = {}
     for m in order:
         root = None if m in town_ids else region(m)
@@ -141,7 +148,7 @@ def pair(lo, hi) -> list[int]:
 
 
 def main() -> None:
-    cat = json.loads(CATALOG.read_text())
+    cat = load_catalog()
     maps = game_maps(cat)
     map_meta = {m["id"]: m for m in cat["maps"]}
 

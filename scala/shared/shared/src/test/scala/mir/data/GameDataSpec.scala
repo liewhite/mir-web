@@ -13,21 +13,21 @@ object GameDataSpec extends ZIOSpecDefault:
     test("完整解码，条数与 TS 版读到的一致") {
       val d = catalog.data
       assertTrue(
-        d.maps.size == 265,
-        d.routes.size == 1301,
-        d.spawns.size == 2378,
+        d.maps.size == 265 + 16, // 1.76 数据表 + 1.80 魔龙补充表（#1313）
+        d.routes.size == 1301 + 173,
+        d.spawns.size == 2378 + 112,
         d.guards.size == 49,
-        d.merchants.size == 69,
-        d.minimaps.size == 117,
+        d.merchants.size == 69 + 8,
+        d.minimaps.size == 117 + 14,
         d.items.size == 264,
-        d.monsters.size == 188,
+        d.monsters.size == 188 + 7,
         d.drops.size == 188,
         d.drops.values.map(_.size).sum == 6833,
         d.displayNames.size == 66,
         d.skills.size == 33,
         d.exp.size == 47,
         d.monsterActions.size == 38,
-        d.teleports.size == 101
+        d.teleports.size == 104
       )
     },
     test("名字、编号不重复，索引不丢条目") {
@@ -83,7 +83,7 @@ object GameDataSpec extends ZIOSpecDefault:
         catalog.expToNext(48).isEmpty,
         catalog.displayName(MonsterName("僵尸10")) == MonsterName("僵尸1"),
         catalog.teleport(TeleportRef(0)).map(_.name).contains("比奇省"),
-        catalog.teleport(TeleportRef(101)).isEmpty,
+        catalog.teleport(TeleportRef(104)).isEmpty,
         catalog.merchant(MerchantRef(0)).map(_.name).contains("卫家店"),
         catalog.merchant(MerchantRef(-1)).isEmpty
       )
@@ -102,6 +102,24 @@ object GameDataSpec extends ZIOSpecDefault:
         Set("D505", "D2076", "D1004", "D715").subsetOf(listed),
         Set("D5072", "D2078", "D10052", "D716").intersect(listed).isEmpty,
         zumaMaze.map(_.to).contains(MapId("D5062"))
+      )
+    },
+    test("1.80 魔龙（#1313）：传送菜单只有魔龙城和东郊、西郊；从魔龙城走得到魔龙血域；教主是 boss") {
+      val d      = catalog.data
+      val molong = Set("6", "B357", "GA1", "61", "62", "611", "621", "612", "613", "622", "63", "632", "631", "64", "65", "66")
+      val menu   = d.teleports.filter(t => molong(t.map.value)).map(t => (t.group, t.map.value))
+      val edges  = d.routes.groupMap(_.from)(_.to)
+      def reach(seen: Set[MapId]): Set[MapId] =
+        val next = seen ++ seen.flatMap(edges.getOrElse(_, Nil))
+        if next == seen then seen else reach(next)
+      val fromCity = reach(Set(MapId("6"))).map(_.value)
+      val boss     = d.spawns.filter(_.monster == MonsterName("魔龙教主")).map(_.map.value)
+      assertTrue(
+        menu.toSet == Set(("城市", "6"), ("魔龙东郊", "61"), ("魔龙西郊", "62")),
+        fromCity == molong,
+        boss == List("66"),
+        mir.rules.Rates.bosses(MonsterName("魔龙教主")),
+        d.monsters.filter(_.name.value.startsWith("魔龙")).forall(m => catalog.actions(m).isDefined)
       )
     },
     test("地图标记：断线重连带去处，未知标记报错") {
