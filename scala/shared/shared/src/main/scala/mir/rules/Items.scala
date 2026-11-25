@@ -42,6 +42,10 @@ object ItemKind:
   /** 一个捆装药拆出几个 */
   val BundleSize = 6
 
+  /** 靴子、腰带的 StdMode（1.80 数据） */
+  val BootsMode = 52
+  val BeltMode  = 54
+
   def of(d: ItemDef): ItemKind = d.mode match
     case 0 => Potion(d.ac.lo, d.mac.lo, d.shape == 1)
     case 3 =>
@@ -59,6 +63,10 @@ object ItemKind:
     case 19 | 20 | 21 => Equip(List(EquipSlot.Necklace))
     case 22 | 23 => Equip(List(EquipSlot.RingL, EquipSlot.RingR))
     case 24 | 26 => Equip(List(EquipSlot.BraceletL, EquipSlot.BraceletR))
+    // 1.80 的靴子、腰带（客户端 ClFunc.GetTakeOnPosition、服务端 M2Share.CheckTakeOnItems）；
+    // 1.80 另有 62/64 号（加负重、回复的变种），本服不设负重，不收
+    case BootsMode => Equip(List(EquipSlot.Boots))
+    case BeltMode  => Equip(List(EquipSlot.Belt))
     case 25 =>
       Amulet(d.shape match
         case 1 => Some(PoisonKind.Green)
@@ -144,6 +152,7 @@ object ItemEffects:
       case 21      => base.copy(hpRegen = d.ac.hi, mpRegen = d.mac.hi, attackSpeed = d.ac.lo - d.mac.lo)
       case 23      => base.copy(poisonAvoid = d.ac.hi, poisonRegen = d.mac.hi, attackSpeed = d.ac.lo - d.mac.lo)
       case 0 | 3 | 4 | 25 | 31 => base // 消耗品：AC/MAC 是药效，不是属性
+      // 衣服、头盔，以及靴子（52）、腰带（54）：AC/MAC 就是防御、魔防（1.80 ApplyItemParameters 默认配置 boAddUserItemNewValue 关）
       case _       => base.copy(ac = d.ac, mac = d.mac)
 
   /**

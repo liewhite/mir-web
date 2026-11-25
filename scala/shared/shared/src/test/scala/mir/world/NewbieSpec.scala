@@ -23,7 +23,8 @@ object NewbieSpec extends ZIOSpecDefault:
         val d       = CharacterData.newbie(catalog, "甲", job, sex, UidSource.counter(1))
         val effects = d.worn.values.flatMap(it => catalog.item(it.name).map(ItemEffects.of(_, it)))
         val stats   = Rules.computeStats(job, d.level, effects, PassiveSkills())
-        val slots   = EquipSlot.values.toList.filterNot(d.worn.contains).map(s => s"$job/$sex 缺 ${s.label}")
+        // 1.76 的八个部位；腰带、靴子（#1311）是 1.80 加的，新人装里没有
+        val slots   = EquipSlot.values.toList.filterNot(Set(EquipSlot.Belt, EquipSlot.Boots)).filterNot(d.worn.contains).map(s => s"$job/$sex 缺 ${s.label}")
         val items = d.worn.toList.flatMap { (slot, it) =>
           catalog.item(it.name) match
             case None => List(s"$job/$sex ${it.name.value} 不在数据表")

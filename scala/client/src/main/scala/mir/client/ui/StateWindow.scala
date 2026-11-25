@@ -168,8 +168,18 @@ object StateWindow:
     EquipSlot.RingR     -> Rect(42, 215, 34, 31),
     EquipSlot.RingL     -> Rect(168, 215, 34, 31),
     EquipSlot.Weapon    -> Rect(47, 80, 47, 87),
-    EquipSlot.Dress     -> Rect(96, 122, 53, 112)
+    EquipSlot.Dress     -> Rect(96, 122, 53, 112),
+    // 腰带、靴子（#1311）：横向照 1.80 FState.pas DSWBelt、DSWBoots（84、126），
+    // 1.80 的格子在 y=254，压在 1.76 底图下方那个框的边上，这里下移到框里（框内 y 268–315）
+    EquipSlot.Belt      -> Rect(84, 276, 34, 31),
+    EquipSlot.Boots     -> Rect(126, 276, 34, 31)
   )
+
+  /** 原版图库里没有格子底图的装备位：自己画框（颜色取自人形图里的格子），空着时暗字写上是什么位置 */
+  val SelfFramed: List[EquipSlot] = List(EquipSlot.Belt, EquipSlot.Boots)
+  private val SlotFill   = "#080000"
+  private val SlotStroke = "#636273"
+  private val SlotHint   = "#4a4a55"
 
   /** 画在人形上的装备（其余画在格子里） */
   val OnFigure: Set[EquipSlot] = Set(EquipSlot.Dress, EquipSlot.Weapon, EquipSlot.Helmet)
@@ -192,6 +202,11 @@ object StateWindow:
         d  <- catalog.item(it.name)
         s  <- g.sprite("stateitem", d.look)
       do g.img("stateitem", d.look, bbx + s.ox, bby + s.oy)
+    }
+    SelfFramed.foreach { slot =>
+      val r = EquipRects(slot).moved(o.x, o.y)
+      g.frame(r, SlotFill, SlotStroke)
+      if !worn.contains(slot) then g.text(slot.label, r.x + (r.w - g.width(slot.label)) / 2, r.y + (r.h - 12) / 2, SlotHint)
     }
     EquipSlot.values.filterNot(OnFigure).foreach { slot =>
       worn.get(slot).flatMap(i => catalog.item(i.name)).foreach(d => g.item(d.look, 1, EquipRects(slot).moved(o.x, o.y)))

@@ -33,6 +33,9 @@ enum EquipSlot(val key: String, val label: String):
   case BraceletR extends EquipSlot("braceletR", "右手镯")
   case RingL     extends EquipSlot("ringL", "左戒指")
   case RingR     extends EquipSlot("ringR", "右戒指")
+  /** 腰带、靴子：1.76 没有，照 1.80 加（#1311）；旧存档里没有这两个键，读进来就是空着 */
+  case Belt      extends EquipSlot("belt", "腰带")
+  case Boots     extends EquipSlot("boots", "靴子")
 
 object EquipSlot:
   given JsonCodec[EquipSlot] = EnumCodec.byName(values, _.key)
