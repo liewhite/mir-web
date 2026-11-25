@@ -33,8 +33,9 @@ final class Renderer(
 
   private val grounds = LoadCache[String, dom.HTMLImageElement](SpriteStore.RetryAfterMs, onAssetFailure)
   /** 这一帧画出来的、可点中的角色（点怪锁定用） */
-  private var hits = Vector.empty[Hit]
+  private var hits = Vector.empty[Hit[Sprite]]
   private val tinter = Tinter()
+  private val silhouettes = Silhouettes()
   private var dpr  = 1.0
 
   var camX = 0.0
@@ -67,20 +68,9 @@ final class Renderer(
 
   def cellAt(p: Px): Cell = Cell(math.floor((p.x + camX) / UnitX).toInt, math.floor((p.y + camY) / UnitY).toInt)
 
-  /**
-   * 逻辑像素下的角色（取最靠前的）。slop > 0（触屏）时正中没点到，就取点击框外 slop 以内最近的；exclude 不参与放宽（自己）。
-   */
+  /** 逻辑像素下点中的角色（不算 exclude，即自己）：先按身体图像素、再按正中 40×70、最后按 slop 放宽，见 Picking。 */
   def actorAt(p: Px, slop: Double, exclude: ActorId): Option[ActorId] =
-    val inside = hits.filter(h => p.x >= h.x && p.x < h.x + h.w && p.y >= h.y && p.y < h.y + h.h)
-    inside.maxByOption(_.row).map(_.id).orElse {
-      if slop <= 0 then None
-      else
-        hits.filter(_.id != exclude).map { h =>
-          val dx = math.max(math.max(h.x - p.x, 0), p.x - (h.x + h.w))
-          val dy = math.max(math.max(h.y - p.y, 0), p.y - (h.y + h.h))
-          h -> math.hypot(dx, dy)
-        }.filter(_._2 <= slop).minByOption(_._2).map(_._1.id)
-    }
+    Picking.pick(hits, p.x, p.y, slop, exclude)(silhouettes.solid)
 
   // ---------------- 预下载 ----------------
 
@@ -166,7 +156,7 @@ final class Renderer(
     do blit(sp, x * UnitX - camX, (y + 1) * UnitY - sp.h - camY)
 
     // 第二遍：按行画高物件 + 物品 + 角色
-    val newHits = Vector.newBuilder[Hit]
+    val newHits = Vector.newBuilder[Hit[Sprite]]
     for y <- top - 1 to bottom + LongRows do
       for
         x <- left - WideCols to right + 2
@@ -244,7 +234,7 @@ final class Renderer(
 
   // ---------------- 角色 ----------------
 
-  private def drawActor(a: ActorView, s: Scene, row: Int): Option[Hit] =
+  private def drawActor(a: ActorView, s: Scene, row: Int): Option[Hit[Sprite]] =
     val now = s.server
     val p   = actorPixel(a, now)
     val dx  = math.round(p.x - camX).toDouble
@@ -262,7 +252,7 @@ final class Renderer(
     ctx.globalAlpha = 1
     if a.id == s.me && s.myShield then
       sprites.sprite("magic", 3890 + ((s.local / 100).toLong % 3).toInt).foreach(sp => lighter(blit(sp, dx + sp.ox, dy + sp.oy)))
-    body.filter(_ => !a.dead).map(b => Hit(a.id, dx + b.ox, dy + b.oy, b.w, b.h, row))
+    body.filter(_ => !a.dead).map(b => Hit(a.id, dx + b.ox, dy + b.oy, b.w, b.h, row, b))
 
   private def drawHuman(a: ActorView, h: Look.Human, now: Millis, dx: Double, dy: Double): Option[Sprite] =
     val frame  = Frames.human(a.action, a.dir, now, a.dead)
@@ -434,4 +424,3 @@ object Renderer:
     case PkStanding.Yellow  => "#ffff00"
     case PkStanding.Red     => "#ff4040"
 
-  private final case class Hit(id: ActorId, x: Double, y: Double, w: Double, h: Double, row: Int)

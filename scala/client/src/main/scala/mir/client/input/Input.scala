@@ -82,7 +82,7 @@ final class Input(
     val p        = renderer.toLogical(cx, cy)
     val me       = client.view.me
     // 手指比鼠标粗：点击框向外放宽约 14 个 CSS 像素
-    val hit = me.flatMap(id => renderer.actorAt(p, Input.SlopCss / renderer.zoom, id).filterNot(_ == id))
+    val hit = me.flatMap(id => renderer.actorAt(p, Input.SlopCss / renderer.zoom, id))
     val cell = renderer.cellAt(p)
     hit match
       case Some(id) => ctl.tapActor(id)

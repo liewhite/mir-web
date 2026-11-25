@@ -4,7 +4,7 @@ import mir.client.assets.MapData
 import mir.client.game.*
 import mir.client.input.{Joystick, KeyMove, KeyStick, MoveKey, Pt, Stick}
 import mir.client.net.{LinkEvent, ServerClock, Transport}
-import mir.client.render.Frames
+import mir.client.render.{Frames, Hit, Picking}
 import mir.core.*
 import mir.data.*
 import mir.model.*
@@ -116,6 +116,27 @@ object ClientSpec extends ZIOSpecDefault:
       assertTrue(
         Frames.monster(t, MonsterLook.of(m), stand, Dir.Up, Millis(100), dead = false, Cover.Stone) == t.death.start,
         Frames.monster(ht, MonsterLook.of(herb), dig, Dir.Left, Millis(0), dead = false, Cover.Open) == ht.walk.start
+      )
+    },
+    test("点选角色（#1284）：像素命中优先，大图的透明边不抢点击；再退到正中 40×70；自己不算；手机放宽兜底") {
+      type Body = (Int, Int) => Boolean
+      val full: Body = (_, _) => true
+      // 神兽：200×200 的大图，只有右下 (120..200, 120..200) 是实的，站在人前一行
+      val beastBody: Body = (x, y) => x >= 120 && y >= 120
+      val man   = Hit[Body](ActorId(1), 100, 100, 40, 70, row = 10, full)
+      val beast = Hit[Body](ActorId(2), 0, 0, 200, 200, row = 11, beastBody)
+      val me    = Hit[Body](ActorId(9), 0, 0, 300, 300, row = 12, full)
+      val hits  = Vector(man, beast, me)
+      def at(x: Double, y: Double, slop: Double = 0) = Picking.pick(hits, x, y, slop, ActorId(9))((b, x, y) => b(x, y))
+      assertTrue(
+        at(110, 110).contains(ActorId(1)), // 人身上：神兽框盖着但那里透明
+        at(150, 150).contains(ActorId(2)), // 神兽实处，且盖在人前面
+        at(119, 150).contains(ActorId(1)), // 实处边缘一格（左邻点透明）不算神兽
+        at(85, 95).contains(ActorId(2)),   // 都没按像素点中：神兽正中 40×70（80..120, 65..135）
+        at(10, 10).isEmpty,                // 神兽透明边、不在正中：谁也不算（自己也不算）
+        at(10, 10, slop = 20).isEmpty,     // 放宽也从正中算起，透明边不算
+        at(70, 60, slop = 14).contains(ActorId(2)), // 离神兽正中 10 以内
+        Picking.pick(Vector(man), 145, 100, 10, ActorId(9))((b, x, y) => b(x, y)).contains(ActorId(1))
       )
     },
     test("摇杆：死区不动、8 方向取整、推远了跑") {
