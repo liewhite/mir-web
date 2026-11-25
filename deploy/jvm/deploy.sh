@@ -177,7 +177,7 @@ $J -Xmx128m -Dfile.encoding=UTF-8 -jar "$d/mir176.jar" smoke "http://127.0.0.1:$
 sudo systemctl stop mir176-trial
 if sudo test -s "$T/mir176.jsa"; then sudo cp "$T/mir176.jsa" "$d/mir176.jsa" && sudo chown "$(id -un)": "$d/mir176.jsa"; else echo "（没生成类缓存，不影响）"; fi
 echo "试启动通过"
-[[ $MODE == --trial ]] && { rm -rf "$d"; echo "（--trial：版本目录已删，线上没动）"; }
+if [[ $MODE == --trial ]]; then rm -rf "$d"; echo "（--trial：版本目录已删，线上没动）"; fi
 R
 
 [[ $MODE == --trial ]] && exit 0
