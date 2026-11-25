@@ -563,8 +563,10 @@ object ClientSpec extends ZIOSpecDefault:
         jpDesc.exists(_.text == "极品：攻击上限 +2、强度 +2（比普通的青铜剑）"),
         lines.exists(_.text.startsWith("攻击 +")),
         lines.exists(l => l.text.startsWith("换下 木剑")),
-        // 1 级穿不了青铜剑：要求标红
-        lines.exists(l => l.text.startsWith("需要等级") && l.tint == Tint.Bad),
+        // 新人 10 级穿不了八荒（15 级）：要求标红；青铜剑（5 级）穿得上不标红
+        Describe.itemLines(catalog, catalog.item(ItemName("八荒")).get, None, Job.Warrior, me, None)
+          .exists(l => l.text.startsWith("需要等级") && l.tint == Tint.Bad),
+        lines.exists(l => l.text.startsWith("需要等级") && l.tint != Tint.Bad),
         // 药写清每跳回多少、几跳、共回多少（金创药(小量) 体力 20：每 0.4 秒 4 点，5 次）
         potion.exists(_.text == "每 0.4 秒回复 体力 4，共 5 次"),
         potion.exists(_.text.contains("共回 体力 20")),

@@ -355,6 +355,7 @@ object WorldSpec extends ZIOSpecDefault:
         val far  = join(w, "丙", Cell(20, 43)) // 纵向 13 格：不分
         val dead = join(w, "丁", Cell(21, 30))
         val out  = join(w, "戊", Cell(22, 30)) // 不在队里
+        a.level = 1
         b.level = 3
         w.vitals.damage(dead, 1_000_000, None)
         val chick = put(w, "鸡", Cell(21, 31))
@@ -392,7 +393,7 @@ object WorldSpec extends ZIOSpecDefault:
         val vb = s.views(b.id)
         assertTrue(
           va.actors.contains(b.id), vb.actors.contains(a.id),
-          va.actors(b.id).look == Look.Human("乙", Job.Warrior, Sex.Male, 1, Some(ItemName("木剑")), Some(ItemName("布衣(男)"))),
+          va.actors(b.id).look == Look.Human("乙", Job.Warrior, Sex.Male, 1, Some(ItemName("铁剑")), Some(ItemName("布衣(男)"))),
           s.consistent(a), s.consistent(b)
         )
       },
@@ -546,6 +547,7 @@ object WorldSpec extends ZIOSpecDefault:
         val p   = join(s.w, "甲", Cell(30, 30), tough = false)
         val pot = p.belt.flatten.head
         val hp  = catalog.item(pot.name).map(mir.rules.ItemKind.of).collect { case mir.rules.ItemKind.Potion(h, _, false) => h }.get
+        p.settings = p.settings.copy(autoHpPercent = 0) // 只看这一瓶，不让自动喝药再补
         p.hp = 1
         s.w.conditions.addStatus(p, Status.Shielded(2), 60_000)
         s.cmd(p, GameCmd.UseItem(pot.uid))
@@ -899,7 +901,8 @@ object WorldSpec extends ZIOSpecDefault:
       },
       test("比身上强的装备不管档位都自动捡（#1301，用户定）") {
         val s = sim()
-        val p = join(s.w, "甲", Cell(30, 30)) // 战士，拿着新手木剑
+        val p = join(s.w, "甲", Cell(30, 30)) // 战士，换上木剑（新人自带铁剑，#1310）
+        s.w.newItem(ItemName("木剑")).foreach(p.worn(EquipSlot.Weapon) = _)
         p.settings = p.settings.copy(autoPickup = true, pickupKinds = PickupKind.values.toSet, pickupTier = PickupFloor.Redmoon)
         s.w.dropAt(Cell(32, 30), Loot.Item(s.w.newItem(ItemName("铁剑")).get))
         s.w.dropAt(Cell(28, 30), Loot.Item(s.w.newItem(ItemName("魔法长袍(男)")).get))
@@ -1024,9 +1027,10 @@ object WorldSpec extends ZIOSpecDefault:
         s.cmd(p, GameCmd.UseItem(pot.uid))
         s.run(3000)
         val healed = p.hp > 1
+        val weapon = p.worn(EquipSlot.Weapon).name
         s.cmd(p, GameCmd.Unequip(EquipSlot.Weapon))
         val noWeapon = !p.worn.contains(EquipSlot.Weapon) && s.views(p.id).worn.get(EquipSlot.Weapon).isEmpty
-        val sword = p.bag.flatten.find(_.name == ItemName("木剑")).get
+        val sword = p.bag.flatten.find(_.name == weapon).get
         s.cmd(p, GameCmd.MoveItem(sword.uid, ItemPlace.Bag(10)))
         val moved = p.bag(10).contains(sword)
         s.cmd(p, GameCmd.MoveItem(sword.uid, ItemPlace.Worn(EquipSlot.Weapon)))

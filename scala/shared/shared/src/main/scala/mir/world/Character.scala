@@ -53,25 +53,50 @@ object CharacterData:
   val start: Place = Place(MapId("0"), Cell(333, 272))
 
   /**
-   * 新建角色（TS 版 main.ts newPlayer）：300 金币，木剑、布衣，4 瓶小红 2 瓶小蓝（各叠一格）放快捷栏，满血满蓝。
-   * 物品编号由 uids 分配。
+   * 新建角色：直接 StarterKit.level 级（经验从 0 起），穿 StarterKit 那身基础装（#1310），300 金币，
+   * 4 瓶小红 2 瓶小蓝（各叠一格）放快捷栏，满血满蓝。物品编号由 uids 分配。
    */
   def newbie(catalog: Catalog, name: String, job: Job, sex: Sex, uids: UidSource): CharacterData =
     def item(n: String): Option[ItemInstance] = catalog.item(ItemName(n)).map(d => Charges.fresh(uids.next(), d))
     // 同名药叠成一格（#1159）
     val potions = List(item("金创药(小量)").map(_.copy(count = 4)), item("魔法药(小量)").map(_.copy(count = 2)))
-    val worn = List(
-      EquipSlot.Weapon -> item("木剑"),
-      EquipSlot.Dress  -> item(if sex == Sex.Male then "布衣(男)" else "布衣(女)")
-    ).collect { case (s, Some(it)) => s -> it }.toMap
-    val stats = mir.rules.Rules.computeStats(job, 1, Nil, mir.rules.PassiveSkills())
+    val worn = StarterKit.outfit(job, sex).toList.flatMap((s, n) => item(n.value).map(s -> _)).toMap
+    val effects = worn.values.flatMap(it => catalog.item(it.name).map(mir.rules.ItemEffects.of(_, it)))
+    val stats   = mir.rules.Rules.computeStats(job, StarterKit.level, effects, mir.rules.PassiveSkills())
     CharacterData(
-      name = name, job = job, sex = sex, hair = 1, level = 1, exp = Exp.zero, gold = Gold(300),
+      name = name, job = job, sex = sex, hair = 1, level = StarterKit.level, exp = Exp.zero, gold = Gold(300),
       hp = Hp(stats.maxHp), mp = Mp(stats.maxMp), place = start, dir = Dir.Down, home = start,
       bag = Vector.fill(Capacity.bag)(None),
       belt = potions.padTo(Capacity.belt, None).take(Capacity.belt).toVector,
       worn = worn, storage = Nil, skills = Nil, settings = CharSettings(), longHitOn = true, wideHitOn = false
     )
+
+/**
+ * 新角色的起点（用户 11-25 #1310 定：初始 10 级、穿一身基础装）。
+ * 装备都是 1.76 数据表里 10 级能穿（只看等级、不看属性）的普通货，按职业挑：
+ * 战士重攻防，法师戒指加魔法，道士戒指加道术；衣服按性别。
+ */
+object StarterKit:
+  val level = 10
+
+  def outfit(job: Job, sex: Sex): Map[EquipSlot, ItemName] =
+    val (weapon, bracelet, ring) = job match
+      case Job.Warrior => ("铁剑", "大手镯", "牛角戒指")
+      case Job.Wizard  => ("乌木剑", "钢手镯", "六角戒指")
+      case Job.Taoist  => ("乌木剑", "钢手镯", "玻璃戒指")
+    val dress = sex match
+      case Sex.Male   => "布衣(男)"
+      case Sex.Female => "布衣(女)"
+    Map(
+      EquipSlot.Weapon    -> weapon,
+      EquipSlot.Dress     -> dress,
+      EquipSlot.Helmet    -> "青铜头盔",
+      EquipSlot.Necklace  -> "金项链",
+      EquipSlot.BraceletL -> bracelet,
+      EquipSlot.BraceletR -> bracelet,
+      EquipSlot.RingL     -> ring,
+      EquipSlot.RingR     -> ring
+    ).view.mapValues(ItemName(_)).toMap
 
 /** 跟着主人换图的宝宝：此刻的形态、血、身板、宝宝等级，召唤的还有召唤加成（变身时重算身板用）。 */
 final case class PetData(kind: MonsterName, hp: Int, body: PetBody, level: Int, summoning: Option[Summoning] = None)
