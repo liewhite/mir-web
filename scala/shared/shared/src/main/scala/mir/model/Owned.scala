@@ -81,6 +81,8 @@ final case class CharSettings(
     autoFightBack: Boolean = true,
     /** 自动打怪（#1307，默认关）：闲着时自己去打附近的野怪（不抢别人正在打的） */
     autoHunt: Boolean = false,
+    /** 持续施法（#1308，默认关）：对怪放了攻击技能就接着一直放到它死；开着自动打怪时也用技能打（法师、道士） */
+    sustainCast: Boolean = false,
     /** 战士：烈火好了就自动开 */
     autoFireSword: Boolean = true,
     /** 战士：半月关着时，身边有 2 只以上怪就这一刀自动用半月弯刀（#1273） */
@@ -100,7 +102,9 @@ final case class CharSettings(
     /** 道士（#1307）：幽灵盾效果没了就自动补 */
     autoSoulShield: Boolean = false,
     /** 道士（#1307）：安全区外隐身没了就自动补（出手后等一会儿） */
-    autoInvisible: Boolean = false
+    autoInvisible: Boolean = false,
+    /** 道士（#1308）：打怪时目标缺绿毒或红毒就自动放施毒术补上 */
+    autoPoison: Boolean = false
 )
 
 object CharSettings:

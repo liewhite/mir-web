@@ -19,11 +19,18 @@ object PlayerOps:
     case GameCmd.Run(from, dir)  => step(w, p, from, dir, run = true)
     case GameCmd.Turn(dir)       => if !p.dead then w.grid.face(p, dir)
     case GameCmd.Attack(dir, target) =>
+      // 亲手普通攻击就不再持续施法（#1308）；开着「按住攻击」则改成打到它死
+      p.intent match
+        case Intent.Barrage(_, _) => p.intent = Intent.Idle
+        case _                    => ()
       if p.settings.stickyAttack then
         target.flatMap(w.actor).filter(w.canAttack(p, _)).foreach(t => p.intent = Intent.Hunt(t.id, once = false))
       report(w, p, Combat.attack(w, p, dir, Slack))
     case GameCmd.Cast(skill, target, cell) =>
-      report(w, p, Combat.cast(w, p, skill, SpellTarget(cell, target.flatMap(w.actor)), Slack))
+      val tgt = SpellTarget(cell, target.flatMap(w.actor))
+      val o   = Combat.cast(w, p, skill, tgt, Slack)
+      AutoPlay.castByHand(w, p, skill, tgt.actor, o)
+      report(w, p, o)
     case GameCmd.SetSword(art, on) => Combat.setSword(w, p, art, on)
     case GameCmd.TalkTo(npc) =>
       npcFor(w, p, npc, _ => true).fold(w.out.refuse(p, _), n => w.out.tell(p, ServerMsg.NpcOpened(n.id, n.ref)))

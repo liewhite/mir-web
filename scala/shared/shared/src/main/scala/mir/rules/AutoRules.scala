@@ -18,3 +18,22 @@ object AutoRules:
 
   /** 自动打怪找怪的范围（格，#1307） */
   val HuntRadius = 8
+
+  /**
+   * 持续施法（#1308）管的技能：对着选中的敌人放、放一次打一次的攻击技能。
+   * 不含施毒术（自动施毒另管）、火墙（留在地上持续烧）、抗拒火环、困魔咒、诱惑之光这类不是用来打血的，
+   * 也不含地狱火、地狱雷光（只打身前几格或身边，目标在远处时白耗蓝）。
+   */
+  val Sustained: Set[Skill] = Set(
+    Skill.FireBall, Skill.GreatFireBall, Skill.Lightning, Skill.Thunder, Skill.FireBang, Skill.IceStorm, Skill.TurnUndead,
+    Skill.SoulFireBall
+  )
+
+  /** 持续施法放不出来（没蓝、没符）停下后，自动打怪、还手隔多久再试这个技能（期间用普通攻击） */
+  val BarrageRetryMs = 10000
+
+  /** 自动施毒两次尝试之间至少隔多久（绿毒下完接着下红毒，不用等 CastRetryMs） */
+  val PoisonRetryMs = 1000
+
+  /** 自动打怪配持续施法时，还没亲手放过攻击技能就按这个顺序用学会的第一个 */
+  val DefaultBarrage: List[Skill] = List(Skill.SoulFireBall, Skill.Thunder, Skill.GreatFireBall, Skill.FireBall)

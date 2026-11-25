@@ -104,8 +104,10 @@ final class Player(id: ActorId, val charName: String, val job: Job, val sex: Sex
   /** 玩家亲手走动后的一小段时间里不自动走动（免得和摇杆抢） */
   private[world] var manualUntil: Millis = Millis.zero
   private[world] var lastPotion: Millis  = Millis.zero
-  /** 每个自动技能上次尝试的时刻（不管成没成，隔一会儿再试；见 AutoPlay.AutoCast） */
+  /** 每个自动技能上次尝试的时刻（不管成没成，隔一会儿再试；见 AutoPlay.AutoCast），以及持续施法放不出来停下的时刻 */
   private[world] val autoCastTried: mutable.Map[Skill, Millis] = mutable.Map.empty
+  /** 持续施法最近亲手用的攻击技能：自动打怪、还手时接着用它（#1308）；不存档 */
+  private[world] var barrageSkill: Option[Skill] = None
   /** 上次因为出手（攻击、放技能）现身的时刻：自动隐身等一会儿再补，不在打架时来回隐身 */
   private[world] var revealedAt: Option[Millis] = None
   /** 还在回血回蓝的普通药（可以叠着喝） */
@@ -142,6 +144,14 @@ enum Intent:
   case Hunt(target: ActorId, once: Boolean)
   /** 走过去捡这件东西 */
   case Fetch(item: GroundId)
+  /** 持续施法（#1308）：站着对这个目标一直放这个攻击技能，直到它死、走出施法范围或放不出来 */
+  case Barrage(target: ActorId, skill: Skill)
+
+  /** 正在打的目标（近身打或持续施法） */
+  def foe: Option[ActorId] = this match
+    case Hunt(t, _)    => Some(t)
+    case Barrage(t, _) => Some(t)
+    case _             => None
 
 /** 怪物（含守卫、宝宝）。 */
 final class Monster(id: ActorId, initDefn: MonsterDef, initBehavior: Behavior, initSpawn: Option[Int], cell: Cell, dir: Dir, now: Millis)

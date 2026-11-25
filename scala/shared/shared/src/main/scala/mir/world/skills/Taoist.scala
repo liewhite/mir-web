@@ -40,7 +40,7 @@ object Taoist:
     def cast(c: SpellCtx)(using Rng): Effect =
       import c.*
       run(enemy.flatMap { t =>
-        poisonPowder.map { (a, kind) =>
+        poisonPowder(t).map { (a, kind) =>
           consume(a)
           p.lastPoison = Some(kind)
           val dose = SpellRules.poisonDose(d, lv, sc, kind)

@@ -52,8 +52,11 @@ object SettingRow:
       GameToggle("点一下怪就一直打到死", _.stickyAttack, (s, v) => s.copy(stickyAttack = v)),
       GameToggle("站着被打时自动还手", _.autoFightBack, (s, v) => s.copy(autoFightBack = v)),
       GameToggle(
-        s"自动打怪（闲着就去打 ${AutoRules.HuntRadius} 格内最近的野怪，别人在打的不抢；普通攻击，动摇杆就停）",
-        _.autoHunt, (s, v) => s.copy(autoHunt = v))
+        s"自动打怪（闲着就打 ${AutoRules.HuntRadius} 格内最近的野怪，别人在打的不抢；开了持续施法就用技能打；动摇杆就停）",
+        _.autoHunt, (s, v) => s.copy(autoHunt = v)),
+      GameToggle(
+        "持续施法（法师、道士：对怪放一次攻击技能就一直放到它死；走动、普攻、没蓝没符就停）",
+        _.sustainCast, (s, v) => s.copy(sustainCast = v))
     ),
     SettingTab.Display -> List(
       LocalToggle("头顶显示血条", _.showHpBars, (o, v) => o.copy(showHpBars = v)),
@@ -82,7 +85,10 @@ object SettingRow:
       GameToggle("自动幽灵盾（加魔防没了就补，身边的队友、宝宝一起加；要学会、带护身符）", _.autoSoulShield, (s, v) => s.copy(autoSoulShield = v)),
       GameToggle(
         s"自动隐身术（安全区外隐身没了就补；打怪、放技能会现身，停手 ${AutoRules.ReHideAfterMs / 1000} 秒后再隐；要学会、带护身符）",
-        _.autoInvisible, (s, v) => s.copy(autoInvisible = v))
+        _.autoInvisible, (s, v) => s.copy(autoInvisible = v)),
+      GameToggle(
+        "自动施毒（打怪时目标缺绿毒或红毒就补上，已中的不重复下；要学会施毒术、带灰/黄药粉）",
+        _.autoPoison, (s, v) => s.copy(autoPoison = v))
     )
   )
 

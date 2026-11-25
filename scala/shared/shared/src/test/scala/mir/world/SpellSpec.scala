@@ -77,6 +77,17 @@ object SpellSpec extends ZIOSpecDefault:
   /** 把怪钉住不动（测试用：远远地定住，免得乱跑） */
   private def pin(m: Monster): Unit = m.statuses.put(Status.Seized, Millis(Long.MaxValue / 2))
 
+  /** 钉住的、10 万血打不死的半兽人 */
+  private def sturdy(s: Sim, at: Cell): Monster =
+    val m = put(s, "半兽人", at)
+    pin(m)
+    s.w.vitals.setMaxHp(m, 100_000)
+    m.hp = 100_000
+    m
+
+  /** 左手镯位护身符剩几次 */
+  private def charmsLeft(p: Player): Int = p.worn.get(EquipSlot.BraceletL).fold(0)(_.count)
+
   def spec = suite("技能效果（#1163）")(
     suite("公式")(
       test("诱惑之光：先按收服概率（×倍率）判；没收服再按原版定住 25 秒 / 发狂 / 没效果") {
@@ -249,6 +260,88 @@ object SpellSpec extends ZIOSpecDefault:
         val hpBefore = m2.hp
         s.run(5000)
         assertTrue(idle, killed, m2.hp == hpBefore, !m2.dead)
+      }
+    ),
+    suite("持续施法、自动施毒（#1308）")(
+      test("持续施法：开着时手放一次灵魂火符就一直放（一直扣符、怪一直掉血）；关着只放一次") {
+        def used(on: Boolean): (Int, Boolean) =
+          val s = sim()
+          val p = caster(s, Job.Taoist, List(13), charm = true)
+          p.settings = p.settings.copy(sustainCast = on)
+          val m = sturdy(s, Cell(34, 30))
+          s.cast(p, 13, Some(m), m.cell)
+          s.run(5000)
+          (1000 - charmsLeft(p), m.hp < 100_000)
+        val (on, hurtOn)   = used(true)
+        val (off, hurtOff) = used(false)
+        assertTrue(on >= 4, off == 1, hurtOn, hurtOff)
+      },
+      test("持续施法：打死就停；走一步就停") {
+        val s = sim()
+        val p = caster(s, Job.Taoist, List(13), charm = true)
+        p.settings = p.settings.copy(sustainCast = true, autoPickup = false)
+        p.stats = p.stats.copy(sc = Span(30, 40))
+        val chick = put(s, "鸡", Cell(34, 30))
+        pin(chick)
+        s.cast(p, 13, Some(chick), chick.cell)
+        s.run(5000)
+        val killedThenIdle = chick.dead && p.intent == Intent.Idle
+        val m = sturdy(s, Cell(34, 32))
+        s.cast(p, 13, Some(m), m.cell)
+        s.run(2000)
+        p.busyUntil = s.w.now // 当作施法动作刚做完，走得动
+        s.w.handle(p.id, GameCmd.Walk(p.cell, Dir.Left)); s.flush()
+        val left = charmsLeft(p)
+        s.run(3000)
+        assertTrue(killedThenIdle, p.intent == Intent.Idle, charmsLeft(p) == left)
+      },
+      test("持续施法：护身符用完就停，提示原因") {
+        val s = sim()
+        val p = caster(s, Job.Taoist, List(13))
+        p.worn(EquipSlot.BraceletL) = charges(77L, "护身符", 2)
+        p.settings = p.settings.copy(sustainCast = true)
+        val m = sturdy(s, Cell(34, 30))
+        s.cast(p, 13, Some(m), m.cell)
+        s.run(4000)
+        assertTrue(p.worn.get(EquipSlot.BraceletL).isEmpty, p.intent == Intent.Idle, s.notices.exists(_.startsWith("持续施法停了")))
+      },
+      test("自动打怪 + 持续施法：道士站着用灵魂火符把附近的怪打死，不走过去") {
+        val s = sim()
+        val p = caster(s, Job.Taoist, List(13), charm = true)
+        p.stats = p.stats.copy(sc = Span(30, 40))
+        p.settings = p.settings.copy(autoHunt = true, sustainCast = true, autoPickup = false)
+        val m = put(s, "鸡", Cell(35, 30))
+        pin(m)
+        s.run(6000)
+        assertTrue(m.dead, p.cell == Cell(30, 30), charmsLeft(p) < 1000)
+      },
+      test("自动施毒：打怪时目标缺哪种毒补哪种，两种都中了不再下；不勾不下") {
+        def poisoned(on: Boolean): (List[StatusKind], Int, Int) =
+          val s = sim()
+          val p = caster(s, Job.Taoist, List(6, 13), charm = true)
+          p.settings = p.settings.copy(autoPoison = on, sustainCast = true)
+          val slots = p.bag.indices.filter(p.bag(_).isEmpty).take(2)
+          p.bag(slots(0)) = Some(charges(81L, "灰色药粉(少量)", 10))
+          p.bag(slots(1)) = Some(charges(82L, "黄色药粉(少量)", 10))
+          val m = sturdy(s, Cell(34, 30))
+          s.cast(p, 13, Some(m), m.cell)
+          s.run(8000)
+          (StatusKind.poisons.filter(m.statuses.has), 10 - p.bag(slots(0)).fold(0)(_.count), 10 - p.bag(slots(1)).fold(0)(_.count))
+        val (kinds, green, red) = poisoned(true)
+        val (none, g0, r0)      = poisoned(false)
+        assertTrue(kinds == StatusKind.poisons, green == 1, red == 1, none.isEmpty, g0 == 0, r0 == 0)
+      },
+      test("施毒术挑毒：目标已中绿毒时用黄药粉补红毒（不按红绿交替再下绿毒）") {
+        val s = sim()
+        val p = caster(s, Job.Taoist, List(6))
+        val slots = p.bag.indices.filter(p.bag(_).isEmpty).take(2)
+        p.bag(slots(0)) = Some(charges(81L, "灰色药粉(少量)", 10))
+        p.bag(slots(1)) = Some(charges(82L, "黄色药粉(少量)", 10))
+        p.lastPoison = Some(PoisonKind.Red)
+        val m = sturdy(s, Cell(34, 30))
+        s.w.conditions.poison(m, PoisonKind.Green, 60_000, 1, p.id)
+        s.cast(p, 6, Some(m), m.cell)
+        assertTrue(m.statuses.has(StatusKind.RedPoison), p.bag(slots(0)).map(_.count).contains(10), p.bag(slots(1)).map(_.count).contains(9))
       }
     ),
     suite("神兽照原版变身喷火（#1255）")(

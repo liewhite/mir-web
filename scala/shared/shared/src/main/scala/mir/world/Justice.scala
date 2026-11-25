@@ -51,10 +51,8 @@ final class Justice(w: World):
       !inSafeZone(b) && (hitMaster || hunted || threat)
     ).getOrElse(false)
 
-  /** 玩家正打着谁（按住攻击的目标） */
-  private def huntOf(p: Player): Option[ActorId] = p.intent match
-    case Intent.Hunt(t, _) => Some(t)
-    case _                 => None
+  /** 玩家正打着谁（按住攻击或持续施法的目标） */
+  private def huntOf(p: Player): Option[ActorId] = p.intent.foe
 
   /** 这个对象正打着谁：玩家看按住攻击的目标，怪看它的目标 */
   private def targetOf(a: Actor): Option[ActorId] = a match

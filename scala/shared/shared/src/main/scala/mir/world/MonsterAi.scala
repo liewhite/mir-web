@@ -478,10 +478,7 @@ object MonsterAi:
     def alive(id: ActorId) = w.actor(id).exists(!_.dead)
     val mine = m.target.exists(alive)
     val masters = m.master.flatMap(w.player).exists { p =>
-      val hunting = p.intent match
-        case Intent.Hunt(t, _) => alive(t)
-        case _                 => false
-      hunting || p.assailant.exists(g => w.now - g.at <= Grudge.Ms)
+      p.intent.foe.exists(alive) || p.assailant.exists(g => w.now - g.at <= Grudge.Ms)
     }
     mine || masters
 

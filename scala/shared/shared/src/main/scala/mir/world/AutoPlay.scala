@@ -4,6 +4,7 @@ import mir.core.*
 import mir.model.{CharSettings, Cover, PickupKind}
 import mir.rules.{AutoRules, GearTiers, ItemKind, Skill, SpellRules, Upgrade}
 import mir.terrain.{MeleeReach, Path, Reach}
+import mir.world.skills.Amulets
 
 /**
  * 玩家的自动功能，按角色设置（CharSettings）在服务端执行：自动喝药、按住攻击（打到死）、被打还手、自动打怪、自动烈火、自动捡物，
@@ -19,9 +20,10 @@ object AutoPlay:
       if w.now >= p.busyUntil then autoCast(w, p)
       if w.now >= p.busyUntil then
         p.intent match
-          case Intent.Hunt(target, once) => hunt(w, p, target, once)
-          case Intent.Fetch(item)        => fetch(w, p, item)
-          case Intent.Idle               => idle(w, p)
+          case Intent.Hunt(target, once)     => hunt(w, p, target, once)
+          case Intent.Barrage(target, skill) => barrage(w, p, target, skill)
+          case Intent.Fetch(item)            => fetch(w, p, item)
+          case Intent.Idle                   => idle(w, p)
 
   private def free(w: World, p: Player): Boolean = w.now >= p.manualUntil
 
@@ -38,6 +40,33 @@ object AutoPlay:
         else if free(w, p) then
           walk(w, p, t.cell, MeleeReach.path(reach, w.walkableFor(p), w.terrain.walkable, p.cell, t.cell, PathNodes))
 
+  /**
+   * 持续施法（#1308）：站着对目标接着放，目标死了、没了、超出施法范围就停；
+   * 放不出来（没蓝、没符）也停，告诉玩家原因，并记下时刻让自动打怪这一阵先用普通攻击。
+   */
+  private def barrage(w: World, p: Player, id: ActorId, skill: Skill): Unit =
+    w.actor(id).filter(t => !t.dead && w.canAttack(p, t) && p.cell.chebyshev(t.cell) <= SpellRules.CastRange) match
+      case None => p.intent = Intent.Idle
+      case Some(t) =>
+        Combat.cast(w, p, skill.id, SpellTarget(t.cell, Some(t))) match
+          case Outcome.Refused(why) =>
+            p.intent = Intent.Idle
+            p.autoCastTried(skill) = w.now
+            w.out.refuse(p, s"持续施法停了：$why")
+          case Outcome.Done | Outcome.Busy => ()
+
+  /**
+   * 亲手放了一个技能之后（PlayerOps 收到 Cast 时调）：开着持续施法、是攻击技能、对着能打的目标、没被拒，
+   * 就转成对它持续施法（取代原来在打的）。别的技能（治愈、加防、施毒……）不打断正在进行的持续施法。
+   */
+  def castByHand(w: World, p: Player, skillId: SkillId, target: Option[Actor], o: Outcome): Unit =
+    for
+      skill <- Skill.of(skillId) if p.settings.sustainCast && AutoRules.Sustained(skill) && !o.isInstanceOf[Outcome.Refused]
+      t     <- target if !t.dead && w.canAttack(p, t)
+    do
+      p.intent = Intent.Barrage(t.id, skill)
+      p.barrageSkill = Some(skill)
+
   private def fetch(w: World, p: Player, id: GroundId): Unit =
     w.groundItem(id) match
       case None => p.intent = Intent.Idle
@@ -53,26 +82,44 @@ object AutoPlay:
       val hitter = p.lastHitBy.flatMap(w.actor).filter(a => p.settings.autoFightBack && !a.dead && w.isEnemy(p, a) && p.cell.chebyshev(a.cell) <= 3)
       p.lastHitBy = None
       // 先还手，再捡东西，最后才自己找怪打
-      p.intent = hitter.map(a => Intent.Hunt(a.id, once = false))
+      val spell = barrageSpell(w, p)
+      p.intent = hitter.map(engage(spell))
         .orElse(Option.when(p.settings.autoPickup)(nearestLoot(w, p, 6)).flatten.map(g => Intent.Fetch(g.id)))
-        .orElse(Option.when(p.settings.autoHunt)(nearestPrey(w, p)).flatten.map(m => Intent.Hunt(m.id, once = false)))
+        .orElse(Option.when(p.settings.autoHunt)(nearestPrey(w, p, spell)).flatten.map(engage(spell)))
         .getOrElse(Intent.Idle)
+
+  /** 怎么打：有持续施法用的技能就站着放它，否则走过去普通攻击 */
+  private def engage(spell: Option[Skill])(a: Actor): Intent =
+    spell.fold(Intent.Hunt(a.id, once = false))(Intent.Barrage(a.id, _))
+
+  /**
+   * 自动打怪、还手用的攻击技能（#1308）：开着持续施法时，最近亲手持续放过的那个，没有就按 AutoRules.DefaultBarrage 取学会的；
+   * 刚放不出来过（BarrageRetryMs 内）的跳过。
+   */
+  private def barrageSpell(w: World, p: Player): Option[Skill] =
+    Option.when(p.settings.sustainCast)((p.barrageSkill.toList ++ AutoRules.DefaultBarrage).find { s =>
+      p.knows(s) && p.autoCastTried.get(s).forall(w.now - _ >= AutoRules.BarrageRetryMs)
+    }).flatten
 
   /** 自动打怪一次最多试几只怪的路（由近到远），免得周围怪多又都走不到时每一步算一堆路 */
   private val HuntTries = 3
 
   /**
    * 自动打怪（#1307）挑的怪：附近看得见的野怪（不是宝宝、没钻地或变石像），不归别人（别人正在打的不抢，队友的可以），
-   * 走得到身边；取最近的。
+   * 打得着（用技能打时在施法范围内，普通攻击时走得到身边）；取最近的。
    */
-  private def nearestPrey(w: World, p: Player): Option[Monster] =
+  private def nearestPrey(w: World, p: Player, spell: Option[Skill]): Option[Monster] =
     val reach = Reach.of(p.longHitOn, p.knows(Skill.LongHit))
+    def reachable(m: Monster): Boolean = spell match
+      case Some(_) => p.cell.chebyshev(m.cell) <= SpellRules.CastRange
+      case None =>
+        MeleeReach.canStrike(reach, p.cell, m.cell, w.terrain.walkable) ||
+          MeleeReach.path(reach, w.walkableFor(p), w.terrain.walkable, p.cell, m.cell, PathNodes).isDefined
     w.monsters.iterator
       .filter(m => !m.dead && m.master.isEmpty && m.cover == Cover.Open && w.isEnemy(p, m) && p.cell.chebyshev(m.cell) <= AutoRules.HuntRadius)
       .filter(m => w.vitals.claimant(m).forall(o => w.allied(p, o)))
       .toVector.sortBy(m => p.cell.chebyshev(m.cell)).iterator.take(HuntTries)
-      .find(m => MeleeReach.canStrike(reach, p.cell, m.cell, w.terrain.walkable) ||
-        MeleeReach.path(reach, w.walkableFor(p), w.terrain.walkable, p.cell, m.cell, PathNodes).isDefined)
+      .find(reachable)
 
   private val PathNodes = 3000
 
@@ -129,6 +176,7 @@ object AutoPlay:
     AutoCast(Skill.MagicShield, _.autoMagicShield, CastRetryMs)(keepUp(StatusKind.Shield)),
     AutoCast(Skill.HolyArmor, _.autoHolyArmor, CastRetryMs)(keepUp(StatusKind.ArmorUp)),
     AutoCast(Skill.SoulShield, _.autoSoulShield, CastRetryMs)(keepUp(StatusKind.MagicArmorUp)),
+    AutoCast(Skill.Poisoning, _.autoPoison, AutoRules.PoisonRetryMs)(unpoisonedFoe),
     AutoCast(Skill.SummonSkeleton, _.autoSummonSkeleton, CastRetryMs)(shortOf(SpellRules.SkeletonPet)),
     AutoCast(Skill.SummonShinsu, _.autoSummonShinsu, CastRetryMs)(shortOf(SpellRules.ShinsuPet)),
     AutoCast(Skill.Invisible, _.autoInvisible, CastRetryMs)(hideAgain)
@@ -155,6 +203,15 @@ object AutoPlay:
       .filter(a => ratio(a) * 100 < HealBelowPercent)
       .minByOption(ratio)
       .map(a => SpellTarget(a.cell, Some(a)))
+
+  /**
+   * 自动施毒（#1308）：正在打的目标（近身打或持续施法）在施法范围内，身上带的药粉里有它还没中的毒就放；
+   * 下哪种由施毒术自己挑（缺哪个补哪个，Amulets.powderFor）。
+   */
+  private def unpoisonedFoe(w: World, p: Player): Option[SpellTarget] =
+    p.intent.foe.flatMap(w.actor)
+      .filter(t => !t.dead && w.canAttack(p, t) && p.cell.chebyshev(t.cell) <= SpellRules.CastRange && Amulets.canAddPoison(w, p, t))
+      .map(t => SpellTarget(t.cell, Some(t)))
 
   /** 自动召唤：这种宝宝不满 SpellRules.SummonsEach 只（变了身的大神兽也算神兽） */
   private def shortOf(pet: MonsterName)(w: World, p: Player): Option[SpellTarget] =

@@ -95,6 +95,11 @@ final class Controller(client: GameClient):
       case SkillAim.Friend => lockedInReach(client.isFriend).map(_.id)
     val cell = target.flatMap(client.actor).orElse(client.self).map(_.cell)
     cell.foreach(c => client.send(GameCmd.Cast(id, target, c)))
+    // 持续施法（#1308）由服务端接着放：别再走过去近身打（普通攻击会把它停掉）
+    if target.isDefined && sustains(id) then
+      intent match
+        case Intent.Fight(_) => intent = Intent.Idle
+        case _               => ()
 
   /** 走到某一格（全景地图）：按地形算好整条路；走不到的地方走到离它最近处，一步都走不了就不动。 */
   def goTo(cell: Cell): Unit =
@@ -103,6 +108,10 @@ final class Controller(client: GameClient):
       md    <- client.map
       route <- Travel.plan(md.terrain.walkable, me.cell, cell)
     yield Intent.GoTo(route)).getOrElse(Intent.Idle)
+
+  /** 这个技能放出去会不会转成持续施法（角色设置开着、是攻击技能） */
+  private def sustains(id: SkillId): Boolean =
+    client.view.settings.sustainCast && Skill.of(id).exists(mir.rules.AutoRules.Sustained)
 
   /** 能主动放的技能（不是被动），按学会的顺序。 */
   def activeSkills: List[LearnedSkill] = client.view.skills.filterNot(s => Skill.isPassive(s.id))

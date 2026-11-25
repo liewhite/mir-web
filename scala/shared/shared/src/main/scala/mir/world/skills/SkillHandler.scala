@@ -146,28 +146,13 @@ final class SpellCtx(
     if delay > 0 then fx("magic", 1160 + p.cell.dir16(center) * 10, 3, 60, Anchor.OnCell(center), from = Some(p.cell), duration = Some(delay))
     w.afterOn(p, delay)(_ => fx("magic", burst, frames, frameTime, Anchor.OnCell(center)))
 
-  /**
-   * 身上第一份合要求的护符（#1202：不必装备，包裹里有就能用）：左手镯位戴着的优先，再按包裹格子顺序找。
-   * fits 看种类：None 护身符，Some(毒) 灰/黄药粉。
-   */
-  private def findAmulet[K](fits: PartialFunction[Option[PoisonKind], K]): Option[(AmuletAt, K)] =
-    (ItemPlace.Worn(EquipSlot.BraceletL) +: p.bag.indices.map(ItemPlace.Bag(_))).iterator.flatMap { place =>
-      Inventory.at(p, place)
-        .filter(_.count > 0)
-        .flatMap(it => w.catalog.item(it.name))
-        .map(ItemKind.of)
-        .collect { case ItemKind.Amulet(k) if fits.isDefinedAt(k) => AmuletAt(place) -> fits(k) }
-    }.nextOption()
-
   /** 要有护身符 */
   def charm: Either[Effect, AmuletAt] =
-    findAmulet { case None => () }.map(_._1).toRight(Effect.Fail("身上没有护身符（包裹里或左手镯位都行）"))
+    Amulets.find(w, p) { case None => () }.map(_._1).toRight(Effect.Fail("身上没有护身符（包裹里或左手镯位都行）"))
 
-  /** 要有灰色或黄色药粉：用哪份、什么毒。身上两种都有时换上次没下的那种（#1202 红绿交替），只有一种就用它 */
-  def poisonPowder: Either[Effect, (AmuletAt, PoisonKind)] =
-    findAmulet { case Some(k) if !p.lastPoison.contains(k) => k }
-      .orElse(findAmulet { case Some(k) => k })
-      .toRight(Effect.Fail("身上没有灰色或黄色药粉（包裹里或左手镯位都行）"))
+  /** 要有灰色或黄色药粉：给 t 下什么毒、用哪份（挑法见 Amulets.powderFor） */
+  def poisonPowder(t: Actor): Either[Effect, (AmuletAt, PoisonKind)] =
+    Amulets.powderFor(w, p, t).toRight(Effect.Fail("身上没有灰色或黄色药粉（包裹里或左手镯位都行）"))
 
   /** 用掉找到的那一叠护符的一次（数量就是剩余次数，#1213 Charges）；次数用完就没了。 */
   def consume(a: AmuletAt): Unit =
@@ -209,3 +194,32 @@ object SpellCtx:
 
 /** 施法要用的一份护身符/药粉在身上哪一格（SpellCtx.charm / poisonPowder 找到，consume 扣次数）。 */
 final case class AmuletAt(place: ItemPlace)
+
+/** 身上带的护身符、药粉（施法和自动施毒共用）。 */
+object Amulets:
+  /**
+   * 身上第一份合要求的护符（#1202：不必装备，包裹里有就能用）：左手镯位戴着的优先，再按包裹格子顺序找。
+   * fits 看种类：None 护身符，Some(毒) 灰/黄药粉。
+   */
+  def find[K](w: World, p: Player)(fits: PartialFunction[Option[PoisonKind], K]): Option[(AmuletAt, K)] =
+    (ItemPlace.Worn(EquipSlot.BraceletL) +: p.bag.indices.map(ItemPlace.Bag(_))).iterator.flatMap { place =>
+      Inventory.at(p, place)
+        .filter(_.count > 0)
+        .flatMap(it => w.catalog.item(it.name))
+        .map(ItemKind.of)
+        .collect { case ItemKind.Amulet(k) if fits.isDefinedAt(k) => AmuletAt(place) -> fits(k) }
+    }.nextOption()
+
+  /**
+   * 给 t 下什么毒、用哪份药粉：t 身上还没有的那种优先（#1308 缺哪个补哪个），
+   * 都有或都没有时换上次没下的那种（#1202 红绿交替），只带了一种就用它。
+   */
+  def powderFor(w: World, p: Player, t: Actor): Option[(AmuletAt, PoisonKind)] =
+    def lacks(k: PoisonKind)  = !t.statuses.has(StatusKind.poison(k))
+    def fresh(k: PoisonKind)  = !p.lastPoison.contains(k)
+    val prefs: List[PoisonKind => Boolean] = List(k => lacks(k) && fresh(k), lacks, fresh, _ => true)
+    prefs.iterator.flatMap(ok => find(w, p) { case Some(k) if ok(k) => k }).nextOption()
+
+  /** 自动施毒要不要给 t 下毒：身上带着的药粉里有 t 还没中的那种 */
+  def canAddPoison(w: World, p: Player, t: Actor): Boolean =
+    find(w, p) { case Some(k) if !t.statuses.has(StatusKind.poison(k)) => k }.isDefined
