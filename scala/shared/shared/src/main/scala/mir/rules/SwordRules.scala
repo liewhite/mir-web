@@ -31,6 +31,9 @@ object SwordRules:
   /** 半月弯刀每刀耗的魔法。 */
   val WideHitMp = 3
 
+  /** 智能半月（#1273）：身边至少几只怪才自动出半月。 */
+  val SmartWideHitMin = 2
+
   /** 半月弯刀：身边另外 7 格每格的威力 = 这一刀威力 ×(等级+1)/4 + 1。 */
   def widePower(power: Int, level: Int): Int = round(power * (level + 1) / 4.0) + 1
 

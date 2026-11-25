@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.*
 import mir.model.*
 import mir.protocol.*
-import mir.rules.{Durability, PetBody, PoisonDose, Rng, SpellRules, Summoning}
+import mir.rules.{Durability, PetBody, PoisonDose, Rng, SpellRules, Summoning, SwordRules}
 import mir.terrain.Terrain
 import mir.rules.SpellRules.{TameOutcome, TameTarget}
 import mir.testkit.TestFiles
@@ -728,6 +728,36 @@ object SpellSpec extends ZIOSpecDefault:
         assertTrue(p.cell == Cell(30, 30), p.mp == 100_000, s.notices.contains("这张地图不能瞬息移动"))
       }
     ),
+    suite("智能半月（#1273）")(
+      test("身边 2 只怪：半月关着也自动出半月，耗蓝、旁边那只也挨刀") {
+        val r = smartWide(monsters = List(Cell(31, 30), Cell(30, 31)))
+        assertTrue(r.mpSpent == SwordRules.WideHitMp, r.hurt == List(true, true))
+      },
+      test("身边只有 1 只怪：普通砍，不耗蓝") {
+        val r = smartWide(monsters = List(Cell(31, 30)))
+        assertTrue(r.mpSpent == 0, r.hurt == List(true))
+      },
+      test("怪隔了一格不算身边：普通砍") {
+        val r = smartWide(monsters = List(Cell(31, 30), Cell(32, 30)))
+        assertTrue(r.mpSpent == 0, r.hurt == List(true, false))
+      },
+      test("蓝不够 3 点：普通砍") {
+        val r = smartWide(monsters = List(Cell(31, 30), Cell(30, 31)), mp = SwordRules.WideHitMp - 1)
+        assertTrue(r.mpSpent == 0, r.hurt == List(true, false))
+      },
+      test("没学半月：普通砍") {
+        val r = smartWide(monsters = List(Cell(31, 30), Cell(30, 31)), learned = false)
+        assertTrue(r.mpSpent == 0, r.hurt == List(true, false))
+      },
+      test("设置里关掉：普通砍") {
+        val r = smartWide(monsters = List(Cell(31, 30), Cell(30, 31)), on = false)
+        assertTrue(r.mpSpent == 0, r.hurt == List(true, false))
+      },
+      test("身边 1 只怪加 1 个玩家：只数怪，不出半月、不砍到人") {
+        val r = smartWide(monsters = List(Cell(31, 30)), bystander = Some(Cell(30, 31)))
+        assertTrue(r.mpSpent == 0, r.hurt == List(true), r.bystanderHurt == Some(false))
+      }
+    ),
     suite("刺杀站位（#1264）")(
       test("开着刺杀：走到隔一格就停下出刀") {
         val (at, dmg) = longHitHunt(longHit = true)
@@ -739,6 +769,37 @@ object SpellSpec extends ZIOSpecDefault:
       }
     )
   )
+
+  /** 智能半月一刀的结果：花了多少蓝，各只怪（按给的顺序）、旁边的玩家有没有挨刀 */
+  private final case class WideResult(mpSpent: Int, hurt: List[Boolean], bystanderHurt: Option[Boolean])
+
+  /** 战士在 (30,30) 朝右（第一只怪在正前方）砍一刀；半月手动开关关着，看智能半月出不出 */
+  private def smartWide(
+      monsters: List[Cell], mp: Int = 100_000, learned: Boolean = true, on: Boolean = true, bystander: Option[Cell] = None
+  ): WideResult =
+    val s = sim()
+    val p = caster(s, Job.Warrior, if learned then List(25) else Nil)
+    p.wideHitOn = false
+    p.settings = p.settings.copy(smartWideHit = on)
+    p.stats = p.stats.copy(dc = Span(50, 50), hit = 1000)
+    p.mp = mp
+    val ms = monsters.map { c =>
+      val m = put(s, "半兽人", c)
+      pin(m)
+      m.maxHpNow = 1_000_000
+      m.hp = 1_000_000
+      m
+    }
+    val other = bystander.map { c =>
+      val d = CharacterData.newbie(catalog, "乙", Job.Warrior, Sex.Male, UidSource.counter(6000))
+      val b = s.w.player(s.w.join(d.copy(place = Place(s.w.mapId, c), level = 40))).get
+      b.arrivedAt = Millis(-100_000) // 过了进图保护
+      b.stats = b.stats.copy(maxHp = 100_000)
+      b.hp = 100_000
+      b
+    }
+    Combat.attack(s.w, p, Dir.Right)
+    WideResult(mp - p.mp, ms.map(_.hp < 1_000_000), other.map(_.hp < 100_000))
 
   /** 学了刺杀的战士按住攻击去打 5 格外钉住的怪，跑 3 秒后站在哪、怪挨了多少 */
   private def longHitHunt(longHit: Boolean): (Cell, Int) =

@@ -54,7 +54,7 @@ object Combat:
       val style =
         if p.fireReady && target.exists(w.canAttack(p, _)) then HitStyle.Fire
         else if p.powerHitReady && p.knows(Skill.PowerHit) then HitStyle.Power
-        else if p.wideHitOn && p.knows(Skill.WideHit) && p.mp >= SwordRules.WideHitMp then HitStyle.Wide
+        else if p.knows(Skill.WideHit) && p.mp >= SwordRules.WideHitMp && (p.wideHitOn || smartWide(w, p)) then HitStyle.Wide
         else if p.longHitOn && p.knows(Skill.LongHit) then HitStyle.Long
         else HitStyle.Normal
       w.grid.setAction(p, if style == HitStyle.Normal then ActKind.Attack else ActKind.Heavy, Pace.HitAnimMs, hit = Some(style))
@@ -70,6 +70,18 @@ object Combat:
       resolveHit(w, p, dir, style, target)
       p.statuses.remove(StatusKind.Invisible)
       Outcome.Done
+
+  /**
+   * 智能半月（#1273，设置开关）：半月关着时，身边一圈 8 格里的野怪够 SwordRules.SmartWideHitMin 只就这一刀用半月。
+   * 只数野怪（不数玩家、宝宝），免得 PK 规则下为了旁边的人自动出半月误伤。
+   */
+  private def smartWide(w: World, p: Player): Boolean =
+    p.settings.smartWideHit && Dir.values.iterator
+      .flatMap(d => w.occupants(p.cell.step(d)))
+      .count {
+        case m: Monster => m.master.isEmpty && w.isEnemy(p, m)
+        case _          => false
+      } >= SwordRules.SmartWideHitMin
 
   /** 一刀：判命中，扣防御（刺杀隔一格的那下不扣）。 */
   private def physicalHit(w: World, p: Player, t: Actor, power: Int, ignoreArmor: Boolean): Unit =

@@ -74,6 +74,8 @@ final case class CharSettings(
     autoFightBack: Boolean = true,
     /** 战士：烈火好了就自动开 */
     autoFireSword: Boolean = true,
+    /** 战士：半月关着时，身边有 2 只以上怪就这一刀自动用半月弯刀（#1273） */
+    smartWideHit: Boolean = true,
     /** 战士：自动站到隔一格的位置用刺杀 */
     autoLongHitPosition: Boolean = false,
     /** 法师：魔法盾没开着（或到期了）就自动开 */

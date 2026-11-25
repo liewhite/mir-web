@@ -2,7 +2,7 @@ package mir.client.ui
 
 import mir.client.render.ViewOptions
 import mir.model.{CharSettings, PickupKind}
-import mir.rules.SpellRules
+import mir.rules.{SpellRules, SwordRules}
 
 /** 设置窗的一页 */
 enum SettingTab(val label: String):
@@ -49,7 +49,10 @@ object SettingRow:
       LocalToggle("背景音乐", _.musicOn, (o, v) => o.copy(musicOn = v))
     ),
     SettingTab.Warrior -> List(
-      GameToggle("烈火冷却好了自动开（学会烈火剑法才生效）", _.autoFireSword, (s, v) => s.copy(autoFireSword = v))
+      GameToggle("烈火冷却好了自动开（学会烈火剑法才生效）", _.autoFireSword, (s, v) => s.copy(autoFireSword = v)),
+      GameToggle(
+        s"身边有 ${SwordRules.SmartWideHitMin} 只以上怪就自动用半月（学会半月弯刀才生效，1 只时普通砍不耗蓝）",
+        _.smartWideHit, (s, v) => s.copy(smartWideHit = v))
     ),
     SettingTab.Wizard -> List(
       GameToggle("魔法盾没开着就自动开（学会魔法盾才生效，蓝不够时等等再开）", _.autoMagicShield, (s, v) => s.copy(autoMagicShield = v))
