@@ -23,7 +23,7 @@ enum UiAction:
   case Trade
   /** 私聊：聊天框预填「/最近私聊的人 」（原版按「/」键） */
   case Whisper
-  /** 在新标签页打开游戏外的网页（左上角「留言」#1280、「更新」键），游戏继续连着 */
+  /** 在游戏画面上盖一层打开游戏外的网页（左上角「留言」#1280、「更新」键），游戏继续连着（#1306） */
   case OpenPage(page: WebPage)
   case CloseAll
 
