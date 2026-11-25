@@ -456,20 +456,23 @@ object SpellSpec extends ZIOSpecDefault:
         body(60).hp > body(40).hp // 不封顶
       )
     },
-    test("神兽削弱（#1285）：攻、防、魔防底数 ×0.85，技能每级 +30%，道术每点 +1.6%；血不打折，两种形态同一份") {
+    test("神兽削弱（#1285、#1245）：攻、防、魔防底数 ×0.85，技能每级 +30%，道术每点血 +1.6%、攻防 +1.2%；血不打折，两种形态同一份") {
       val g = SpellRules.growthOf(SpellRules.ShinsuPet)
       val big = catalog.monster(SpellRules.ShinsuWarrior).get
       def x(v: Int, k: Double) = math.floor(v * k + 0.5).toInt
       val b = SpellRules.summonedBody(big, 3, 50)
-      val sc = 1.8 // 1 + 50×1.6%
-      val lv = 1.9 // 1 + 3×30%
+      val hpSc = 1.8 // 1 + 50×1.6%
+      val sc   = 1.6 // 1 + 50×1.2%
+      val lv   = 1.9 // 1 + 3×30%
       assertTrue(
         SpellRules.growthOf(SpellRules.ShinsuWarrior) == g,
+        g.hpScBoost(50) == hpSc,
         g.scBoost(50) == sc,
         g.levelBoost(3) == lv,
-        g.scPctText == "1.6",
+        g.hpScPctText == "1.6",
+        g.scPctText == "1.2",
         g.baseText.contains("0.85"),
-        b.hp == x(big.hp, lv * sc),
+        b.hp == x(big.hp, lv * hpSc),
         b.dc == Span(x(big.dc.lo, 0.85 * (lv * sc)), x(big.dc.hi, 0.85 * (lv * sc))),
         b.ac == Span(x(big.ac.lo, 0.85 * sc), x(big.ac.hi, 0.85 * sc)),
         b.mac == Span(x(big.mac.lo, 0.85 * sc), x(big.mac.hi, 0.85 * sc))

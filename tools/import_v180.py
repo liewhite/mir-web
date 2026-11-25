@@ -69,6 +69,9 @@ MONSTERS = [
 ]
 # 不刷的（魔龙石碑这期不做；GeeM2 里 1.85 以后的怪 1.76 数据表没有）；「X0」是 GeeM2 的精英批次，并成同名怪
 SKIP = {"魔龙石碑"}
+# 高级魔龙怪只在魔龙血域（最深一层）刷；外面各图 GeeM2 里零星的巨蛾、龙源血路的力士战将巨蛾都不刷（用户 11-26，#1245）
+HIGH_NAMES = {"魔龙巨蛾", "魔龙力士", "魔龙战将"}
+HIGH_MAPS = {"66"}
 
 # 魔龙城的 NPC（GeeM2 merchant.txt 的位置和外观）：卖的东西照盟重对应的店（数据表里已有的物品、本服已定的价钱），
 # GeeM2 的货单是它自己改过的（祖玛装、1.85 物品），不用。
@@ -122,6 +125,8 @@ def main() -> None:
         name = f[3].removesuffix("0") if f[3].endswith("0") and f[3][:-1] in known else f[3]
         if name in SKIP or name not in known:
             skipped.add(name)
+            continue
+        if name in HIGH_NAMES and f[0] not in HIGH_MAPS:
             continue
         spawns.append({"map": f[0], "x": int(f[1]), "y": int(f[2]), "monster": name,
                        "radius": int(f[4]), "count": int(f[5]), "minutes": int(f[6])})

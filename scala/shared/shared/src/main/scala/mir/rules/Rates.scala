@@ -51,9 +51,10 @@ object Rates:
   val mageSpell: Double = 1.3
   /**
    * 神兽（两种形态）的成长（用户 11-25 在 #1285 要削弱初始攻防魔防和成长）：数据表攻击、防御、魔防打 85 折，
-   * 技能每级 +30%（骷髅 35%），道术上限每点 +1.6%（骷髅 1.8%）。
+   * 技能每级 +30%（骷髅 35%），道术上限每点加血 +1.6%、加攻击防御魔防 +1.2%（骷髅都是 1.8%；
+   * 攻防那份用户 11-26 在 #1245 要求再降，从 1.6% 降到 1.2%）。
    */
-  val shinsuGrowth: SummonGrowth = SummonGrowth(basePermille = 850, levelPermille = 300, scPermille = 16)
+  val shinsuGrowth: SummonGrowth = SummonGrowth(basePermille = 850, levelPermille = 300, hpScPermille = 16, scPermille = 12)
   /** 技能每级要的熟练度除以这个数（向上取整、至少 1；用户 11-24 在 #1179 定） */
   val skillTrain: Int = 10
 

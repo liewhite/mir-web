@@ -55,6 +55,12 @@ object RulesGoldenSpec extends ZIOSpecDefault:
 
   private def job(code: Int): Job = Job.values.find(_.code == code).get
 
+  /** TS 版（只作对照）没有 1.80 才有的腰带、靴子位（#1311、#1312 只做了 Scala 版），这两类不比。 */
+  private val beltOrBoots = Set(EquipSlot.Belt, EquipSlot.Boots)
+  private def compared(d: ItemDef): Boolean = ItemKind.of(d) match
+    case ItemKind.Equip(slots) => !slots.exists(beltOrBoots)
+    case _                     => true
+
   /** 把 ItemKind 写成 TS 版 itemKind() 的 JSON 形状，好直接比。 */
   private def tsKind(k: ItemKind): Json =
     def obj(kind: String, fields: (String, Json)*) = Json.Obj(("kind" -> Json.Str(kind)) +: fields*)
@@ -111,11 +117,6 @@ object RulesGoldenSpec extends ZIOSpecDefault:
       assertTrue(golden.levelAbility.flatten.size == 180, diffs.isEmpty)
     },
     test("每件物品的用途、加成、穿戴要求、是否高级装备") {
-      // TS 版（只作对照）没有 1.80 才有的腰带、靴子位（#1311、#1312 只做了 Scala 版），这两类不比
-      val beltOrBoots = Set(EquipSlot.Belt, EquipSlot.Boots)
-      def compared(d: ItemDef) = ItemKind.of(d) match
-        case ItemKind.Equip(slots) => !slots.exists(beltOrBoots)
-        case _                     => true
       val diffs = golden.items.flatMap { c =>
         val d = catalog.item(c.name).get
         if !compared(d) then Nil
@@ -137,9 +138,13 @@ object RulesGoldenSpec extends ZIOSpecDefault:
     },
     test("每一行爆率的实际掉落概率") {
       // 同一只怪的爆率表里同一物品可能出现几行，按怪物分组后逐行按顺序比
-      val want = golden.drops.groupBy(_.monster).view.mapValues(_.map(c => (c.item, c.chance))).toMap
+      // TS 认不出腰带靴子，boss 保底在两边不同：这两类的行不比
+      def keep(item: ItemName) = catalog.item(item).forall(compared)
+      val want = golden.drops.groupBy(_.monster).view.mapValues(_.collect { case c if keep(c.item) => (c.item, c.chance) }).toMap
       val got = catalog.data.drops.map { (m, rs) =>
-        m -> rs.map(d => (d.item, Rates.dropChance(Rates.rankOf(m), d, if d.isGold then None else catalog.item(d.item))))
+        m -> rs.collect { case d if d.isGold || keep(d.item) =>
+          (d.item, Rates.dropChance(Rates.rankOf(m), d, if d.isGold then None else catalog.item(d.item)))
+        }
       }
       val diffs = (want.keySet ++ got.keySet).filter(m => want.getOrElse(m, Nil) != got.getOrElse(m, Nil))
       assertTrue(golden.drops.size == 6833 + 309 + 195, diffs.isEmpty) // + 1.80 爆率（#1314）

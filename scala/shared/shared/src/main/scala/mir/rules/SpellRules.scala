@@ -23,14 +23,19 @@ final case class Summoning(level: Int, scMax: Int):
 
 /**
  * 召唤宝宝的成长（千分数，免得算出 1.5400000001 这种尾数）：
- * basePermille 数据表攻击、防御、魔防打几折（血不打），levelPermille 每级技能加血、攻多少，scPermille 每点道术上限加血攻防魔防多少（不封顶）。
+ * basePermille 数据表攻击、防御、魔防打几折（血不打），levelPermille 每级技能加血、攻多少；
+ * 每点道术上限的加成（不封顶）分两份：hpScPermille 加血，scPermille 加攻击、防御、魔防。
  */
-final case class SummonGrowth(basePermille: Int, levelPermille: Int, scPermille: Int):
+final case class SummonGrowth(basePermille: Int, levelPermille: Int, hpScPermille: Int, scPermille: Int):
   def base: Double                   = basePermille / 1000.0
   def levelBoost(level: Int): Double = (1000 + level * levelPermille) / 1000.0
+  /** 道术对攻击、防御、魔防的倍数 */
   def scBoost(scMax: Int): Double    = (1000 + math.max(scMax, 0) * scPermille) / 1000.0
+  /** 道术对血的倍数 */
+  def hpScBoost(scMax: Int): Double  = (1000 + math.max(scMax, 0) * hpScPermille) / 1000.0
   /** 技能说明用：每点道术加的百分数（「1.8」） */
-  def scPctText: String = SummonGrowth.pct(scPermille)
+  def scPctText: String   = SummonGrowth.pct(scPermille)
+  def hpScPctText: String = SummonGrowth.pct(hpScPermille)
   /** 技能说明用：底数折扣（「0.85」），不打折为 None */
   def baseText: Option[String] = Option.when(basePermille != 1000)(SummonGrowth.ratio(basePermille))
 
@@ -297,21 +302,26 @@ object SpellRules:
    * 召唤骷髅（原版每级 +35%）；道术加成是本服加的（#1209），#1258 用户 11-25 定每点道术上限 +1.8%、不封顶。
    * 神兽另有一份（Rates.shinsuGrowth，#1285 削弱）。
    */
-  val StandardGrowth = SummonGrowth(basePermille = 1000, levelPermille = 350, scPermille = 18)
+  val StandardGrowth = SummonGrowth(basePermille = 1000, levelPermille = 350, hpScPermille = 18, scPermille = 18)
 
   /** 召唤出来的这种宝宝按哪份成长算（神兽两种形态同一份）。 */
   def growthOf(pet: MonsterName): SummonGrowth =
     if summonedAs(pet).contains(ShinsuPet) then Rates.shinsuGrowth else StandardGrowth
 
   /**
-   * 召唤出来的宝宝：数据表攻击、防御、魔防先 × 底数折扣；技能等级加成乘血量和攻击，道术加成乘血量、攻击、防御、魔防。
+   * 召唤出来的宝宝：数据表攻击、防御、魔防先 × 底数折扣；技能等级加成乘血量和攻击，道术加成乘血量（血那份）和攻击、防御、魔防。
    * 几个倍数先乘在一起再四舍五入一次。
    */
   def summonedBody(base: MonsterDef, level: Int, scMax: Int): PetBody =
-    val g    = growthOf(base.name)
-    val sc   = g.scBoost(scMax)
-    val both = g.levelBoost(level) * sc
-    PetBody(scaled(base.hp, both), scaled(base.dc, g.base * both), scaled(base.ac, g.base * sc), scaled(base.mac, g.base * sc))
+    val g  = growthOf(base.name)
+    val lv = g.levelBoost(level)
+    val sc = g.scBoost(scMax)
+    PetBody(
+      scaled(base.hp, lv * g.hpScBoost(scMax)),
+      scaled(base.dc, g.base * (lv * sc)),
+      scaled(base.ac, g.base * sc),
+      scaled(base.mac, g.base * sc)
+    )
 
   private def scaled(v: Int, k: Double): Int    = math.floor(v * k + 0.5).toInt
   private def scaled(s: Span, k: Double): Span = Span(scaled(s.lo, k), scaled(s.hi, k))

@@ -148,8 +148,15 @@ object SkillInfo:
     private def petRule(g: SummonGrowth): List[Line] =
       List(
         note("道术加成（召唤时定下，之后换装不变）："),
-        note(s"　每点道术上限 +${g.scPctText}%，不封顶"),
-        note(s"　你现在 ${sc.hi}：血、攻击、防御、魔防 ×${g.scBoost(sc.hi)}")
+      ) ++ (
+        if g.hpScPermille == g.scPermille then List(
+          note(s"　每点道术上限 +${g.scPctText}%，不封顶"),
+          note(s"　你现在 ${sc.hi}：血、攻击、防御、魔防 ×${g.scBoost(sc.hi)}")
+        )
+        else List(
+          note(s"　每点道术上限：血 +${g.hpScPctText}%，攻击、防御、魔防 +${g.scPctText}%，不封顶"),
+          note(s"　你现在 ${sc.hi}：血 ×${g.hpScBoost(sc.hi)}，攻击、防御、魔防 ×${g.scBoost(sc.hi)}")
+        )
       ) ++ g.baseText.map(k => note(s"本服攻击、防御、魔防先 ×$k")).toList
 
     def headline(skill: Skill): Option[Int => String] = skill match
