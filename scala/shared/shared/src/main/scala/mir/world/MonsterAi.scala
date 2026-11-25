@@ -460,7 +460,9 @@ object MonsterAi:
    * 收服的按 petWalkCap / petAttackCap 压到上限以内。
    */
   def petPace(m: Monster): Unit = SpellRules.summonedAs(m.defn.name) match
-    case Some(SpellRules.SkeletonPet) => m.walkInterval = SpellRules.skeletonWalkMs(m.petLevel)
+    case Some(SpellRules.SkeletonPet) =>
+      m.walkInterval = SpellRules.skeletonWalkMs(m.petLevel)
+      m.attackInterval = SpellRules.skeletonHitMs(m.petLevel)
     case Some(_)                      => shinsuPace(m)
     case None =>
       m.walkInterval = math.min(m.defn.walkSpeed, SpellRules.petWalkCap(m.petLevel))

@@ -132,7 +132,7 @@ object SpellSpec extends ZIOSpecDefault:
         count(SpellRules.ShinsuPet) == 2
       )
     },
-    test("召唤骷髅走路按原版 1200 - 等级×250（3 级 450 毫秒/格）；没仗打往主人身边赶时每格 300 毫秒，跟得上跑步（#1275）") {
+    test("召唤骷髅走路按原版 1200 - 等级×250（3 级 450 毫秒/格）；没仗打往主人身边赶时每格 300 毫秒，跟得上跑步（#1275）；出手间隔 3000 - 等级×600（3 级 1200 毫秒，#1276）") {
       val s = sim()
       val p = caster(s, Job.Taoist, List(17), charm = true)
       s.cast(p, 17, None, p.cell); s.run(3000)
@@ -146,6 +146,9 @@ object SpellSpec extends ZIOSpecDefault:
         SpellRules.skeletonWalkMs(0) == 1200,
         walk == SpellRules.skeletonWalkMs(3),
         walk == 450,
+        SpellRules.skeletonHitMs(0) == 3000,
+        m.attackInterval == SpellRules.skeletonHitMs(3),
+        m.attackInterval == 1200,
         SpellRules.catchUpMs(SpellRules.SkeletonPet).contains(300),
         SpellRules.catchUpMs(SpellRules.ShinsuPet).isEmpty,
         from - left >= 7
