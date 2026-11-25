@@ -128,7 +128,8 @@ final class Input(
   dom.window.addEventListener(
     "keydown",
     (e: dom.KeyboardEvent) =>
-      if e.key == "Shift" then follow(keys.shift(true))
+      if !Input.realKey(e) then ()
+      else if e.key == "Shift" then follow(keys.shift(true))
       else if overlay.key(e.key) then e.preventDefault()
       else if client.map.isDefined then
         (Input.fKey(e.key), MoveKey.of(e.code).filter(_ => plain(e))) match
@@ -149,7 +150,8 @@ final class Input(
   dom.window.addEventListener(
     "keyup",
     (e: dom.KeyboardEvent) =>
-      if e.key == "Shift" then follow(keys.shift(false))
+      if !Input.realKey(e) then ()
+      else if e.key == "Shift" then follow(keys.shift(false))
       else MoveKey.of(e.code).foreach(k => follow(keys.release(k)))
   )
 
@@ -162,6 +164,14 @@ final class Input(
 
 object Input:
   val SlopCss = 14.0
+
+  /**
+   * 真的按键事件：浏览器自动填充（如 Chrome 选了保存的账号）会发不带 key、code 的 keydown/keyup，
+   * 照常处理会在字符串匹配里读到 undefined 报错（11-25 线上客户端报错），这种直接忽略。
+   */
+  def realKey(e: dom.KeyboardEvent): Boolean =
+    val d = e.asInstanceOf[scalajs.js.Dynamic]
+    !scalajs.js.isUndefined(d.key) && d.key != null && !scalajs.js.isUndefined(d.code) && d.code != null
 
   def fKey(key: String): Option[Int] = key match
     case s"F$n" => n.toIntOption.filter(k => k >= 1 && k <= 8)
