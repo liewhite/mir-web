@@ -12,17 +12,19 @@ object Button:
   val HoldMs = 450.0
 
 /**
- * 每帧重建的点击登记表：界面占用区域（点在里面不传给地图）和按钮。
- * 登记顺序就是叠放顺序（后登记的在上层），被上层窗口盖住的按钮点不到。
+ * 每帧重建的点击登记表：界面占用区域（点在里面不传给地图）、按钮和摇杆区（按下就地起摇杆，#1278）。
+ * 登记顺序就是叠放顺序（后登记的在上层），被上层窗口盖住的按钮、摇杆区点不到。
  */
 final class Hits:
   private val areas   = mutable.ArrayBuffer.empty[(Rect, Int)]
   private val buttons = mutable.ArrayBuffer.empty[(Button, Int)]
+  private val sticks  = mutable.ArrayBuffer.empty[(Rect, Int)]
   private var z       = 0
 
   def reset(): Unit =
     areas.clear()
     buttons.clear()
+    sticks.clear()
     z = 0
 
   def area(r: Rect): Unit =
@@ -32,6 +34,18 @@ final class Hits:
   def button(b: Button): Unit =
     buttons += b -> z
     z += 1
+
+  /** 摇杆区：也算界面占用（不传给地图），按下就地起摇杆。 */
+  def stick(r: Rect): Unit =
+    sticks += r -> z
+    areas += r -> z
+    z += 1
+
+  /** (x, y) 最上层是摇杆区（没被上层的窗口、按钮盖住）。 */
+  def stickAt(x: Double, y: Double): Boolean =
+    sticks.reverseIterator.find(_._1.contains(x, y)).exists { (_, sz) =>
+      !coveredAbove(sz, x, y) && !buttons.exists((b, bz) => bz > sz && b.rect.contains(x, y))
+    }
 
   /** (x, y) 在界面上（不传给地图）。 */
   def covers(x: Double, y: Double): Boolean = areas.exists(_._1.contains(x, y))

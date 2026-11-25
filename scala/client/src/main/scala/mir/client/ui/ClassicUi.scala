@@ -1,7 +1,7 @@
 package mir.client.ui
 
 import mir.client.game.{Controller, GameClient, UiEvents}
-import mir.client.input.{Joystick, Overlay, Pt}
+import mir.client.input.{Joystick, Overlay, Press, Pt}
 import mir.client.render.ViewOptions
 import mir.core.*
 import mir.data.{Catalog, ItemDef}
@@ -131,7 +131,7 @@ final class ClassicUi(
     screen match
       case Screen.Game => ()
       case _ =>
-        message("欢迎来到玛法大陆。左边摇杆走路（推远了跑），电脑上 WASD 跑、按住 Shift 走；点怪锁定，右边「攻击」打它；点物品看说明和操作。回车或点聊天框说话。", Tone.Good)
+        message("欢迎来到玛法大陆。左边摇杆走路（推远了跑；地上东西多时按住左下角血球拖也行），电脑上 WASD 跑、按住 Shift 走；点怪锁定，右边「攻击」打它；点物品看说明和操作。回车或点聊天框说话。", Tone.Good)
     screen = Screen.Game
     dead = client.view.self.exists(_.dead)
     closeAll()
@@ -380,37 +380,40 @@ final class ClassicUi(
   /** 触屏上原版小按钮（关闭×等）很小：没正好点中时允许偏出的距离。 */
   private def slop: Double = if touch then 8 else 0
 
-  def pointerDown(p: Pt, pointer: Double, button: Int): Boolean =
+  def pointerDown(p: Pt, pointer: Double, button: Int): Press =
     mouse = p
     screen match
-      case Screen.Lobby     => false
-      case Screen.Select(s) => s.pointerDown(p); true
+      case Screen.Lobby     => Press.Pass
+      case Screen.Select(s) => s.pointerDown(p); Press.Ui
       case Screen.Game      => gameDown(p, button)
 
-  private def gameDown(p: Pt, button: Int): Boolean =
+  private def gameDown(p: Pt, button: Int): Press =
     if button == 2 && hand.isDefined then
       hand = None
-      true
+      Press.Ui
     else
       // 物品菜单在最上层：点在菜单里只算菜单的按钮；点在外面就关掉它，再照常处理
       if itemMenu.contains(p) then
         hits.buttonAt(p.x, p.y, 0).filter(b => itemMenu.contains(Pt(b.rect.x + 1, b.rect.y + 1))).foreach(b => pressed = Some(b))
-        true
+        Press.Ui
       else
         itemMenu.close()
-        hits.buttonAt(p.x, p.y, slop) match
-          case Some(b) =>
-            pressed = Some(b)
-            pressedAt = dom.window.performance.now()
-            true
-          case None =>
-            val onUi = hits.covers(p.x, p.y)
-            hand match
-              case Some(h) if !onUi =>
-                // 拿着物品点地面：扔掉
-                apply(Hand.dropOnGround(h))
-                true
-              case _ => onUi
+        // 摇杆区是确切点中，先于触屏放宽的小按钮
+        if hits.stickAt(p.x, p.y) then Press.Stick
+        else
+          hits.buttonAt(p.x, p.y, slop) match
+            case Some(b) =>
+              pressed = Some(b)
+              pressedAt = dom.window.performance.now()
+              Press.Ui
+            case None =>
+              val onUi = hits.covers(p.x, p.y)
+              hand match
+                case Some(h) if !onUi =>
+                  // 拿着物品点地面：扔掉
+                  apply(Hand.dropOnGround(h))
+                  Press.Ui
+                case _ => if onUi then Press.Ui else Press.Pass
 
   def pointerMove(p: Pt, pointer: Double): Unit =
     mouse = p

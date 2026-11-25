@@ -134,6 +134,22 @@ object ClientSpec extends ZIOSpecDefault:
         diag.map(_.dir).contains(Dir.DownLeft)
       )
     },
+    test("底栏血球当摇杆（#1278）：按在摇杆区算摇杆、也算界面占用；被上层窗口或按钮盖住的地方不算；区外照旧") {
+      import mir.client.ui.{Button, Hits, Rect}
+      val h = Hits()
+      h.area(Rect(0, 349, 800, 251))  // 底栏
+      h.stick(Rect(0, 349, 200, 251)) // 血/魔球一块
+      h.area(Rect(150, 300, 100, 100)) // 盖在上面的窗口
+      h.button(Button(Rect(20, 560, 20, 20), () => ()))
+      assertTrue(
+        h.stickAt(60, 480),
+        h.covers(60, 480),
+        !h.stickAt(160, 380), // 窗口盖住
+        !h.stickAt(30, 570),  // 上层按钮
+        !h.stickAt(300, 480), // 区外（聊天框那边）
+        !h.stickAt(60, 300)
+      )
+    },
     test("键盘摇杆：单键 4 方向、组合斜走、默认跑 Shift 走、斜走松一键先等等、全松开停") {
       val k     = KeyStick()
       val w     = k.press(MoveKey.W)

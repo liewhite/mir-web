@@ -25,6 +25,9 @@ final class Board(ui: ClassicUi):
   def itemAt(m: Me, p: Pt): Option[ItemInstance] =
     beltRects.indices.collectFirst { case i if beltRects(i).contains(p.x, p.y) => m.view.belt.lift(i).flatten }.flatten
 
+  /** 底栏左下角当摇杆用的一块：血/魔球连同上方透明装饰，宽到聊天框左边（这块原版没有可点的东西） */
+  def orbStickRect: Rect = Rect(boardX, boardY, OrbStickWidth, Height)
+
   /** 聊天框（底栏中间黑底那块的上部，9 行） */
   def chatRect: Rect = Rect(boardX + 208, ui.H - 130, 387, ChatLines * 12)
 
@@ -50,6 +53,8 @@ final class Board(ui: ClassicUi):
     ui.area(Rect(bx, by + 40, Width, Height - 40))
     ui.area(Rect(bx, by, 190, 40))
     ui.area(Rect(bx + 610, by, 190, 40))
+    // 左下角血/魔球一块（到聊天框左边）按下就是摇杆：满地物品和怪时左半屏一按就命中它们、摇杆起不来（用户 #1278）
+    ui.hits.stick(orbStickRect)
     // 下半部分不透明（原版 Draw(..., FALSE)），上半部分透明叠在地图上
     g.rect(bx + 208, by + 120, 387, 124, "#000")
     g.img(Gfx.Main, 1, bx, by)
@@ -348,6 +353,8 @@ object Board:
   val Width     = 800.0
   val Height    = 251.0
   val ChatLines = 9
+  /** 左下角摇杆区宽度：聊天框从 208 起，留 8 像素不挨着 */
+  val OrbStickWidth = 200.0
   val AttackR   = 38.0
   val SkillR    = 22.0
   /** 技能键离攻击键中心的距离：F1-F4 内圈，F5-F8 外圈 */
