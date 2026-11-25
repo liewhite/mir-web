@@ -27,7 +27,7 @@ object GameDataSpec extends ZIOSpecDefault:
         d.skills.size == 33,
         d.exp.size == 47,
         d.monsterActions.size == 38,
-        d.teleports.size == 123
+        d.teleports.size == 101
       )
     },
     test("名字、编号不重复，索引不丢条目") {
@@ -83,9 +83,25 @@ object GameDataSpec extends ZIOSpecDefault:
         catalog.expToNext(48).isEmpty,
         catalog.displayName(MonsterName("僵尸10")) == MonsterName("僵尸1"),
         catalog.teleport(TeleportRef(0)).map(_.name).contains("比奇省"),
-        catalog.teleport(TeleportRef(123)).isEmpty,
+        catalog.teleport(TeleportRef(101)).isEmpty,
         catalog.merchant(MerchantRef(0)).map(_.name).contains("卫家店"),
         catalog.merchant(MerchantRef(-1)).isEmpty
+      )
+    },
+    test("传送菜单不到 boss 层和迷宫，祖玛、牛魔到五层，赤月到抉择之地；祖玛阁的门照原版（#1315）") {
+      val d         = catalog.data
+      val bossMaps  = d.spawns.filter(s => mir.rules.Rates.bosses(s.monster)).map(_.map).toSet
+      val wild      = d.teleports.filter(_.group != "城市")
+      val listed    = wild.map(_.map.value).toSet
+      // 未知暗殿没有路进去，只能传，留着
+      val toBoss    = wild.filter(t => bossMaps(t.map)).map(_.map.value)
+      val zumaMaze  = d.routes.find(r => r.from == MapId("D5061") && r.x == 66 && r.y == 16)
+      assertTrue(
+        toBoss == List("M001"),
+        !wild.exists(t => t.name == "石墓阵" || t.name == "祖玛阁"),
+        Set("D505", "D2076", "D1004", "D715").subsetOf(listed),
+        Set("D5072", "D2078", "D10052", "D716").intersect(listed).isEmpty,
+        zumaMaze.map(_.to).contains(MapId("D5062"))
       )
     },
     test("地图标记：断线重连带去处，未知标记报错") {

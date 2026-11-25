@@ -109,7 +109,7 @@
 - [x] 第二阶段地图（#1139）：从比奇沿传送点走得到的 188 张地图全上（毒蛇山谷、盟重、沃玛森林/寺庙、石墓、祖玛、矿区、地牢等）；内容相同的地图共用素材（MapDef.asset），素材约 2.4G。
 - [x] 第三阶段地图（#1144，用户定「都加进去」）：数据表里有地图文件的 265 张全上（素材 3.6G），没路进去的白日门、封魔谷、苍月岛作为城市、未知暗殿和不归路作为独立地区进传送菜单（build_data.py TOWNS / ENTRIES），赤月、封魔殿、尸魔洞、骨魔洞、牛魔寺庙等按城后的路分组。
 - [x] 怪物行为（#1139）：game/src/world/monster_ai.ts 按 Race 描述出招/藏身/附加本领（食人花钻地、石像、僵尸电光与复活、洞蛆麻痹、蜘蛛喷毒、角蝇巢/幻影蜘蛛放小怪、爆裂蜘蛛自爆、沃玛教主狂暴瞬移、祖玛教主召唤、赤月恶魔/触龙神范围攻击）；测试 `cd game && npm test`
-- [x] 传送菜单（#1139，用户要求）：左上「传送」键或 T 键，分组列城中心和各打怪地区入口（tools/build_data.py teleports；ui/classic/teleport.ts）
+- [x] 传送菜单（#1139，用户要求）：左上「传送」键或 T 键，分组列城中心和各打怪地区入口（tools/build_data.py teleports；ui/classic/teleport.ts）。#1315（用户 11-25 定）：不列刷 boss 的图（BOSSES，同 Rates.bosses）、迷宫（石墓阵、祖玛阁）和只能穿过它们才到的更深的图，祖玛、牛魔只到五层、赤月只到抉择之地（DEEPEST）；未知暗殿没路进去，照列。迷宫的门对照 1.76 服务端 MapInfo（GeeM2 仓库 Envir/mapinfo.txt）核对过，唯一不同的祖玛阁 D5061 (66,16) 按原版改（ROUTE_FIXES）。
 - [x] 物品叠放（#1159，用户定，原版不叠）：药、卷轴、技能书、捆装药同名叠一格不设上限（`ItemKind.stacks` / items.ts `stacks`），装备、符毒、矿石不叠；`world/inventory.ts` 管并叠、拆分、按格判满、重量按个数；卖/存/取一叠弹数量框（`ui/classic/quantity.ts`，默认全部）；旧存档读档补数量 1 并合并同名。
 - [x] 法师、道士技能实际效果（#1163，Scala 版）：公式在 `mir.rules.SpellRules`（MagicManager.cs，随机数经 Rng，技能说明可求上下限）；施放效果按技能注册在 `mir.world.skills`（#1171）；地上持续法术（火墙、困魔咒光圈）是世界里的 `Field`，按视野发 `FieldAppear/FieldDisappear`，客户端照 ClEvent.pas 画；怪物被定住/发狂、神圣战甲术/幽灵盾都是 `Actor.statuses` 里的状态（#1170），外观 `Look.Monster.mood` 让名字变色。本机 `?local&hero` 新建 40 级满技能角色看效果。
 - [x] 战士野蛮冲撞（#1168）：`world.Rush` 照 DoMotaebo/CharPushed，公式 `SpellRules.rush*`；被推用 `grid.pushBack`（抗拒火环共用），动作 `ActKind.Rush`（from 为空＝撞不动原地冲）/`Backstep`（脸朝推的人倒退），客户端按原版 ActRushLeft/Right、倒放走路帧画。

@@ -30,18 +30,49 @@ REGION_NAMES = {
     "0157": "祖玛寺庙", "D710": "石墓（猪洞）",
     "12": "丛林迷宫·赤月", "D2000": "封魔矿区·封魔殿", "B341": "封魔皇宫·姻缘",
 }
+# 传送菜单不到 boss 层（用户 11-25 #1245/#1315）：刷这些怪的图、迷宫、以及只能穿过它们才到得了的更深的图都不列，剩下自己走。
+# boss 名单同 scala Rates.bosses（GameDataSpec 核对传送菜单里没有刷 Rates.bosses 的图，名单不同步会报）。
+BOSSES = {
+    "沃玛教主", "祖玛教主", "千年树妖", "石墓尸王", "牛魔王", "赤月恶魔", "双头金刚", "双头血魔", "黄泉教主", "虹魔教主",
+    "暗之沃玛教主", "暗之牛魔王", "暗之双头金刚", "暗之双头血魔", "暗之黄泉教主", "暗之虹魔教主",
+}
+# 迷宫（一个标题拆成很多张图、靠门互通的）：石墓阵 D716xx、祖玛阁 D506x
+MAZE_TITLES = {"石墓阵", "祖玛阁"}
+# 用户点名的最深一层：祖玛、牛魔到五层，赤月到抉择之地；这些图列，再往里的不列
+DEEPEST = {"D505", "D2076", "D1004"}
+# 迷宫门照原版改的地方（Mir176 数据表与 1.76 服务端 MapInfo 不同处；核对见 #1315）：(图, x, y) -> (去的图, x, y)
+ROUTE_FIXES = {
+    # 祖玛阁第一格的这扇门数据表直通祖玛六层大厅（等于跳过迷宫），原版通往迷宫另一格
+    ("D5061", 66, 16): ("D5062", 85, 12),
+}
+
+
+def fixed_routes(cat: dict) -> list[dict]:
+    """数据表的传送点，套上 ROUTE_FIXES；每条修正都得对上数据表里的一扇门，对不上（数据表变了）就报错。"""
+    out, used = [], set()
+    for r in cat["routes"]:
+        key = (r["from"], r["x"], r["y"])
+        if key in ROUTE_FIXES:
+            used.add(key)
+            to, tx, ty = ROUTE_FIXES[key]
+            r = r | {"to": to, "tx": tx, "ty": ty}
+        out.append(r)
+    if missing := set(ROUTE_FIXES) - used:
+        raise SystemExit(f"ROUTE_FIXES 对不上数据表的门：{sorted(missing)}")
+    return out
 
 
 def teleports(cat: dict, maps: dict[str, str]) -> list[dict]:
     """传送目的地：城市一组；其余按地区分组，每组是出城后第一张图（入口）和组里有怪的地图。
     落点 = 从比奇走过去时进这张图的传送点落点（BFS 先到的那条路），同名的只留最近的一张。
     比奇走不到的从 TOWNS、ENTRIES 依次接着搜（先搜完比奇，原有地图的来路不变）；
-    ENTRIES 自己是地区入口，落点用表里给的。"""
+    ENTRIES 自己是地区入口，落点用表里给的。
+    只列不穿过 boss 图、迷宫、DEEPEST 就走得到的图（城和 ENTRIES 本身总列：ENTRIES 没有路进去）。"""
     town_ids = {t[0] for t in TOWNS}
     seeds = {t[0]: (t[2], t[3]) for t in TOWNS} | {e[0]: (e[1], e[2]) for e in ENTRIES}
     titles = {m["id"]: m["title"] for m in cat["maps"]}
     routes: dict[str, list[dict]] = {}
-    for r in cat["routes"]:
+    for r in fixed_routes(cat):
         if r["from"] in maps and r["to"] in maps:
             routes.setdefault(r["from"], []).append(r)
     came: dict[str, dict | None] = {}
@@ -59,6 +90,18 @@ def teleports(cat: dict, maps: dict[str, str]) -> list[dict]:
                     order.append(r["to"])
             i += 1
     with_monsters = {s["map"] for s in cat["spawns"]}
+    boss_maps = {s["map"] for s in cat["spawns"] if s["monster"] in BOSSES} - town_ids
+    blocked = boss_maps | {m for m in maps if titles[m] in MAZE_TITLES}
+    open_maps = set(seeds)  # 不穿过 blocked、DEEPEST 走得到的
+    frontier = list(seeds)
+    while frontier:
+        m = frontier.pop()
+        if m in DEEPEST and m not in town_ids:
+            continue
+        for r in routes.get(m, []):
+            if r["to"] not in open_maps and r["to"] not in blocked:
+                open_maps.add(r["to"])
+                frontier.append(r["to"])
 
     def region(m: str) -> str | None:
         """沿来路往回找，最后一座城之后的第一张图；路上没有城（ENTRIES 搜到的）就是起点那张。"""
@@ -77,7 +120,7 @@ def teleports(cat: dict, maps: dict[str, str]) -> list[dict]:
     groups: dict[str, list[str]] = {}
     for m in order:
         root = None if m in town_ids else region(m)
-        if root and (m == root or m in with_monsters):
+        if root and m in open_maps and (m == root or m in with_monsters):
             groups.setdefault(root, []).append(m)
     for root, ms in groups.items():
         if not any(m in with_monsters for m in ms):
@@ -139,7 +182,7 @@ def main() -> None:
     game = {
         "maps": [{"id": i, "asset": a, "title": map_meta[i]["title"], "flags": map_meta[i]["flags"],
                   "width": map_meta[i]["width"], "height": map_meta[i]["height"]} for i, a in maps.items()],
-        "routes": [r for r in cat["routes"] if r["from"] in maps and r["to"] in maps],
+        "routes": [r for r in fixed_routes(cat) if r["from"] in maps and r["to"] in maps],
         "spawns": [s for s in cat["spawns"] if in_maps(s)],
         "guards": [g for g in cat["guards"] if in_maps(g)],
         "merchants": [m for m in cat["merchants"] if in_maps(m)],
