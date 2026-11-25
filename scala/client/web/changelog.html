@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="format-detection" content="telephone=no">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-180.png">
+<title>更新日志 - 热血传奇 1.76</title>
+<!--
+  更新日志：每次部署上线了什么，给玩家看的简要说明，最新的在最上面。纯静态页（不加载 main.js、不用登录），
+  入口：登录画面右上角「更新日志」链接、游戏左上角「更新」键（WebPage.Changelog）。
+  维护：部署前照「上次部署的提交..master」的 git log 在最上面加一节，只写玩家感受得到的变化（内部日志、脚本、文档不写），
+  节的注释里记这次部署到的提交号，下次从它往后看。
+-->
+<style>
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: #120d07; color: #e8dcc0; font: 15px/1.6 "PingFang SC", "Microsoft YaHei", sans-serif;
+  padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }
+main { max-width: 760px; margin: 0 auto; }
+header { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
+header h1 { flex: 1; margin: 0; font-size: 20px; color: #ffcf6b; letter-spacing: 2px; }
+a { color: #ffcf6b; }
+section { background: #1a130a; border: 1px solid #3e2e18; border-radius: 6px; padding: 10px 14px; margin-bottom: 10px; }
+h2 { margin: 0 0 4px; font-size: 16px; color: #ffe08a; }
+h2 small { color: #8a7a5a; font-weight: normal; font-size: 13px; margin-left: 8px; }
+ul { margin: 0; padding-left: 1.3em; }
+li { margin: 2px 0; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>更新日志</h1>
+    <a href="board.html">留言板</a>
+    <a href="./">回游戏</a>
+  </header>
+
+  <!-- 部署到 3630a38 之后的 master（部署时把标题时间改成实际上线时间） -->
+  <section>
+    <h2>11-25 下午</h2>
+    <ul>
+      <li>新增留言板（登录画面右上角、游戏左上角「留言」）和这个更新日志（「更新」）。</li>
+      <li>怪的经验和掉落归先打的人；掉落 1 分钟内只有归属者和队友能捡。</li>
+      <li>同队玩家和各自的宝宝互相打不到了。</li>
+      <li>职业平衡：战士攻击、防御、魔防 ×1.8（原 ×1.5）；法师攻击魔法伤害 ×1.3；神兽削弱一些（攻防底数 ×0.85，技能每级 +30%，道术每点 +1.6%），骷髅不变。</li>
+      <li>战士智能半月（设置「战士」页，默认开）：半月关着时身边有 2 只以上怪就自动用半月弯刀。</li>
+      <li>召唤骷髅照原版按等级走得更快、出手更快，没仗打时能跟上跑步的主人。</li>
+      <li>怪一次爆出超过 10 件时随机挑，不再总是同几件。</li>
+      <li>底栏左下角血/魔球按住也能当摇杆用，满地物品和怪时也能起步。</li>
+      <li>点选人物、怪物照原版按身体图判断，更准；大神兽不再挡住旁边人的点击。</li>
+      <li>以后更新重启不再清场：野怪、地上的东西、宝宝、组队都原样接上。</li>
+    </ul>
+  </section>
+
+  <!-- 部署到 5b3fb83 -->
+  <section>
+    <h2>11-25 凌晨 3:00</h2>
+    <ul>
+      <li>boss 刷新时间最长 2 小时。</li>
+      <li>锁定别的玩家可以点「装备」看他身上穿的。</li>
+      <li>战士刺杀：贴身或隔一格直线都就地出刀，不再乱走位。</li>
+      <li>召唤宝宝的道术加成改为每点道术 +1.8%，不封顶。</li>
+    </ul>
+  </section>
+
+  <!-- 部署到 a7eed58 -->
+  <section>
+    <h2>11-24 晚 23:10</h2>
+    <ul>
+      <li>召唤神兽照原版：小神兽有仗打就变身喷火，60 秒没仗打变回去。</li>
+      <li>设置窗分成通用/战士/法师/道士几页，新增自动魔法盾、自动召唤骷髅和神兽。</li>
+      <li>图片加载失败会自动重试，不再一直缺图。</li>
+    </ul>
+  </section>
+
+  <!-- 部署到 1641bff -->
+  <section>
+    <h2>11-24 晚 20:47</h2>
+    <ul>
+      <li>多人互动：私聊（/名字 内容）、好友名单、玩家交易。</li>
+      <li>PK：安全区外玩家可以互相攻击，照原版 PK 值、黄名红名、红名死亡掉装备。城里店铺、客栈、仓库都算安全区。</li>
+      <li>爆率：所有怪原版 ×20；boss 的高级装备至少 10%；一只怪一次最多掉 10 件。</li>
+      <li>人可以走进怪站的格子，不会再被怪堵死在角落。</li>
+      <li>自动捡物只捡勾选的种类；锁定宝宝显示它实际的攻防；底栏左下角显示地图名和坐标。</li>
+      <li>手机切到后台不再容易掉线；服务器更新后页面会自动刷新接着玩；新增全服公告和定时在线人数公告。</li>
+    </ul>
+  </section>
+
+  <!-- 部署到 05b6373 -->
+  <section>
+    <h2>11-24 下午</h2>
+    <ul>
+      <li>组队：原版组队窗口，队伍聊天（!! 开头）。</li>
+      <li>道士：治愈术等可以放给锁定的宝宝或别的玩家；护身符、药粉放包裹里就能用并按次数叠在一格；施毒术红绿毒交替、可同时中两种；治愈术改为原版的持续回血；道术加成宝宝属性。</li>
+      <li>中毒、麻痹的人和怪身上会变色，锁定信息卡也会写出来。</li>
+      <li>怪物照原版：挨打会换目标打你、每 6 秒自然回血；守卫可以被选中攻击并还手，会砍宝宝；野怪不打守卫。</li>
+      <li>宝宝离主人太远会自动瞬移回来。</li>
+      <li>捡到比身上更好的装备会提醒；底栏设置按钮改成齿轮图标。</li>
+    </ul>
+  </section>
+
+  <!-- 部署到 caf9719 -->
+  <section>
+    <h2>11-24 上午</h2>
+    <ul>
+      <li>开放自助注册：登录画面点「新用户」用框里的账号密码注册；选人画面「退出」可以换账号。</li>
+      <li>电脑键盘 WASD 走路（默认跑，按住 Shift 走）。</li>
+      <li>全景地图：点小地图或按 M，标出商人、出口和附近的怪。</li>
+      <li>怪物爆的装备照原版会随机出极品。</li>
+      <li>刺杀隔一格那下的威力按技能等级算。</li>
+    </ul>
+  </section>
+
+  <!-- 部署到 5146ad0 -->
+  <section>
+    <h2>11-23 晚 ~ 11-24 凌晨：多人版上线</h2>
+    <ul>
+      <li>换成多人联机版：所有人在同一个世界里一起玩，账号最多 2 个角色。</li>
+      <li>全部 265 张地图开放；左上角「传送」（或 T 键）直接传到各城和打怪区入口。</li>
+      <li>倍率：经验 ×100，技能升级所需熟练度只要原来的 1/10，诱惑之光收服概率 ×10。</li>
+      <li>战士攻击、防御、魔防 ×1.5；召唤骷髅、神兽各最多 3 只（不占诱惑之光的名额）。</li>
+      <li>法师、道士技能补齐效果；战士野蛮冲撞；物品和技能说明写出精确数值。</li>
+      <li>药、卷轴等同名物品叠在一格；不限负重，包裹只看格子。</li>
+      <li>随时出售（不用找 NPC）和自动捡物；瞬息移动改为本图随机传送。</li>
+    </ul>
+  </section>
+</main>
+</body>
+</html>

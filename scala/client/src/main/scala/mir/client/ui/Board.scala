@@ -41,7 +41,7 @@ final class Board(ui: ClassicUi):
     val attack = Pt(ui.W - ui.safe.right - AttackR * s - 30, top - AttackR * s)
     drawAttack(attack)
     drawSkills(m, attack)
-    drawTeleportButton()
+    drawTopKeys()
 
   // ---------------- 底栏 ----------------
 
@@ -174,24 +174,18 @@ final class Board(ui: ClassicUi):
     g.imgPart(Gfx.Main, 4, x + half + 1, y + mtop, half + 1, mtop, w - half - 2, h - mtop)
   }
 
-  /** 左上角「传送」键（原版没有，用户 #1139 要的传送菜单）和它右边的「留言」键（#1280）；按触屏操作件的倍数放大。 */
-  private def drawTeleportButton(): Unit =
+  /** 左上角一排键（TopKeys：传送菜单 #1139、留言板 #1280、更新日志）；按触屏操作件的倍数放大。 */
+  private def drawTopKeys(): Unit =
     val s = ui.ctlScale
-    val r = Rect(ui.safe.left + 6, ui.safe.top + 6, 52 * s, 28 * s)
-    g.scaled(r.x, r.y, s) {
-      g.frame(Rect(0, 0, 52, 28), if ui.isPressed(r) then "rgba(90,70,30,.9)" else "rgba(0,0,0,.6)", "#c9a060")
-      g.text("传送", (52 - g.width("传送")) / 2, 8, "#ffe08a", bold = true)
+    TopKeys.zipWithIndex.foreach { case ((label, action), i) =>
+      val r = Rect(ui.safe.left + 6 + i * (TopKeyW + 6) * s, ui.safe.top + 6, TopKeyW * s, TopKeyH * s)
+      g.scaled(r.x, r.y, s) {
+        g.frame(Rect(0, 0, TopKeyW, TopKeyH), if ui.isPressed(r) then "rgba(90,70,30,.9)" else "rgba(0,0,0,.6)", "#c9a060")
+        g.text(label, (TopKeyW - g.width(label)) / 2, 8, "#ffe08a", bold = true)
+      }
+      ui.area(r)
+      ui.button(Button(r, () => ui.run(action)))
     }
-    ui.area(r)
-    ui.button(Button(r, () => ui.run(UiAction.Teleport)))
-    // 右边「留言」键：新标签页开留言板（#1280）
-    val b = Rect(r.x + r.w + 6, r.y, r.w, r.h)
-    g.scaled(b.x, b.y, s) {
-      g.frame(Rect(0, 0, 52, 28), if ui.isPressed(b) then "rgba(90,70,30,.9)" else "rgba(0,0,0,.6)", "#c9a060")
-      g.text("留言", (52 - g.width("留言")) / 2, 8, "#ffe08a", bold = true)
-    }
-    ui.area(b)
-    ui.button(Button(b, () => ui.run(UiAction.MessageBoard)))
 
   // ---------------- 触屏操作件（用户 #1140） ----------------
 
@@ -369,6 +363,14 @@ object Board:
   val Rings  = Vector(92.0, 152.0)
   val Angles = Vector(180.0, 210.0, 240.0, 270.0)
   val TargetW = 210.0
+  /** 左上角一排键（原版没有）：「留言」「更新」新标签页打开网页，游戏不断 */
+  val TopKeys: List[(String, UiAction)] = List(
+    "传送" -> UiAction.Teleport,
+    "留言" -> UiAction.OpenPage(WebPage.MessageBoard),
+    "更新" -> UiAction.OpenPage(WebPage.Changelog)
+  )
+  val TopKeyW = 52.0
+  val TopKeyH = 28.0
 
   /** 锁定信息卡的内容：friend 是自己人（绿框绿血条），lines 是血条下面的几行 */
   final case class TargetCard(title: String, friend: Boolean, lines: List[String])

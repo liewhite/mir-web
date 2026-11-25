@@ -23,14 +23,18 @@ enum UiAction:
   case Trade
   /** 私聊：聊天框预填「/最近私聊的人 」（原版按「/」键） */
   case Whisper
-  /** 在新标签页打开留言板（#1280，左上角「留言」键） */
-  case MessageBoard
+  /** 在新标签页打开游戏外的网页（左上角「留言」#1280、「更新」键），游戏继续连着 */
+  case OpenPage(page: WebPage)
   case CloseAll
 
-object UiAction:
-  /** 留言板页面（client/web/board.html，和游戏同一个登录） */
-  val MessageBoardPage = "board.html"
+/** 游戏外的独立网页（client/web 里的纯 HTML，不加载 main.js，和游戏同一个登录）。 */
+enum WebPage(val file: String, val title: String):
+  /** 留言板（#1280） */
+  case MessageBoard extends WebPage("board.html", "留言板")
+  /** 更新日志：每次部署上线了什么（部署前照 git log 手写） */
+  case Changelog extends WebPage("changelog.html", "更新日志")
 
+object UiAction:
   /** 键盘键位（KeyboardEvent.key → 操作） */
   val Keys: Map[String, UiAction] =
     def all(a: UiAction, ks: String*) = ks.map(_ -> a)

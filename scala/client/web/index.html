@@ -28,8 +28,11 @@
   <input id="password" name="password" type="password" autocomplete="current-password" maxlength="64">
   <button type="submit" hidden></button>
 </form>
-<!-- 登录画面右上角的留言板入口（#1280），LoginScene 显示、进选人前藏起 -->
-<a id="board-link" class="hidden" href="board.html" target="_blank">留言板</a>
+<!-- 登录画面右上角的留言板（#1280）、更新日志入口，LoginScene 显示、进选人前藏起 -->
+<nav id="page-links" class="hidden">
+  <a href="changelog.html" target="_blank">更新日志</a>
+  <a href="board.html" target="_blank">留言板</a>
+</nav>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>
