@@ -129,6 +129,8 @@ object Main:
     client.connect(if local then LocalServer(catalog, assets, client.receive) else WsTransport(client.receive))
     dom.window.setInterval(() => client.ping(), PingEveryMs)
 
+    // 鼠标样子跟着界面的指针模式（批量卖出时是 $，#1300），变了才改
+    var cursor = ""
     // 一帧出错只上报、接着画下一帧（不接住的话异常抛出去就不再约下一帧，画面定住）
     lazy val frame: js.Function1[Double, Unit] = t =>
       try
@@ -139,6 +141,10 @@ object Main:
           renderer.ctx.fillRect(0, 0, renderer.width, renderer.height)
         renderer.scaleTo(view.uiScale)
         ui.draw(dom.window.innerWidth / view.uiScale, dom.window.innerHeight / view.uiScale, view.ctlScale)
+        val want = ui.pointerMode.css
+        if want != cursor then
+          canvas.style.cursor = want
+          cursor = want
       catch case NonFatal(e) => ErrorReport.caught("画面一帧", e)
       dom.window.requestAnimationFrame(frame): Unit
     dom.window.requestAnimationFrame(frame): Unit

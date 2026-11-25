@@ -498,6 +498,34 @@ object ClientSpec extends ZIOSpecDefault:
         !Hand.valid(view, Hand(ItemPlace.Belt(0), potion))
       )
     },
+    test("批量卖出（#1300）：点包裹里的物品直接整叠卖、金币到账，不值钱的、交易栏里的、包裹外的不卖") {
+      import mir.client.ui.{BulkSell, Hand, HandStep}
+      val r = Rig()
+      r.join(Cell(10, 10))
+      def view = r.client.view
+      def gold = view.stats.get.gold.value
+      val sword = view.worn.get(EquipSlot.Weapon).get
+      // 先把武器脱进包裹第 3 格
+      r.client.send(GameCmd.MoveItem(sword.uid, ItemPlace.Bag(3)))
+      r.run(100)
+      val before = gold
+      val price  = mir.rules.Pricing.sell(catalog.item(sword.name).get)
+      def click(place: ItemPlace, offered: Boolean = false, worthless: Boolean = false): HandStep =
+        BulkSell.click(place, Hand.at(view, place), _ => !worthless, _ => offered)
+      val inDeal  = click(ItemPlace.Bag(3), offered = true)
+      val cheap   = click(ItemPlace.Bag(3), worthless = true)
+      val belt    = click(ItemPlace.Belt(0))
+      val empty   = click(ItemPlace.Bag(20))
+      val sell    = click(ItemPlace.Bag(3))
+      sell.cmds.foreach(r.client.send)
+      r.run(100)
+      assertTrue(
+        inDeal.cmds.isEmpty && inDeal.note.isDefined, cheap.cmds.isEmpty && cheap.note.isDefined,
+        belt.cmds.isEmpty && belt.note.isDefined, empty.cmds.isEmpty && empty.note.isEmpty,
+        sell.cmds == List(GameCmd.QuickSell(sword.uid)), sell.hand.isEmpty,
+        view.bag(3).isEmpty, price > 0, gold == before + price
+      )
+    },
     test("物品出声照原版 ItemClickSound：拿起、放到装备位按物品种类出声，放回包裹不出声") {
       import mir.client.ui.Hand
       val r = Rig()

@@ -80,6 +80,21 @@ final class ClassicUi(
   /** 手上拿着的物品（电脑拖物品） */
   var hand: Option[Hand] = None
 
+  /** 点物品格时的操作方式（#1300 批量卖出）；包裹关掉时回到平时 */
+  private var pointer: PointerMode = PointerMode.Normal
+  def pointerMode: PointerMode     = pointer
+
+  /** 批量卖出开关：进入时放下手上的东西、关掉物品菜单。 */
+  def toggleBulkSell(): Unit = pointer match
+    case PointerMode.Sell   => pointer = PointerMode.Normal
+    case PointerMode.Normal =>
+      hand = None
+      itemMenu.close()
+      pointer = PointerMode.Sell
+      message(BulkSell.Hint)
+
+  def endBulkSell(): Unit = pointer = PointerMode.Normal
+
   // 常驻 HUD
   val board    = Board(this)
   val miniMap  = MiniMap(this)
@@ -288,7 +303,9 @@ final class ClassicUi(
 
   /** 点身上一格（包裹、快捷栏、装备位）。 */
   def clickPlace(place: ItemPlace, there: Option[ItemInstance], anchor: Rect): Unit =
-    if touch && hand.isEmpty then
+    if pointer == PointerMode.Sell then
+      apply(BulkSell.click(place, there, sellable(_).isDefined, deal.offers))
+    else if touch && hand.isEmpty then
       there.foreach(clink)
       itemMenu.forItem(place, there, anchor)
     else
@@ -403,6 +420,9 @@ final class ClassicUi(
   private def gameDown(p: Pt, button: Int): Press =
     if button == 2 && hand.isDefined then
       hand = None
+      Press.Ui
+    else if button == 2 && pointer == PointerMode.Sell then
+      endBulkSell()
       Press.Ui
     else
       // 物品菜单在最上层：点在菜单里只算菜单的按钮；点在外面就关掉它，再照常处理

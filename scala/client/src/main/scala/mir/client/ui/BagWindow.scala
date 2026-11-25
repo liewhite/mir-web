@@ -53,6 +53,23 @@ final class BagWindow(ui: ClassicUi) extends ToggleWindow:
     g.frame(sell, if ui.isPressed(sell) then "#7a5a2a" else "#3a2a16", "#c9a060")
     g.text("出售", sell.x + (sell.w - g.width("出售")) / 2, sell.y + 4, "#ffe08a", bold = true)
     ui.button(Button(sell, () => sellHand()))
+    // 批量卖出（#1300，原版没有）：点一下进入，鼠标变 $，点包裹里的物品直接卖；开着时按钮点亮
+    val bulk = bulkRect
+    val on   = ui.pointerMode == PointerMode.Sell
+    g.frame(bulk, if on || ui.isPressed(bulk) then "#b8862a" else "#3a2a16", if on then "#ffe08a" else "#c9a060")
+    g.text("批量", bulk.x + (bulk.w - g.width("批量")) / 2, bulk.y + 4, if on then "#fff" else "#ffe08a", bold = true)
+    ui.button(Button(bulk, () => ui.toggleBulkSell()))
+
+  private def bulkRect: Rect = Rect(origin.x + 168, origin.y + 183, 40, 22)
+
+  /** 电脑悬停「批量」按钮：说明怎么用 */
+  override def hover(m: Me, p: Pt): Option[List[Line]] =
+    Option.when(bulkRect.contains(p.x, p.y))(List(Line("批量卖出", Tint.Title), Line("点一下进入，鼠标变成 $，点包裹里的物品直接整叠卖掉（不确认）"), Line("再点一下、右键、Esc 或关掉包裹退出")))
+
+  /** 关包裹也退出批量卖出 */
+  override def close(): Unit =
+    super.close()
+    ui.endBulkSell()
 
   private def useHand(h: Hand): Unit =
     ui.hand = None
