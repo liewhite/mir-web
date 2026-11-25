@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.DropDef
 import mir.model.*
 import mir.protocol.*
-import mir.rules.{Charges, Claim, DropRules, GroupRules, ItemEffects, ItemKind, Leveling, PassiveSkills, PetBody, Progress, RandomUpgrade, Rates, Recovery, Rng, Rules, Skill, SpellRules, Ward}
+import mir.rules.{Charges, Claim, DropRules, GroupRules, ItemEffects, ItemKind, Leveling, MonsterRank, PassiveSkills, PetBody, Progress, RandomUpgrade, Rates, Recovery, Rng, Rules, Skill, SpellRules, Ward}
 
 /**
  * 血、蓝与生死：一下攻击的结算、扣血、死亡（经验、掉落）、复活、回血回蓝、属性重算。
@@ -126,7 +126,11 @@ final class Vitals(w: World):
         w.out.sound(m.cell, Sounds.monster(m.defn.appr, Sounds.MonsterCry.Die))
         w.grid.vacate(m)
         m.removeAt = w.now + CorpseMs
-        heldClaim(m).map(_._2).filter(_ => m.master.isEmpty).foreach { o =>
+        val owner = heldClaim(m).map(_._2).filter(_ => m.master.isEmpty)
+        if Rates.rankOf(m.defn.name) == MonsterRank.Boss && m.master.isEmpty then
+          val by = killer.flatMap(w.actor).flatMap(w.justice.ownerOf)
+          w.out.chronicle(Chronicle.BossSlain(m.defn.name, m.cell, owner.map(_.charName), by.map(_.charName), m.spawn.flatMap(w.spawner.nextRefill)))
+        owner.foreach { o =>
           killExp(o, Rates.killExp(m.defn.exp, m.expScale))
           dropLoot(m, o)
         }

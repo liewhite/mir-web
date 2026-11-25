@@ -62,6 +62,7 @@
     - 测试 `ServerSpec`：真起服务，两个机器人账号 HTTP 登录 + WebSocket：开号命令、素材要登录、自助注册（成功即登录、重名、格式错、限频、登录画面素材免登录）、建角色规则、互相看见、走和打、断线重连、踢旧连接、换图（含图上只剩一人时传走）、迁移命令。
     - 部署 `deploy/jvm/deploy.sh`（sbt-assembly 打成 mir176.jar；JRE 21 放 /opt/mir176/jre；systemd 单元仍叫 mir176、端口和 Ingress 不变；服务器上命令行 `/opt/mir176/bin/mir176ctl`）。从 Node 版切过来在 #1148 做。
     - 全服公告（#1243）：服务端在数据目录开管理入口 `admin.sock`（unix socket，权限 600，只有服务账号 mir176 和 root 连得上，不监听网络端口、不经 Ingress；`server/admin/AdminSocket`，指令 `AdminCmd`）。`mir176ctl announce "内容"`（或从标准输入读）经它让游戏线程给全部连接发 `ServerMsg.Announce`，聊天框照原版 SendBroadCastMsg(t_Notice) 显示「〖公告〗内容」白字红底；本机用 `deploy/jvm/announce.sh "内容"` 经 ssh 发。回话列出游戏里在线的角色。
+    - boss 日志和现状（#1277）：`Rates.bosses` 里的怪被刷怪点刷出、死亡时，世界经 `Outbox.chronicle`（`mir.world.Chronicle`）报给服务端，服务端打一行 `boss 刷出：…` / `boss 死亡：怪 地图 坐标，归属 X，最后一下 Y，下次刷新 MM-dd HH:mm`（北京时间）。`mir176ctl bosses`（`AdminCmd.Bosses`，World.bossSpots）列每个 boss 刷怪点：活着的坐标血量、死了的几点刷、到点时没人在图上的「有人进图就刷」、没开过的图「没人进过」。本机 `deploy/jvm/bosses.sh`（现状）、`bosses.sh log`（近 2 天记录）。补怪是刷怪点按间隔定时补满，不是从死亡时刻起算。
     - 定时人数公告（#1244）：游戏线程每 5 分钟（`server/game/Headcount`）用同一种公告发一行「本服已注册 N 人，当前在线 M 人」（注册数查 accounts 表，在线数是游戏里的角色）；那一轮游戏里没人就不发。
   - `client/`（Scala.js，#1155；照 TS 版 assets/render/audio/input/joystick/viewport 移植，画面与 TS 版逐像素对得上）：
     - 构建：`sbt client/fastLinkJS`（开发）/ `client/fullLinkJS`（发布，约 5MB）产物在 `client/web/js/main.js`（不进 git）；`client/web/` 是服务端在 `/` 提供的静态目录（index.html、style.css、图标）。

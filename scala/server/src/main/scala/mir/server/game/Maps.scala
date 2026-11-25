@@ -19,6 +19,9 @@ final class Maps(catalog: Catalog, assetsDir: Path, uids: UidSource, clock: () =
 
   def loaded: Iterable[World] = worlds.values
 
+  /** 开过的图（不会因为问一下就开图） */
+  def opened(id: MapId): Option[World] = worlds.get(id)
+
   def get(id: MapId): Either[String, World] =
     worlds.get(id).toRight(()).left.flatMap { _ =>
       for

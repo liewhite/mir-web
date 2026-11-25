@@ -126,7 +126,7 @@ final class Visibility(w: World):
       buf ++= SelfView.diff(v.self, sv)
       v.self = Some(sv)
     }
-    Outbox(out.view.mapValues(_.toVector).toMap.filter(_._2.nonEmpty), pending.departed, pending.checkpoints)
+    Outbox(out.view.mapValues(_.toVector).toMap.filter(_._2.nonEmpty), pending.departed, pending.checkpoints, pending.chronicle)
 
 /** 一个玩家界面上「自己」的全部状态；变了的部分才发。 */
 final case class SelfView(

@@ -56,6 +56,7 @@ object Boot:
  *   account list                       列出账号和角色数
  *   migrate <账号> <save.json> [角色名]  把旧单机版存档导成这个账号下的一个角色
  *   announce [内容]                    给正在跑的服务发全服公告（#1243）；不给内容就读标准输入
+ *   bosses                             问正在跑的服务各 boss 现在活着还是几点刷（#1277）
  */
 object Main:
   def main(args: Array[String]): Unit =
@@ -75,13 +76,18 @@ object Main:
     case List("migrate", acc, file, name) => withStore(cfg)(migrate(_, acc, file, Some(name)))
     case "announce" :: words =>
       val text = if words.isEmpty then readAll() else words.mkString(" ")
-      report(AdminCmd.announce(text).flatMap(AdminSocket.request(cfg.adminSocket, _)).flatMap {
-        case AdminReply.Done(out)    => Right(out)
-        case AdminReply.Failed(why)  => Left(why)
-      })
+      report(AdminCmd.announce(text).flatMap(admin(cfg, _)))
+    case List("bosses") => report(admin(cfg, AdminCmd.Bosses()))
     case _ =>
-      java.lang.System.err.println("用法：serve | account add|passwd <账号> | account list | migrate <账号> <save.json> [角色名] | announce [内容]")
+      java.lang.System.err.println("用法：serve | account add|passwd <账号> | account list | migrate <账号> <save.json> [角色名] | announce [内容] | bosses")
       2
+
+  /** 发给正在跑的服务一条管理指令。 */
+  private def admin(cfg: ServerConfig, cmd: AdminCmd): Either[String, String] =
+    AdminSocket.request(cfg.adminSocket, cmd).flatMap {
+      case AdminReply.Done(out)   => Right(out)
+      case AdminReply.Failed(why) => Left(why)
+    }
 
   /** 一直跑到进程收到 SIGTERM（systemctl stop）：钩子里中断服务，走完 Scope 的收尾（在线角色存档、关库）再退出。 */
   private def serve(cfg: ServerConfig): Int =

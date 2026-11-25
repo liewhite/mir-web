@@ -112,6 +112,7 @@ final class GameServer(
     val departures = active.flatMap { w =>
       val out = attempt(s"取地图 ${w.mapId} 的消息")(w.flush())
       out.toVector.flatMap { o =>
+        o.chronicle.foreach(e => System.err.println(BossReport.line(catalog, w.mapId, e)))
         o.messages.foreach((actor, msgs) => byActor.get((w.mapId, actor)).flatMap(online.get).foreach(on => msgs.foreach(on.conn.link.send)))
         // 升级、交易成交的人立刻存档（交易双方在这里一起存；同一步换了图的已不在图上，由下面换图存档）
         o.checkpoints.foreach(actor => byActor.get((w.mapId, actor)).flatMap(online.get).foreach(on => w.snapshot(on.actor).foreach(save(on.id, _))))
@@ -162,7 +163,7 @@ final class GameServer(
               case None    => c.link.send(ServerMsg.Refused("还没进入游戏"))
       }
 
-  /** 全服公告发给全部连接（含还在选人的），回话里列出游戏里在线的角色（部署前看有没有人在玩）。 */
+  /** 公告：发给全部连接（含还在选人的），回话里列出游戏里在线的角色（部署前看有没有人在玩）；boss：列各 boss 刷怪点现状（#1277）。 */
   private def execute(cmd: AdminCmd): AdminReply = cmd match
     case AdminCmd.Announce(text) =>
       broadcast(text)
@@ -171,6 +172,8 @@ final class GameServer(
       val sent  = s"发给 ${conns.size} 个连接，游戏里在线 ${online.size} 人$who"
       System.err.println(s"公告：$text（$sent）")
       AdminReply.Done(s"已$sent")
+    case AdminCmd.Bosses() =>
+      AdminReply.Done(BossReport.status(catalog, maps.opened(_).map(_.bossSpots), clock()))
 
   /** 全服公告：发给全部连接（含还在选人的）。 */
   private def broadcast(text: String): Unit = conns.values.foreach(_.link.send(ServerMsg.Announce(text)))

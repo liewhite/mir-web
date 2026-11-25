@@ -989,6 +989,37 @@ object WorldSpec extends ZIOSpecDefault:
         assertTrue(hp1 < 50_000, mp1 == 0, p.hp > hp1, p.mp > 0)
       }
     ),
+    suite("boss 日志（#1277）")(
+      test("刷怪点刷出 boss 报一条刷出；被打死报死亡（归属、最后一下、下次刷新时刻）；bossSpots 看得到活着和死了几点刷") {
+        val map    = catalog.map(MapId("D2079")).get
+        val w      = world(map)
+        val p      = join(w, "甲", Cell(10, 10))
+        w.tick(Millis(50))
+        val born   = w.flush().chronicle
+        val boss   = w.monsters.find(_.defn.name == MonsterName("牛魔王")).get
+        val spot   = w.bossSpots.find(_.monster == MonsterName("牛魔王")).get
+        val minutes = Rates.respawnMinutes(MonsterName("牛魔王"), catalog.data.spawns.find(s => s.map == map.id && s.monster == MonsterName("牛魔王")).get.minutes)
+        w.vitals.damage(boss, boss.hp, Some(p.id))
+        val died   = w.flush().chronicle
+        val after  = w.bossSpots.find(_.monster == MonsterName("牛魔王")).get
+        assertTrue(
+          born.contains(Chronicle.BossSpawned(MonsterName("牛魔王"), boss.cell)),
+          !born.exists { case Chronicle.BossSpawned(m, _) => !Rates.bosses(m); case _ => true }, // 小怪不报
+          spot.alive == Vector(BossAlive(boss.cell, boss.maxHp, boss.maxHp)),
+          spot.nextRefill.contains(Millis(50 + minutes * 60_000L)),
+          died == Vector(Chronicle.BossSlain(MonsterName("牛魔王"), boss.cell, Some("甲"), Some("甲"), Some(Millis(50 + minutes * 60_000L)))),
+          after.alive.isEmpty,
+          after.nextRefill == spot.nextRefill
+        )
+      },
+      test("普通怪死了不报") {
+        val s = sim()
+        val p = join(s.w, "甲", Cell(30, 30))
+        val m = put(s.w, "鸡", Cell(31, 30))
+        s.w.vitals.damage(m, m.hp, Some(p.id))
+        assertTrue(m.dead, s.w.flush().chronicle.isEmpty)
+      }
+    ),
     suite("地图文件")(
       test("Terrain.parseBin 读格子标记，坏文件报错") {
         val bytes = "M176".getBytes("US-ASCII") ++ Array[Byte](2, 0, 1, 0) ++ Array[Byte](0, 3)

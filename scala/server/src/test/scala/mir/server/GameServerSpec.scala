@@ -4,9 +4,10 @@ import mir.core.*
 import mir.data.Catalog
 import mir.model.*
 import mir.protocol.*
-import mir.server.game.{GameServer, Headcount, Link, LinkEvent, Maps}
+import mir.server.admin.{AdminCmd, AdminReply}
+import mir.server.game.{BossReport, GameServer, Headcount, Link, LinkEvent, Maps}
 import mir.server.store.Db
-import mir.world.CharacterData
+import mir.world.{BossAlive, BossSpot, CharacterData, Chronicle}
 import zio.test.*
 
 import java.nio.file.{Files, Paths}
@@ -136,5 +137,29 @@ object GameServerSpec extends ZIOSpecDefault:
       f.store.db.close()
       val line = "本服已注册 2 人，当前在线 1 人"
       assertTrue(quietWhenNobody, notYet, first == (Vector(line), Vector(line)), between == 1, second == 2)
+    },
+    test("管理命令 bosses（#1277）：没开过的图写「没人进过」；开过的图写活着的坐标血量或死了几点刷（北京时间）") {
+      val f = Fixture()
+      def ask(): String =
+        var got: Option[AdminReply] = None
+        f.game.admin(AdminCmd.Bosses(), r => got = Some(r))
+        f.game.step()
+        got match
+          case Some(AdminReply.Done(text)) => text
+          case other                       => throw AssertionError(other.toString)
+      val before = ask()
+      f.store.db.close()
+      val spot  = BossSpot(MonsterName("牛魔王"), Cell(52, 51), 1, Vector.empty, Some(Millis(1_764_050_400_000L))) // 2025-11-25 14:00 北京时间
+      val alive = spot.copy(alive = Vector(BossAlive(Cell(53, 50), 100, 200)))
+      def status(s: BossSpot, now: Long) =
+        BossReport.status(catalog, id => Option.when(id == MapId("D2079"))(Vector(s)), Millis(now)).linesIterator.find(_.startsWith("牛魔王 ")).get
+      assertTrue(
+        before.linesIterator.contains("牛魔王 牛魔寺庙大厅(D2079) (52,51)：没人进过这张图，有人进图就刷"),
+        status(spot, 1_764_050_400_000L - 30 * 60_000L) == "牛魔王 牛魔寺庙大厅(D2079) (52,51)：死了，11-25 14:00 刷（还有 30 分钟）",
+        status(spot, 1_764_050_400_000L + 1) == "牛魔王 牛魔寺庙大厅(D2079) (52,51)：死了，到点时图上没人，有人进图就刷",
+        status(alive, 0) == "牛魔王 牛魔寺庙大厅(D2079) (52,51)：活着 (53,50) 血 100/200",
+        BossReport.line(catalog, MapId("D2079"), Chronicle.BossSlain(MonsterName("牛魔王"), Cell(53, 50), Some("甲"), None, Some(Millis(1_764_050_400_000L)))) ==
+          "boss 死亡：牛魔王 牛魔寺庙大厅(D2079) (53,50)，归属 甲，最后一下 无，下次刷新 11-25 14:00"
+      )
     }
   )

@@ -4,6 +4,7 @@
 #   mir176ctl account passwd <账号>
 #   mir176ctl account list
 #   mir176ctl announce [内容]          给在线玩家发全服公告（不给内容就读标准输入，#1243）
+#   mir176ctl bosses                   各 boss 现在活着还是几点刷（#1277；死亡、刷出记录在 journalctl -u mir176 | grep boss）
 #   mir176ctl migrate <账号> /var/lib/mir176/save.json [角色名]   旧单机版存档导成角色
 set -euo pipefail
 exec sudo bash -c 'set -a; . /etc/mir176.env; set +a; exec runuser -u mir176 -- /opt/mir176/jre/bin/java -jar /opt/mir176/app/mir176.jar "$@"' _ "$@"

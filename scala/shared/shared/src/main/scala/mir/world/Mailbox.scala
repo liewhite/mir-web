@@ -12,7 +12,9 @@ final case class Pending(
     local: Vector[(Cell, ServerMsg)],
     departed: Vector[Departure],
     /** 要立刻存档的玩家（升级、交易成交） */
-    checkpoints: Set[ActorId] = Set.empty
+    checkpoints: Set[ActorId] = Set.empty,
+    /** 要写进服务端日志的事（boss 刷出、死亡） */
+    chronicle: Vector[Chronicle] = Vector.empty
 )
 
 /** 世界要发出去的消息：先攒着，flush 时由 Visibility 按视野分给每个玩家。 */
@@ -21,6 +23,7 @@ final class Mailbox(w: World):
   private val local    = mutable.ArrayBuffer.empty[(Cell, ServerMsg)]
   private val departed = mutable.ArrayBuffer.empty[Departure]
   private val saves    = mutable.LinkedHashSet.empty[ActorId]
+  private val events   = mutable.ArrayBuffer.empty[Chronicle]
 
   private[world] def tell(p: Player, msg: ServerMsg): Unit =
     personal.getOrElseUpdate(p.id, mutable.ArrayBuffer.empty) += msg
@@ -54,9 +57,13 @@ final class Mailbox(w: World):
    */
   private[world] def checkpoint(p: Player): Unit = saves += p.id
 
+  /** 写进服务端日志的事（#1277） */
+  private[world] def chronicle(e: Chronicle): Unit = events += e
+
   /** 取走攒下的全部。 */
   private[world] def drain(): Pending =
-    val out = Pending(personal.toVector.map((id, m) => id -> m.toVector), local.toVector, departed.toVector, saves.toSet)
+    val out = Pending(personal.toVector.map((id, m) => id -> m.toVector), local.toVector, departed.toVector, saves.toSet, events.toVector)
+    events.clear()
     saves.clear()
     personal.clear()
     local.clear()

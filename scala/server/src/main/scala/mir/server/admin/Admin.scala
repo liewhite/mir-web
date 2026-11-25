@@ -10,6 +10,8 @@ import zio.json.*
 enum AdminCmd:
   /** 全服公告：发到所有连接的聊天框 */
   case Announce(text: String)
+  /** 列出各 boss 刷怪点现在活着还是几点刷（#1277） */
+  case Bosses()
 
 object AdminCmd:
   given JsonCodec[AdminCmd] = DeriveJsonCodec.gen

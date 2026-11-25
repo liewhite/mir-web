@@ -16,7 +16,9 @@ final case class Outbox(
     /** 离开本图去别的图的玩家：服务端把他交给目的地图的世界 */
     departures: Vector[Departure],
     /** 要立刻存档的玩家（升级、交易成交；交易双方一起存） */
-    checkpoints: Set[ActorId] = Set.empty
+    checkpoints: Set[ActorId] = Set.empty,
+    /** 要写进服务端日志的事（boss 刷出、死亡，#1277） */
+    chronicle: Vector[Chronicle] = Vector.empty
 )
 
 /** 一个玩家换图：存档（位置已是目的地）、跟着走的不进存档的东西。 */
@@ -102,6 +104,7 @@ final class World(
   export conditions.activeFields
   export hostility.{allied, canAttack, harms, isEnemy}
   export roster.{join, leave, snapshot}
+  export spawner.bossSpots
   export visibility.{viewOf, visibleTo, fieldsVisibleTo}
 
   // ---------------- 查询 ----------------
