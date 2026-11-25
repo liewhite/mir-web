@@ -58,12 +58,14 @@ final class Spawner(w: World, start: Millis):
 
   /**
    * 开图后接上快照：放回活着的野怪（原位被占就放附近）、改回补怪时刻。认不出的刷怪点（数据表改过）的怪丢掉、
-   * 补怪时刻不改（开图就补满，同没有快照）。返回放回了几只。
+   * 补怪时刻不改（开图就补满，同没有快照）；一个刷怪点放回的不超过数据表现在的只数。返回放回了几只。
    */
   private[world] def thaw(monsters: List[FrozenMonster], refills: List[FrozenRefill]): Int =
     val known = spawns.map((s, i) => keyOf(s, i)).toSet
     refills.filter(r => known(r.spawn)).foreach(r => due(r.spawn.index) = r.at)
-    monsters.filter(m => known(m.spawn)).flatMap { f =>
+    // 数据表把某个刷怪点的只数改少了：只放回新的只数
+    val capped = monsters.filter(m => known(m.spawn)).groupBy(_.spawn.index).toList.flatMap((i, ms) => ms.take(spawns.find(_._2 == i).fold(0)(_._1.count)))
+    capped.flatMap { f =>
       w.catalog.monster(f.spawn.monster).flatMap(spawnMonster(_, Some(f.spawn.index), f.cell, 0)).map { m =>
         w.grid.face(m, f.dir)
         w.vitals.setMaxHp(m, m.maxHp, Some(math.max(1, f.hp)))

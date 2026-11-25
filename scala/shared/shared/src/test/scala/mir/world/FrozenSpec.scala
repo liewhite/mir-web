@@ -77,6 +77,13 @@ object FrozenSpec extends ZIOSpecDefault:
       )
       assertTrue(w.thaw(f) == (0, 0), w.spawner.nextRefill(0).forall(_ != Millis(999_999)))
     },
+    test("数据表把刷怪点只数改少了：只放回新的只数") {
+      val w = world(Millis(0), 1)
+      val (s, i) = catalog.data.spawns.zipWithIndex.find((s, _) => s.map == bossMap.id && catalog.monster(s.monster).isDefined).get
+      val key = SpawnKey(i, s.monster, s.at)
+      val extra = (0 until s.count + 3).toList.map(n => FrozenMonster(key, Cell(2 + n % 50, 2 + n / 50), Dir.Down, 1))
+      assertTrue(w.thaw(FrozenMap(extra, Nil, Nil)) == (s.count, 0))
+    },
     test("角色带的（宝宝、状态、药、PK 计时）转成 JSON 再读回来一样") {
       val c = Carried(
         pets = List(PetData(MonsterName("神兽"), 321, PetBody(500, Span(10, 20), Span(3, 4), Span(5, 6)), 2, Some(Summoning(3, 40)))),
