@@ -2301,6 +2301,33 @@
    "minutes": 120
   },
   {
+   "map": "65",
+   "x": 150,
+   "y": 100,
+   "monster": "魔龙巨蛾",
+   "radius": 150,
+   "count": 3,
+   "minutes": 120
+  },
+  {
+   "map": "65",
+   "x": 150,
+   "y": 100,
+   "monster": "魔龙力士",
+   "radius": 150,
+   "count": 3,
+   "minutes": 240
+  },
+  {
+   "map": "65",
+   "x": 150,
+   "y": 100,
+   "monster": "魔龙战将",
+   "radius": 150,
+   "count": 3,
+   "minutes": 240
+  },
+  {
    "map": "66",
    "x": 150,
    "y": 150,

@@ -69,9 +69,10 @@ MONSTERS = [
 ]
 # 不刷的（魔龙石碑这期不做；GeeM2 里 1.85 以后的怪 1.76 数据表没有）；「X0」是 GeeM2 的精英批次，并成同名怪
 SKIP = {"魔龙石碑"}
-# 高级魔龙怪只在魔龙血域（最深一层）刷；外面各图 GeeM2 里零星的巨蛾、龙源血路的力士战将巨蛾都不刷（用户 11-26，#1245）
+# 高级魔龙怪只在魔龙血域和龙源血路刷：外面各图 GeeM2 里零星的巨蛾不刷（用户 11-26，#1245）；
+# 龙源血路刷少量（用户 11-26）：GeeM2 每种 10 只改成 3 只。图 -> 每条刷怪的数量（None 照 GeeM2）
 HIGH_NAMES = {"魔龙巨蛾", "魔龙力士", "魔龙战将"}
-HIGH_MAPS = {"66"}
+HIGH_MAPS: dict[str, int | None] = {"66": None, "65": 3}
 
 # 魔龙城的 NPC（GeeM2 merchant.txt 的位置和外观）：卖的东西照盟重对应的店（数据表里已有的物品、本服已定的价钱），
 # GeeM2 的货单是它自己改过的（祖玛装、1.85 物品），不用。
@@ -126,10 +127,13 @@ def main() -> None:
         if name in SKIP or name not in known:
             skipped.add(name)
             continue
-        if name in HIGH_NAMES and f[0] not in HIGH_MAPS:
-            continue
+        count = int(f[5])
+        if name in HIGH_NAMES:
+            if f[0] not in HIGH_MAPS:
+                continue
+            count = HIGH_MAPS[f[0]] or count
         spawns.append({"map": f[0], "x": int(f[1]), "y": int(f[2]), "monster": name,
-                       "radius": int(f[4]), "count": int(f[5]), "minutes": int(f[6])})
+                       "radius": int(f[4]), "count": count, "minutes": int(f[6])})
 
     shops = {(m["map"], m["name"]): m for m in cat["merchants"]}
     merchants = []

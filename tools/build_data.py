@@ -28,7 +28,7 @@ TOWNS = [
 # 不在任何城后面、也没有路进去的打怪地图：自成一个地区，落点取地图中间附近的可走格
 ENTRIES = [("M001", 139, 140), ("T1341", 20, 21)]
 # 幻境（#1317，补充表 tools/data/huanjing.json）：原版从盟重找老兵进一层（脚本 mapmove H001 73 67），本服只从传送菜单进；
-# 一层起就有 boss，所以菜单只有一层这个入口，往里自己走
+# 每层都有随机位置的 boss，但用户 11-26 定传送到五层（见 BOSS_OK、DEEPEST）
 ENTRIES.append(("H001", 73, 67))
 # 地区名：按「出城后第一张图」起名；没列出的用那张图的标题去掉「一层/入口/大殿/出入口」
 REGION_NAMES = {
@@ -36,7 +36,11 @@ REGION_NAMES = {
     "0157": "祖玛寺庙", "D710": "石墓（猪洞）",
     "12": "丛林迷宫·赤月", "D2000": "封魔矿区·封魔殿", "B341": "封魔皇宫·姻缘",
     "H001": "幻境",
+    # 魔龙东郊、西郊两条路合成一组（用户 11-26）
+    "61": "魔龙", "62": "魔龙",
 }
+# 城市另在这个地区组的最前面再列一次（魔龙城放进「魔龙」组，用户 11-26）
+TOWN_IN_GROUP = {"6": "魔龙"}
 # 传送菜单不到 boss 层（用户 11-25 #1245/#1315）：刷这些怪的图、迷宫、以及只能穿过它们才到得了的更深的图都不列，剩下自己走。
 # boss 名单同 scala Rates.bosses（GameDataSpec 核对传送菜单里没有刷 Rates.bosses 的图，名单不同步会报）。
 BOSSES = {
@@ -48,8 +52,10 @@ BOSSES = {
 MAZE_TITLES = {"石墓阵", "祖玛阁"}
 # 用户点名的最深一层：祖玛、牛魔到五层，赤月到抉择之地；这些图列，再往里的不列
 DEEPEST = {"D505", "D2076", "D1004"}
-# 魔龙（#1313）：只列魔龙城和东郊、西郊入口，往里自己走
-DEEPEST |= {"61", "62"}
+# 魔龙：到魔龙谷为止，龙源血路、魔龙血域自己走（用户 11-26）；幻境到五层（用户 11-26）
+DEEPEST |= {"64", "H005"}
+# 刷 boss 也照列的图：幻境每层的 boss 是本服随机位置加的（#1317），不算 boss 层；用户点名传到五层
+BOSS_OK = {"H002", "H003", "H004", "H005"}
 # 迷宫门照原版改的地方（Mir176 数据表与 1.76 服务端 MapInfo 不同处；核对见 #1315）：(图, x, y) -> (去的图, x, y)
 ROUTE_FIXES = {
     # 祖玛阁第一格的这扇门数据表直通祖玛六层大厅（等于跳过迷宫），原版通往迷宫另一格
@@ -101,7 +107,7 @@ def teleports(cat: dict, maps: dict[str, str]) -> list[dict]:
                     order.append(r["to"])
             i += 1
     with_monsters = {s["map"] for s in cat["spawns"]}
-    boss_maps = {s["map"] for s in cat["spawns"] if s["monster"] in BOSSES} - town_ids
+    boss_maps = {s["map"] for s in cat["spawns"] if s["monster"] in BOSSES} - town_ids - BOSS_OK
     blocked = boss_maps | {m for m in maps if titles[m] in MAZE_TITLES}
     open_maps = set(seeds)  # 不穿过 blocked、DEEPEST 走得到的
     frontier = list(seeds)
@@ -128,15 +134,21 @@ def teleports(cat: dict, maps: dict[str, str]) -> list[dict]:
         return seeds[m] if r is None else (r["tx"], r["ty"])
 
     out = [{"group": "城市", "name": name, "map": m, "x": x, "y": y} for m, name, x, y in towns]
+    def group_name(root: str) -> str:
+        return REGION_NAMES.get(root) or titles[root].removesuffix("一层").removesuffix("出入口").removesuffix("入口").removesuffix("大殿")
+
+    # 按组名归并：几个入口（如魔龙东郊、西郊）同名就合成一组，按从比奇走过去的先后排
     groups: dict[str, list[str]] = {}
     for m in order:
         root = None if m in town_ids else region(m)
         if root and m in open_maps and (m == root or m in with_monsters):
-            groups.setdefault(root, []).append(m)
-    for root, ms in groups.items():
+            groups.setdefault(group_name(root), []).append(m)
+    town_by_group = {g: t for t, g in TOWN_IN_GROUP.items() if t in town_ids}
+    for group, ms in groups.items():
         if not any(m in with_monsters for m in ms):
             continue  # 城里的店铺、房屋
-        group = REGION_NAMES.get(root) or titles[root].removesuffix("一层").removesuffix("出入口").removesuffix("入口").removesuffix("大殿")
+        if (t := town_by_group.get(group)) is not None:
+            out.append(next(o | {"group": group} for o in out if o["map"] == t and o["group"] == "城市"))
         seen: set[str] = set()
         for m in ms:
             if titles[m] in seen:

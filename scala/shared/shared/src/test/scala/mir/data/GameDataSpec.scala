@@ -15,7 +15,7 @@ object GameDataSpec extends ZIOSpecDefault:
       assertTrue(
         d.maps.size == 265 + 16 + 10, // 1.76 数据表 + 1.80 魔龙补充表（#1313）+ 幻境（#1317）
         d.routes.size == 1301 + 173 + 19,
-        d.spawns.size == 2378 + 97 + 218, // 魔龙 97（高级怪只留血域的，#1245）
+        d.spawns.size == 2378 + 100 + 218, // 魔龙 100（高级怪只留血域和龙源血路的，#1245）
         d.guards.size == 49,
         d.merchants.size == 69 + 8,
         d.minimaps.size == 117 + 14 + 9,
@@ -27,7 +27,7 @@ object GameDataSpec extends ZIOSpecDefault:
         d.skills.size == 33,
         d.exp.size == 47,
         d.monsterActions.size == 38,
-        d.teleports.size == 105
+        d.teleports.size == 119 // 魔龙一组到魔龙谷、幻境到五层（用户 11-26）
       )
     },
     test("名字、编号不重复，索引不丢条目") {
@@ -83,7 +83,7 @@ object GameDataSpec extends ZIOSpecDefault:
         catalog.expToNext(48).isEmpty,
         catalog.displayName(MonsterName("僵尸10")) == MonsterName("僵尸1"),
         catalog.teleport(TeleportRef(0)).map(_.name).contains("比奇省"),
-        catalog.teleport(TeleportRef(105)).isEmpty,
+        catalog.teleport(TeleportRef(119)).isEmpty,
         catalog.merchant(MerchantRef(0)).map(_.name).contains("卫家店"),
         catalog.merchant(MerchantRef(-1)).isEmpty
       )
@@ -93,18 +93,18 @@ object GameDataSpec extends ZIOSpecDefault:
       val bossMaps  = d.spawns.filter(s => mir.rules.Rates.bosses(s.monster)).map(_.map).toSet
       val wild      = d.teleports.filter(_.group != "城市")
       val listed    = wild.map(_.map.value).toSet
-      // 未知暗殿、幻境一层没有路进去，只能传，留着
+      // 未知暗殿、幻境一层没有路进去，只能传，留着；幻境二到五层的 boss 是本服随机加的，用户定传到五层
       val toBoss    = wild.filter(t => bossMaps(t.map)).map(_.map.value)
       val zumaMaze  = d.routes.find(r => r.from == MapId("D5061") && r.x == 66 && r.y == 16)
       assertTrue(
-        toBoss == List("M001", "H001"),
+        toBoss == List("M001", "H001", "H002", "H003", "H004", "H005"),
         !wild.exists(t => t.name == "石墓阵" || t.name == "祖玛阁"),
         Set("D505", "D2076", "D1004", "D715").subsetOf(listed),
         Set("D5072", "D2078", "D10052", "D716").intersect(listed).isEmpty,
         zumaMaze.map(_.to).contains(MapId("D5062"))
       )
     },
-    test("1.80 魔龙（#1313）：传送菜单只有魔龙城和东郊、西郊；从魔龙城走得到魔龙血域；教主是 boss；高级怪只在血域（#1245）") {
+    test("1.80 魔龙（#1313）：传送菜单「魔龙」一组到魔龙谷为止；从魔龙城走得到魔龙血域；教主是 boss；高级怪只在血域和龙源血路（#1245）") {
       val d      = catalog.data
       val molong = Set("6", "B357", "GA1", "61", "62", "611", "621", "612", "613", "622", "63", "632", "631", "64", "65", "66")
       val menu   = d.teleports.filter(t => molong(t.map.value)).map(t => (t.group, t.map.value))
@@ -117,10 +117,10 @@ object GameDataSpec extends ZIOSpecDefault:
       val high     = Set("魔龙巨蛾", "魔龙力士", "魔龙战将").map(MonsterName(_))
       val highMaps = d.spawns.filter(s => high(s.monster)).map(_.map.value).toSet
       assertTrue(
-        menu.toSet == Set(("城市", "6"), ("魔龙东郊", "61"), ("魔龙西郊", "62")),
+        menu.toSet == (Set("6", "61", "62", "611", "621", "612", "613", "622", "63", "632", "631", "64").map(("魔龙", _)) + (("城市", "6"))),
         fromCity == molong,
         boss == List("66"),
-        highMaps == Set("66"),
+        highMaps == Set("66", "65"),
         mir.rules.Rates.bosses(MonsterName("魔龙教主")),
         d.monsters.filter(_.name.value.startsWith("魔龙")).forall(m => catalog.actions(m).isDefined)
       )
@@ -158,7 +158,7 @@ object GameDataSpec extends ZIOSpecDefault:
         layers.forall(h => catalog.map(MapId(h)).exists(m => m.asset != h)),
         layers.toSet.subsetOf(fromFirst),
         fromFirst.contains("3"),
-        menu == List(("幻境", "H001")),
+        menu == List("H001", "H002", "H003", "H004", "H005").map(("幻境", _)),
         bossLayer == layers
       )
     },
