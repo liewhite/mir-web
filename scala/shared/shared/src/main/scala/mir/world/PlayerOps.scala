@@ -390,7 +390,7 @@ object PlayerOps:
     val weapon = p.worn.get(EquipSlot.Weapon)
     val m      = WeaponRefine.materials(p.bag.flatten, w.catalog.item)
     for
-      smith  <- npcFor(w, p, npc, _ == MerchantService.WeaponUpgrade)
+      smith  <- npcFor(w, p, npc, _ => true).filterOrElse(_.defn.refinesWeapons, "这个 NPC 不会升级武器")
       _      <- WeaponRefine.refusal(weapon, p.gold.value, m).toLeft(())
       wpn    <- weapon.filter(_.uid == weaponUid).toRight("手上的武器换了，请重新确认")
       _      <- Either.cond(m.uids == seen, (), "包裹里的东西变了，请重新确认要收走的材料")
@@ -399,7 +399,7 @@ object PlayerOps:
       given Rng = w.rngOf
       p.gold = p.gold - Gold(WeaponRefine.Price)
       m.uids.foreach(uid => Inventory.take(p, uid, None, () => w.newUid()))
-      WeaponRefine.refine(wpn, recipe) match
+      WeaponRefine.refine(wpn, recipe, p.job) match
         case WeaponRefine.Result.Raised(aspect, by, better) =>
           p.worn(EquipSlot.Weapon) = better
           w.out.selfSound(p, Sounds.money)

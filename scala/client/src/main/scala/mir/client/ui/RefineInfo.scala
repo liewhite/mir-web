@@ -20,7 +20,7 @@ object RefineInfo:
   private def points(n: Int): String = Durability.shown(n.abs).toString
 
   /** 说明各行和（能升级时）要发的确认内容。 */
-  def apply(catalog: Catalog, view: ViewState, gold: Int): (List[Line], Option[Offer]) =
+  def apply(catalog: Catalog, view: ViewState, gold: Int, job: mir.model.Job): (List[Line], Option[Offer]) =
     val weapon = view.worn.get(EquipSlot.Weapon)
     val m      = WeaponRefine.materials(view.bag.flatten, catalog.item)
     val head   = Line(s"升级手上的武器：每次 ${WeaponRefine.Price} 金币，当场出结果", Tint.Title)
@@ -44,11 +44,14 @@ object RefineInfo:
           w <- weapon
           r <- WeaponRefine.recipe(m)
         yield
-          val f = WeaponRefine.forecast(w, r)
+          val f = WeaponRefine.forecast(w, r, job)
           val a = f.attempt
+          val lv   = WeaponRefine.points(w) + 1
+          val base = WeaponRefine.levelChance(lv)
           List(
-            Line(s"首饰点数：攻击 ${r.dc}　魔法 ${r.mc}　道术 ${r.sc}（最高的一项定往哪升）", Tint.Dim),
-            Line(s"这次往「${a.aspect.label}」升，成功率 ${a.chance}%", Tint.Plain)
+            Line(s"首饰点数：攻击 ${r.dc}　魔法 ${r.mc}　道术 ${r.sc}（最高的一项定往哪升，一样高时优先你职业的${WeaponRefine.mainAspect(job).label}）", Tint.Dim),
+            Line(s"这把武器现在 +${lv - 1}，这次升到 +$lv，往「${a.aspect.label}」升", Tint.Plain),
+            Line(s"成功率 ${a.chance}% = 升到 +$lv 的基础 $base% + 首饰 ${a.chance - base}%（最高 ${WeaponRefine.MaxChance}%）", Tint.Dim)
           ) ++
             (if f.capped then List(Line(s"这把武器的攻击/魔法/道术附加已有 ${WeaponRefine.points(w)} 点，到 ${WeaponRefine.MaxPoints} 点再升必碎", Tint.Bad))
              else f.raised.toList.sorted.map((by, p) => Line(s"　${a.aspect.label} +$by：${pct(p)}", Tint.Good))) ++

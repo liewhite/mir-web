@@ -123,7 +123,18 @@ final case class MerchantDef(
 ):
   def at: Cell = Cell(x, y)
 
+  /**
+   * 会升级武器（#1286，用户 11-25 定「全图任意铁匠都支持」）：原版只有沙巴克铁匠（weapon-upgrade），
+   * 本服另加各城的铁匠铺、武器店：只收武器和矿石的商店（收购种类在 5、6、43 里，杂货店不算）。
+   */
+  def refinesWeapons: Boolean = service match
+    case MerchantService.WeaponUpgrade => true
+    case MerchantService.Shop          => itemModes.nonEmpty && itemModes.forall(MerchantDef.SmithModes.contains)
+    case MerchantService.Storage       => false
+
 object MerchantDef:
+  private val SmithModes = Set(5, 6, 43)
+
   given JsonCodec[MerchantDef] = DeriveJsonCodec.gen
 
 /** 物品。字段沿用 1.76 StdItems 的含义：mode=StdMode, shape=Shape, look=图标号。具体用途见 mir.rules.ItemKind。 */

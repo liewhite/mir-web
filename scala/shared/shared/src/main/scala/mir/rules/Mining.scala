@@ -8,8 +8,9 @@ import mir.data.ItemDef
  * 带 MINE 标记的地图（1.76 数据里只有比奇的「废矿入口」）上，拿着鹤嘴锄朝挡路的格子（矿壁）攻击就是挖。
  * - 每个矿壁格有一条矿脉，第一次挖时定下还剩几下能挖（Random(VeinMax)），每挖一下少一下；
  *   挖空了，离上次补满过了 RefillMs 再挖就补成这一格固定的补充量（Random(RefillMax)，这一下不出东西）。
- * - 有剩的时候每挖一下：1/ChipOdds 敲下碎石（武器磨 Random(15)+5 点持久），敲下时再有 1/OreOdds 出一块矿石（包裹满了不出）。
- * 本服不改爆率倍率（用户 11-25 定「照原版」）。
+ * - 有剩的时候每挖一下：1/ChipOdds 敲下碎石（武器磨 Random(15)+5 点持久），敲下就出一块矿石（包裹满了不出）。
+ * 本服加快（用户 11-25 定「提高挖矿效率，玩家不要在挖矿耗费太多时间」）：原版敲下 1/4、敲下时再 1/12 出矿（每下 1/48），
+ *   这里每下 1/ChipOdds 出矿；出哪种矿、纯度、矿脉仍照原版。
  */
 object Mining:
   /** 鹤嘴锄：武器外观 Shape 19 */
@@ -17,8 +18,7 @@ object Mining:
   val VeinMax      = 200
   val RefillMax    = 80
   val RefillMs     = 10 * 60_000L
-  val ChipOdds     = 4
-  val OreOdds      = 12
+  val ChipOdds     = 2
 
   def isPickaxe(d: ItemDef): Boolean = ItemKind.slots(ItemKind.of(d)).contains(mir.model.EquipSlot.Weapon) && d.shape == PickaxeShape
 
@@ -58,6 +58,8 @@ object Mining:
   enum Strike:
     /** 没敲下东西 */
     case Nothing
+    /** 这处矿脉挖空了（还没到补充的时候） */
+    case Exhausted
     /** 敲下碎石；ore：同时出一块矿石（哪种、纯度再由 ore()、purity() 定） */
     case Chip(ore: Boolean)
 
@@ -65,9 +67,9 @@ object Mining:
   def strike(v: Vein, now: Long, roomForOre: Boolean)(using rng: Rng): (Vein, Strike) =
     if v.left <= 0 then
       if now - v.refilledAt > RefillMs then (v.copy(left = v.refill, refilledAt = now), Strike.Nothing)
-      else (v, Strike.Nothing)
+      else (v, Strike.Exhausted)
     else
       val dug = v.copy(left = v.left - 1)
       if rng.random(ChipOdds) != 0 then (dug, Strike.Nothing)
       else
-        (dug, Strike.Chip(rng.random(OreOdds) == 0 && roomForOre))
+        (dug, Strike.Chip(roomForOre))

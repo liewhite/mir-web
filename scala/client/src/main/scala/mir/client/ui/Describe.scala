@@ -155,7 +155,7 @@ object Describe:
     else
       List(
         Line("拿在手上、在矿区朝矿壁攻击就是挖矿（攻击键自动对着身边的矿壁一直挖）"),
-        Line(s"每挖一下 1/${Mining.ChipOdds} 机会敲下碎石，敲下时 1/${Mining.OreOdds} 出一块矿石；一处矿壁挖空了要等 ${Mining.RefillMs / 60_000} 分钟", Tint.Dim)
+        Line(s"每挖一下 1/${Mining.ChipOdds} 机会出一块矿石；一处矿壁挖空了要换地方，过 ${Mining.RefillMs / 60_000} 分钟才再长出来", Tint.Dim)
       )
 
   /** 矿石（#1286）：纯度存在持久里。 */

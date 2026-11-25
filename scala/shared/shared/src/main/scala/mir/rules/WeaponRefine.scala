@@ -2,7 +2,7 @@ package mir.rules
 
 import mir.core.{ItemName, ItemUid}
 import mir.data.{ItemDef, Span}
-import mir.model.{ItemBonus, ItemInstance}
+import mir.model.{ItemBonus, ItemInstance, Job}
 
 /**
  * 武器店升级武器（#1286）。照原版 ObjNpc.pas TMerchant.UpgradeWapon（交材料）、GetBackupgWeapon（定结果）和
@@ -11,16 +11,24 @@ import mir.model.{ItemBonus, ItemInstance}
  *   包裹里至少要有一块黑铁矿石。
  * - 黑铁矿石：纯度最高的 TopOres 块定持久上限怎么变（Recipe.purity）。
  * - 首饰：每件的攻击/魔法/道术（下限+上限，手镯再 +1）各取最高的两件，最高的 ÷5 加第二的 ÷3，得出三项点数；
- *   点数最高的一项就是这次往哪项升（Attempt），并列时道术优先于魔法、魔法优先于攻击（原版后判的盖前面的）。
- * - 成功率 = min(85, 7×min(11, 点数) + 10)%；成功时加 1，成功率 > 63% 时 1/30 机会改为加 2，> 79% 时再 1/200 机会改为加 3；
- *   失败武器碎掉。武器已有的攻击+魔法+道术附加合计到了 MaxPoints，不论成败都碎。
- * - 原版升道术时成功率用的是魔法点数（GetBackupgWeapon 里 n90:=_MIN(11,btMc)），照搬。
+ *   点数最高的一项就是这次往哪项升（Attempt）。并列时（含不带首饰）本服改为：并列里有升级人职业的主属性就升它（战士攻击、法师魔法、道士道术），
+ *   否则道术 > 魔法 > 攻击。原版本意是三项都一样时随机选（n1C:=Random(3)），但后判的盖前面的，实际总是道术（用户 11-25 定修掉）。
+ * - 成功率（本服改，用户 11-25 定「+1、+2 比较容易，+3 以上开始变得困难」）：按这次要升到第几级查 LevelChance，
+ *   再加首饰点数 × JewelBonus（点数最多算 11），封顶 MaxChance。等级 = 武器已有的攻击+魔法+道术附加合计（打怪爆的极品附加也算）。
+ *   每次成功只加 1（原版成功率 > 63% 时有小机会一次 +2/+3，会跳过难的级别，去掉）。
+ *   失败武器碎掉（原版）。等级到了 MaxPoints，不论成败都碎（原版）。
+ * - 原版升道术时成功率用的是魔法点数（GetBackupgWeapon 里 n90:=_MIN(11,btMc)），本服改用道术点数（用户 11-25 定）。
  * 原版成功率里另有武器幸运、人物幸运两项，本服没有这两样，按 0 算。
  */
 object WeaponRefine:
   val Price     = 10000
   val MaxPoints = 20
   val TopOres   = 5
+  /** 升到第 1、2、3… 级的基础成功率（%），更高的按最后一项 */
+  val LevelChance: Vector[Int] = Vector(80, 70, 40, 30, 20, 15, 10)
+  /** 首饰点数每点加几个百分点（点数最多算 11） */
+  val JewelBonus = 2
+  val MaxChance  = 95
   val BlackIron: ItemName = Mining.Ore.BlackIron.item
 
   /** 原版 ITEM_ACCESSORY（LocalDB.pas）：这些 StdMode 的物品都会被收走 */
@@ -74,17 +82,27 @@ object WeaponRefine:
   /** 这次往哪项升、成功的百分率。 */
   final case class Attempt(aspect: Aspect, chance: Int)
 
-  def attempt(r: Recipe): Attempt =
-    val aspect =
-      if r.sc >= r.mc && r.sc >= r.dc then Aspect.Sc
-      else if r.mc >= r.dc && r.mc >= r.sc then Aspect.Mc
-      else Aspect.Dc
-    val pts = aspect match
-      case Aspect.Dc => r.dc
-      case Aspect.Mc => r.mc
-      case Aspect.Sc => r.mc // 原版如此（见上）
-    val n = math.min(11, pts)
-    Attempt(aspect, math.min(85, n * 7 + 10))
+  /** 各职业的主属性 */
+  def mainAspect(job: Job): Aspect = job match
+    case Job.Warrior => Aspect.Dc
+    case Job.Wizard  => Aspect.Mc
+    case Job.Taoist  => Aspect.Sc
+
+  def pointsOf(r: Recipe, a: Aspect): Int = a match
+    case Aspect.Dc => r.dc
+    case Aspect.Mc => r.mc
+    case Aspect.Sc => r.sc
+
+  /** 升到第 level 级（从 1 起）的基础成功率 */
+  def levelChance(level: Int): Int = LevelChance(math.max(0, math.min(level, LevelChance.size) - 1))
+
+  /** job：升级的人的职业（只在点数并列时起作用）；weapon：要升的武器（定升到第几级） */
+  def attempt(r: Recipe, job: Job, weapon: ItemInstance): Attempt =
+    val best   = Aspect.values.map(pointsOf(r, _)).max
+    val tied   = Aspect.values.filter(pointsOf(r, _) == best).toList
+    val aspect = if tied.contains(mainAspect(job)) then mainAspect(job) else tied.maxBy(_.ordinal)
+    val n      = math.min(11, pointsOf(r, aspect))
+    Attempt(aspect, math.min(MaxChance, levelChance(points(weapon) + 1) + n * JewelBonus))
 
   /** 武器已有的攻击+魔法+道术附加 */
   def points(weapon: ItemInstance): Int = weapon.bonus match
@@ -107,13 +125,8 @@ object WeaponRefine:
     /** 失败或累计附加到了上限：武器碎了 */
     case Broken
 
-  /** 掷成败：0 失败，1–3 加几点。 */
-  private def roll(a: Attempt)(using rng: Rng): Int =
-    if rng.random(100) >= a.chance then 0
-    else
-      val two   = a.chance > 63 && rng.random(30) == 0
-      val three = a.chance > 79 && rng.random(200) == 0
-      if three then 3 else if two then 2 else 1
+  /** 掷成败：0 失败，1 成功。 */
+  private def roll(a: Attempt)(using rng: Rng): Int = if rng.random(100) < a.chance then 1 else 0
 
   /** 持久上限怎么变（原始单位，Word 封顶 65535）：纯度低扣、高加。 */
   def duraMaxAfter(duraMax: Int, purity: Int)(using rng: Rng): Int =
@@ -129,9 +142,9 @@ object WeaponRefine:
       math.min(65535, duraMax + add)
 
   /** 升级一次：先定持久，再定成败。 */
-  def refine(weapon: ItemInstance, r: Recipe)(using Rng): Result =
+  def refine(weapon: ItemInstance, r: Recipe, job: Job)(using Rng): Result =
     val max = duraMaxAfter(weapon.duraMax, r.purity)
-    val a   = attempt(r)
+    val a   = attempt(r, job, weapon)
     val by  = roll(a)
     if by == 0 || capped(weapon) then Result.Broken
     else
@@ -150,11 +163,8 @@ object WeaponRefine:
    */
   final case class Forecast(attempt: Attempt, capped: Boolean, raised: Map[Int, Double], broken: Double, duraMax: Map[Int, Double])
 
-  def forecast(weapon: ItemInstance, r: Recipe): Forecast =
-    val a  = attempt(r)
-    val p  = a.chance / 100.0
-    val p3 = if a.chance > 79 then p / 200 else 0.0
-    val p2 = if a.chance > 63 then p / 30 * (1 - (if a.chance > 79 then 1.0 / 200 else 0.0)) else 0.0
-    val raised = if capped(weapon) then Map.empty[Int, Double] else Map(1 -> (p - p2 - p3), 2 -> p2, 3 -> p3).filter(_._2 > 0)
+  def forecast(weapon: ItemInstance, r: Recipe, job: Job): Forecast =
+    val a  = attempt(r, job, weapon)
+    val raised = if capped(weapon) then Map.empty[Int, Double] else Map(1 -> a.chance / 100.0)
     val dura = Odds.of()(rng => duraMaxAfter(weapon.duraMax, r.purity)(using rng) - weapon.duraMax).getOrElse(Map.empty)
     Forecast(a, capped(weapon), raised, 1 - raised.values.sum, dura)

@@ -14,6 +14,9 @@ import scala.collection.mutable
  */
 final class Quarry(w: World):
   private val veins = mutable.HashMap.empty[Cell, Mining.Vein]
+  /** 挖空、包裹满的提示上次发给这个人的时刻（自动一直挖时不刷屏） */
+  private val hinted = mutable.HashMap.empty[ActorId, Millis]
+  private val HintGapMs = 10_000L
 
   /** 碎石飞溅在锄头落下那一帧（原版 HumActor.pas：重击第 5 帧） */
   private val ChipDelayMs = Pace.HitAnimMs * 5 / 6
@@ -35,14 +38,21 @@ final class Quarry(w: World):
       val (left, r) = Mining.strike(vein, w.now.value, room)
       veins(rock) = left
       r match
-        case Mining.Strike.Nothing => ()
+        case Mining.Strike.Nothing   => ()
+        case Mining.Strike.Exhausted => hint(p, "这处矿壁挖空了，换一处矿壁再挖")
         case Mining.Strike.Chip(ore) =>
+          if !room then hint(p, "包裹满了，挖不出矿石")
           wearPickaxe(p)
           w.afterOn(p, ChipDelayMs) { me =>
             w.out.effect("effect", 8 * dir.ordinal, 3, 80, Anchor.OnCell(me.cell))
             w.out.sound(me.cell, StrikeStone)
           }
           if ore then give(p, Mining.ore(), Mining.purity())
+
+  private def hint(p: Player, text: String): Unit =
+    if hinted.get(p.id).forall(w.now - _ >= HintGapMs) then
+      hinted(p.id) = w.now
+      w.out.notice(p, text, Tone.Bad)
 
   private def wearPickaxe(p: Player): Unit =
     given Rng = w.rngOf

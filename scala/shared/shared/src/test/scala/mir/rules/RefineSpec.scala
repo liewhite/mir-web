@@ -36,25 +36,40 @@ object RefineSpec extends ZIOSpecDefault:
         // 攻击：项链 2+5=7、戒指 0+6=6、手镯 1+2+1=4 → 7/5 + 6/3 = 3；魔法、道术只有手镯的 +1 → 0
         // 纯度：16、15、12、10（9.5 银行家舍入）、8 前五块合计 61 → Round(5 + 61/5) = 17
         r.contains(WeaponRefine.Recipe(3, 0, 0, 17)),
-        WeaponRefine.attempt(r.get) == WeaponRefine.Attempt(WeaponRefine.Aspect.Dc, 31)
+        WeaponRefine.attempt(r.get, Job.Wizard, inst("炼狱")) == WeaponRefine.Attempt(WeaponRefine.Aspect.Dc, 86)
       )
     },
-    test("往哪升：最高的一项，并列时道术 > 魔法 > 攻击；升道术的成功率按魔法点数（原版）；封顶 85%") {
-      import WeaponRefine.{Aspect, Attempt, Recipe, attempt}
+    test("往哪升：最高的一项；并列时（含不带首饰）优先升级人职业的主属性，否则道术 > 魔法 > 攻击") {
+      import WeaponRefine.{Aspect, Recipe, attempt}
+      val w = inst("炼狱")
       assertTrue(
-        attempt(Recipe(0, 0, 0, 10)) == Attempt(Aspect.Sc, 10),
-        attempt(Recipe(4, 4, 0, 10)) == Attempt(Aspect.Mc, 38),
-        attempt(Recipe(0, 2, 8, 10)) == Attempt(Aspect.Sc, 24),
-        attempt(Recipe(20, 0, 0, 10)) == Attempt(Aspect.Dc, 85),
-        attempt(Recipe(9, 0, 0, 10)) == Attempt(Aspect.Dc, 73)
+        attempt(Recipe(0, 0, 0, 10), Job.Warrior, w).aspect == Aspect.Dc,
+        attempt(Recipe(0, 0, 0, 10), Job.Wizard, w).aspect == Aspect.Mc,
+        attempt(Recipe(0, 0, 0, 10), Job.Taoist, w).aspect == Aspect.Sc,
+        attempt(Recipe(4, 4, 0, 10), Job.Taoist, w).aspect == Aspect.Mc,
+        attempt(Recipe(4, 4, 0, 10), Job.Warrior, w).aspect == Aspect.Dc,
+        attempt(Recipe(0, 2, 8, 10), Job.Warrior, w).aspect == Aspect.Sc
+      )
+    },
+    test("成功率：+1、+2 容易，+3 起变难；首饰点数每点 +2%（按要升的那一项算，道术按道术点数），封顶 95%") {
+      import WeaponRefine.{Recipe, attempt}
+      def at(level: Int) = inst("炼狱").copy(bonus = Option.when(level > 0)(ItemBonus.Weapon(dc = level)))
+      def chance(r: Recipe, level: Int, job: Job = Job.Warrior) = attempt(r, job, at(level)).chance
+      val none = Recipe(0, 0, 0, 10)
+      assertTrue(
+        (0 to 8).map(chance(none, _)) == Vector(80, 70, 40, 30, 20, 15, 10, 10, 10),
+        chance(Recipe(3, 0, 0, 10), 0) == 86,
+        chance(Recipe(0, 2, 8, 10), 2) == 56,  // 道术 8 点：40 + 16
+        chance(Recipe(20, 0, 0, 10), 0) == 95, // 80 + 22 封顶
+        chance(Recipe(20, 0, 0, 10), 6) == 32
       )
     },
     test("确认前给的概率和实际掷骰逐一核对（把每种随机取值都走一遍）") {
       val sword = inst("炼狱")
       def check(r: WeaponRefine.Recipe) =
-        val f = WeaponRefine.forecast(sword, r)
+        val f = WeaponRefine.forecast(sword, r, Job.Warrior)
         val exact = Odds.of(limit = 1_000_000)(rng =>
-          WeaponRefine.refine(sword, r)(using rng) match
+          WeaponRefine.refine(sword, r, Job.Warrior)(using rng) match
             case WeaponRefine.Result.Raised(_, by, _) => by
             case WeaponRefine.Result.Broken           => 0
         ).get
@@ -65,19 +80,19 @@ object RefineSpec extends ZIOSpecDefault:
         check(WeaponRefine.Recipe(11, 0, 0, 16))
       )
     },
-    test("成功加在对应附加上、持久跟着变；附加合计到 20 点必碎") {
-      given Rng = Rng.sequence(0) // 每次都取 0：成功，且 2 点、3 点都中
+    test("成功每次只加 1、持久跟着变；附加合计到 20 点必碎") {
+      given Rng = Rng.sequence(0) // 每次都取 0：成功
       val sword  = inst("炼狱")
-      val raised = WeaponRefine.refine(sword, WeaponRefine.Recipe(11, 0, 0, 30))
+      val raised = WeaponRefine.refine(sword, WeaponRefine.Recipe(11, 0, 0, 30), Job.Warrior)
       val full   = sword.copy(bonus = Some(ItemBonus.Weapon(dc = 15, mc = 5)))
       assertTrue(
         raised match
-          case WeaponRefine.Result.Raised(WeaponRefine.Aspect.Dc, 3, w) =>
-            w.bonus.contains(ItemBonus.Weapon(dc = 3)) && w.duraMax == sword.duraMax // 纯度 30：Random(12) 取 0 不加
+          case WeaponRefine.Result.Raised(WeaponRefine.Aspect.Dc, 1, w) =>
+            w.bonus.contains(ItemBonus.Weapon(dc = 1)) && w.duraMax == sword.duraMax // 纯度 30：Random(12) 取 0 不加
           case _ => false
         ,
-        WeaponRefine.refine(full, WeaponRefine.Recipe(11, 0, 0, 30)) == WeaponRefine.Result.Broken,
-        WeaponRefine.forecast(full, WeaponRefine.Recipe(11, 0, 0, 30)).broken == 1.0
+        WeaponRefine.refine(full, WeaponRefine.Recipe(11, 0, 0, 30), Job.Warrior) == WeaponRefine.Result.Broken,
+        WeaponRefine.forecast(full, WeaponRefine.Recipe(11, 0, 0, 30), Job.Warrior).broken == 1.0
       )
     },
     test("持久上限：纯度分 ≤8 扣 3 点（不到 3 点的减半）、9–15 有 6/纯度 机会扣 1 点、16–17 不变、≥18 有机会加") {
@@ -92,6 +107,13 @@ object RefineSpec extends ZIOSpecDefault:
         odds(28000, 30) == Map(0 -> 1.0 / 12, 1000 -> 4.0 / 12, 2000 -> 3.0 / 12, 4000 -> 4.0 / 12)
       )
     },
+    test("会升级武器的 NPC：沙巴克铁匠和各城只收武器矿石的铁匠铺、武器店，杂货店、仓库不算") {
+      val smiths = catalog.data.merchants.filter(_.refinesWeapons).map(_.name).toSet
+      assertTrue(
+        Set("沙巴克铁匠", "封魔铁匠", "铁匠铺老板", "武器店老板", "卫家店").subsetOf(smiths),
+        !smiths.exists(n => n.contains("杂货") || n.contains("仓库") || n.contains("保管"))
+      )
+    },
     test("不能升级的原因：没拿武器、没黑铁、钱不够") {
       val m  = WeaponRefine.materials(Vector(ore(12000)), catalog.item)
       val no = WeaponRefine.materials(Vector(inst("力量戒指")), catalog.item)
@@ -103,13 +125,13 @@ object RefineSpec extends ZIOSpecDefault:
         WeaponRefine.refusal(w, 10000, m).isEmpty
       )
     },
-    test("挖矿：出哪种矿照原版 Random(120) 分段；敲下碎石 1/4，敲下时出矿 1/12，包裹满了不出") {
+    test("挖矿：出哪种矿照原版 Random(120) 分段；本服每下 1/2 出矿，包裹满了不出") {
       val kinds = Odds.of()(rng => Mining.ore()(using rng)).get
       val v     = Mining.Vein(left = 5, refill = 7, refilledAt = 0)
       val hit   = Odds.of()(rng => Mining.strike(v, 1000, roomForOre = true)(using rng)._2 match
         case Mining.Strike.Chip(true)    => 2
         case Mining.Strike.Chip(false)   => 1
-        case Mining.Strike.Nothing       => 0
+        case _                           => 0
       ).get
       val full = Odds.chance()(rng => Mining.strike(v, 1000, roomForOre = false)(using rng)._2 match
         case Mining.Strike.Chip(ore) => ore
@@ -119,8 +141,8 @@ object RefineSpec extends ZIOSpecDefault:
         near(kinds(Mining.Ore.BlackIron), 11.0 / 120),
         near(kinds(Mining.Ore.Gold), 2.0 / 120),
         near(kinds(Mining.Ore.Copper), 64.0 / 120),
-        near(hit(0), 3.0 / 4),
-        near(hit(2), 1.0 / 48),
+        near(hit(0), 1.0 / 2),
+        near(hit(2), 1.0 / 2),
         full == 0.0
       )
     },
@@ -131,7 +153,7 @@ object RefineSpec extends ZIOSpecDefault:
       val (b, rb) = Mining.strike(empty, Mining.RefillMs + 1, roomForOre = true)
       val (c, rc) = Mining.strike(b, Mining.RefillMs + 2, roomForOre = true)
       assertTrue(
-        a == empty, ra == Mining.Strike.Nothing,
+        a == empty, ra == Mining.Strike.Exhausted,
         b.left == 7, rb == Mining.Strike.Nothing,
         c.left == 6, rc.isInstanceOf[Mining.Strike.Chip]
       )
