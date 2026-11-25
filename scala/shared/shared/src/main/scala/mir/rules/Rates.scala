@@ -36,6 +36,8 @@ object Rates:
   def respawnMinutes(m: MonsterName, tableMinutes: Int): Int = rankOf(m) match
     case MonsterRank.Boss   => math.min(tableMinutes, bossRespawnMaxMinutes)
     case MonsterRank.Common => tableMinutes
+  /** 怪掉的东西只给归属者和他的队友捡的时间（毫秒；用户 11-25 在 #1158 定 1 分钟，原版默认 2 分钟），见 Ward */
+  val lootWardMs: Long = 60_000
   /** 打死一只怪最多掉几件物品（金币不算；一叠可叠物算一件；#1241），多了按 DropRules.cap 留最稀有的 */
   val maxDropsPerKill: Int = 10
   /** 诱惑之光收服概率倍数（用户 11-23 在 #1163 要求提升；原版 3 级技能对低级怪约 5%），最高 100% */

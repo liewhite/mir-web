@@ -70,11 +70,11 @@ object AutoPlay:
       Combat.cast(w, p, id, SpellTarget(p.cell, None)) match
         case _ => ()
 
-  /** 附近最近的、设置里勾了这一类、包裹放得下的地上物品（#1178）。 */
+  /** 附近最近的、设置里勾了这一类、包裹放得下、不在别人保护期内的地上物品（#1178、#1158）。 */
   private def nearestLoot(w: World, p: Player, radius: Int): Option[GroundItem] =
     w.groundItems.filter { g =>
       // 有别人站着的格子捡不了
-      worth(w, p, g.loot) && p.cell.chebyshev(g.cell) <= radius && w.occupant(g.cell).forall(_.id == p.id)
+      worth(w, p, g.loot) && PlayerOps.mayPick(w, p, g) && p.cell.chebyshev(g.cell) <= radius && w.occupant(g.cell).forall(_.id == p.id)
     }.minByOption(g => p.cell.chebyshev(g.cell))
 
   /** 自动捡物要不要这件：设置里勾了这一类，且包裹放得下。 */

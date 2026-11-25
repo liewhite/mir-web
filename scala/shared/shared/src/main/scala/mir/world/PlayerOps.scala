@@ -130,10 +130,17 @@ object PlayerOps:
   /** 提示里的叫法：一叠写成「金创药(小量) ×5」。 */
   private def label(it: ItemInstance): String = if it.count > 1 then s"${it.name.value} ×${it.count}" else it.name.value
 
-  /** 捡起脚下的东西（金币直接加）；`take` 挑捡哪些，手动捡取全捡，自动捡物只捡勾了的种类。 */
+  /** p 现在捡不捡得起 g：怪掉的保护期内只有归属者和他的队友行（Ward，#1158）。 */
+  def mayPick(w: World, p: Player, g: GroundItem): Boolean =
+    g.ward.forall(_.admits(p.charName, w.company.mates(p.charName), w.now))
+
+  /**
+   * 捡起脚下的东西（金币直接加）；`take` 挑捡哪些，手动捡取全捡，自动捡物只捡勾了的种类。
+   * 别人的保护期内的跳过，一件都没捡到时照原版提示。
+   */
   def pickUp(w: World, p: Player, take: Loot => Boolean = _ => true): Boolean =
-    val here = w.groundItems.filter(g => g.cell == p.cell && take(g.loot)).toVector
-    here.count { g =>
+    val (here, warded) = w.groundItems.filter(g => g.cell == p.cell && take(g.loot)).toVector.partition(mayPick(w, p, _))
+    val got = here.count { g =>
       g.loot match
         case Loot.Coins(amount) =>
           w.out.selfSound(p, Sounds.money)
@@ -152,7 +159,9 @@ object PlayerOps:
               w.out.notice(p, s"捡到 ${label(it)}", Tone.Item)
               w.removeGround(g.id)
               true
-    } > 0
+    }
+    if got == 0 && warded.nonEmpty then w.out.notice(p, "在一定时间以内无法捡起此物品！", Tone.Bad)
+    got > 0
 
   /** 双击物品：喝药、读书、用卷轴、穿装备、拆药包。 */
   def useItem(w: World, p: Player, uid: ItemUid): Result =

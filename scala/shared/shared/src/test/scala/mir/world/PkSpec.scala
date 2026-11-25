@@ -159,7 +159,7 @@ object PkSpec extends ZIOSpecDefault:
       val carried = (a.bag ++ a.belt).flatten.map(_.uid).toSet
       a.pkPoints = 200
       s.w.vitals.damage(a, 1_000_000, None)
-      val dropped = s.w.groundItems.collect { case GroundItem(_, _, Loot.Item(it), _) => it.uid }.toSet
+      val dropped = s.w.groundItems.collect { case GroundItem(_, _, Loot.Item(it), _, _) => it.uid }.toSet
       val bBefore = (b.bag ++ b.belt).flatten.toList
       s.w.vitals.damage(b, 1_000_000, None)
       assertTrue(

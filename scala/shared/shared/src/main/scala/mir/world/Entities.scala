@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.{MerchantDef, MonsterDef, MonsterLook, Span}
 import mir.model.*
 import mir.protocol.{ActionView, FieldView, GroundThing, GroundView, Look, PetView}
-import mir.rules.{PetBody, Pk, PkStanding, Skill, Stats, Summoning}
+import mir.rules.{Claim, PetBody, Pk, PkStanding, Skill, Stats, Summoning, Ward}
 
 import scala.collection.mutable
 
@@ -37,7 +37,7 @@ sealed abstract class Actor(val id: ActorId, initCell: Cell, initDir: Dir, now: 
   private[world] var dead: Boolean        = false
   /** 身上的限时状态：中毒、魔法盾、隐身、麻痹、战甲、幽灵盾、定住、发狂 */
   private[world] val statuses: Statuses   = Statuses()
-  /** 最近打过我的对象（还手、经验归属） */
+  /** 最近打过我的对象（被打还手） */
   private[world] var lastHitBy: Option[ActorId] = None
   /** 治愈术还没回完的血（Vitals.mend / tickMending） */
   private[world] var mending: Option[Mending] = None
@@ -165,6 +165,8 @@ final class Monster(id: ActorId, initDefn: MonsterDef, initBehavior: Behavior, i
   private[world] var baseAc: Span   = defn.ac
   private[world] var baseMac: Span  = defn.mac
   private[world] var target: Option[ActorId] = None
+  /** 归属（经验和掉落给谁，Claim；Vitals 挨打时更新） */
+  private[world] var claim: Option[Claim] = None
   private[world] var nextThink: Millis  = now
   private[world] var lastAttack: Millis = Millis.zero
   /** 上次找最近目标的时刻（有目标时按 behavior.retarget 定时重找） */
@@ -246,6 +248,7 @@ enum FieldEffect:
 final case class Field(id: FieldId, cell: Cell, effect: FieldEffect, until: Millis, nextBurn: Millis):
   def view: FieldView = FieldView(id, cell, effect.kind)
 
-final case class GroundItem(id: GroundId, cell: Cell, loot: Loot, droppedAt: Millis):
+/** 地上的东西；ward 是掉落保护（怪掉的才有）。 */
+final case class GroundItem(id: GroundId, cell: Cell, loot: Loot, droppedAt: Millis, ward: Option[Ward] = None):
   def view: GroundView = GroundView(id, cell, loot.thing)
 

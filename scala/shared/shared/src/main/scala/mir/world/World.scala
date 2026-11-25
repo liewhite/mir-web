@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.{Catalog, MapDef, MonsterActionTable}
 import mir.model.*
 import mir.protocol.*
-import mir.rules.{Charges, Rng}
+import mir.rules.{Charges, Rng, Ward}
 import mir.terrain.Terrain
 
 import scala.collection.mutable
@@ -189,7 +189,7 @@ final class World(
   // ---------------- 地上的东西 ----------------
 
   /** 放到 at 附近没有东西的可走格上。 */
-  private[world] def dropAt(at: Cell, loot: Loot): Unit =
+  private[world] def dropAt(at: Cell, loot: Loot, ward: Option[Ward] = None): Unit =
     val taken = ground.valuesIterator.map(_.cell).toSet
     val cell = (0 until 4).iterator.flatMap { r =>
       for
@@ -199,7 +199,7 @@ final class World(
         if terrain.walkable(c) && !taken.contains(c)
       yield c
     }.nextOption().getOrElse(at)
-    val g = GroundItem(GroundId(nextGround), cell, loot, clock)
+    val g = GroundItem(GroundId(nextGround), cell, loot, clock, ward)
     nextGround += 1
     ground(g.id) = g
 

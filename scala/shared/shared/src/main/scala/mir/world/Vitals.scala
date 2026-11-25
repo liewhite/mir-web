@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.DropDef
 import mir.model.*
 import mir.protocol.*
-import mir.rules.{Charges, DropRules, GroupRules, ItemEffects, ItemKind, Leveling, PassiveSkills, PetBody, Progress, RandomUpgrade, Rates, Recovery, Rng, Rules, Skill, SpellRules}
+import mir.rules.{Charges, Claim, DropRules, GroupRules, ItemEffects, ItemKind, Leveling, PassiveSkills, PetBody, Progress, RandomUpgrade, Rates, Recovery, Rng, Rules, Skill, SpellRules, Ward}
 
 /**
  * 血、蓝与生死：一下攻击的结算、扣血、死亡（经验、掉落）、复活、回血回蓝、属性重算。
@@ -62,6 +62,7 @@ final class Vitals(w: World):
         src.foreach(w.justice.assaulted(target, _))
         target match
           case m: Monster =>
+            src.flatMap(w.justice.ownerOf).foreach(o => m.claim = Some(Claim.struck(heldClaim(m).map(_._1), o.id, w.now)))
             val shape = src.collect { case p: Player => p }.flatMap(weaponShape)
             w.out.sound(m.cell, Sounds.struckBody(shape))
             if m.hp > 0 then w.out.sound(m.cell, Sounds.monster(m.defn.appr, Sounds.MonsterCry.Struck))
@@ -110,6 +111,11 @@ final class Vitals(w: World):
 
   // ---------------- 死与复活 ----------------
 
+  /** 怪现在还算数的归属和归属者：没停手太久、人还活着在这张图上。 */
+  private def heldClaim(m: Monster): Option[(Claim, Player)] =
+    m.claim.filter(_.freshAt(w.now)).flatMap(c => w.player(c.owner).filter(!_.dead).map(c -> _))
+
+  /** killer 是最后一下的来源（PK 算谁杀的）；怪的经验和掉落另按归属（Claim）给。 */
   private def kill(target: Actor, killer: Option[ActorId]): Unit =
     target.dead = true
     target.mending = None
@@ -120,15 +126,11 @@ final class Vitals(w: World):
         w.out.sound(m.cell, Sounds.monster(m.defn.appr, Sounds.MonsterCry.Die))
         w.grid.vacate(m)
         m.removeAt = w.now + CorpseMs
-        val owner = killer.flatMap(w.actor).flatMap {
-          case p: Player  => Some(p)
-          case k: Monster => k.master.flatMap(w.player)
-          case _: Npc     => None
-        }
-        owner.filter(_ => m.master.isEmpty).foreach { o =>
+        heldClaim(m).map(_._2).filter(_ => m.master.isEmpty).foreach { o =>
           killExp(o, Rates.killExp(m.defn.exp, m.expScale))
-          dropLoot(m)
+          dropLoot(m, o)
         }
+        m.claim = None
         m.master.flatMap(w.player).foreach(_.pets -= m.id)
         MonsterAi.onDeath(w, m)
       case p: Player =>
@@ -143,6 +145,7 @@ final class Vitals(w: World):
   /** 不给经验、不掉东西的死（自爆）。 */
   private[world] def killWithoutReward(m: Monster): Unit =
     m.hp = 0
+    m.claim = None
     kill(m, None)
 
   /** 怪物原地复活（僵尸）。 */
@@ -195,8 +198,9 @@ final class Vitals(w: World):
    * 按爆率表掉落（概率按 Rates 换算，boss 的高级装备另有保底；金币数量 amount/2 + Random(amount)；装备照原版可能是极品，见 RandomUpgrade）。
    * 先把每行都掷完，物品超过 Rates.maxDropsPerKill 件时只留最稀有的（DropRules.cap，#1241）；金币不占名额。
    */
-  private def dropLoot(m: Monster): Unit =
+  private def dropLoot(m: Monster, owner: Player): Unit =
     given rng: Rng = w.rngOf
+    val ward = Some(Ward(owner.charName, w.now + Rates.lootWardMs))
     val rank = Rates.rankOf(m.defn.name)
     val hits = w.catalog.drops(m.defn.name).filter { (d: DropDef) =>
       val itemDef = if d.isGold then None else w.catalog.item(d.item)
@@ -205,7 +209,7 @@ final class Vitals(w: World):
     val (gold, items) = hits.partition(_.isGold)
     gold.foreach { d =>
       val g = d.amount / 2 + rng.random(d.amount)
-      if g > 0 then w.dropAt(m.cell, Loot.Coins(Gold(g)))
+      if g > 0 then w.dropAt(m.cell, Loot.Coins(Gold(g)), ward)
     }
     val pieces = items.flatMap(d => w.catalog.item(d.item).toList.flatMap(DropRules.pieces(d, _)))
     DropRules.cap(pieces).foreach { p =>
@@ -214,7 +218,7 @@ final class Vitals(w: World):
       val inst =
         if ItemKind.stacks(p.item) then Charges.settle(p.item, fresh.copy(count = p.count))
         else RandomUpgrade.monsterDrop(fresh, p.item)
-      w.dropAt(m.cell, Loot.Item(inst))
+      w.dropAt(m.cell, Loot.Item(inst), ward)
     }
 
   // ---------------- 回血回蓝、血上限 ----------------

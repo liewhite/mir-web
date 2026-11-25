@@ -459,6 +459,51 @@ object WorldSpec extends ZIOSpecDefault:
           loot.count { case Loot.Coins(_) => true; case _ => false } == 1
         )
       },
+      test("归属照原版（#1158）：先打的人拿经验和掉落，补最后一刀的拿不走；保护 1 分钟内只有他和队友捡得起") {
+        val rows = List(DropDef(ItemName("铁剑"), 1, 1, 1), DropDef(ItemName("铁剑"), 1, 1, 1))
+        val cat  = Catalog(catalog.data.copy(drops = catalog.data.drops + (MonsterName("鸡") -> rows)))
+        val team = Set("甲", "丙")
+        val w    = World(cat, testMap, Terrain.open(60, 60), Rng.seeded(1), UidSource.counter(1_000_000), Millis(0), n => if team(n) then team.toSeq else Nil)
+        val s    = Sim(w)
+        val a    = join(w, "甲", Cell(20, 30))
+        val b    = join(w, "乙", Cell(22, 30))
+        val c    = join(w, "丙", Cell(40, 40)) // 甲的队友，离得远不分经验
+        Seq(a, b, c).foreach(p => p.settings = p.settings.copy(autoPickup = false))
+        val hen = put(w, "鸡", Cell(21, 30))
+        w.vitals.damage(hen, 1, Some(a.id))
+        w.vitals.damage(hen, 1_000_000, Some(b.id))
+        val exp0 = (a.exp, b.exp)
+        val drops = w.groundItems.toVector
+        def heldIn(p: Player) = p.bag.flatten.count(_.name == ItemName("铁剑"))
+        val start = Seq(b, c).map(p => p.id -> heldIn(p)).toMap
+        def bagged(p: Player) = heldIn(p) - start(p.id)
+        s.flush()
+        w.grid.teleportActor(b, drops(0).cell)
+        val refused = s.cmd(b, GameCmd.PickUp).contains(ServerMsg.Notice("在一定时间以内无法捡起此物品！", Tone.Bad)) && bagged(b) == 0
+        w.grid.teleportActor(c, drops(0).cell)
+        s.cmd(c, GameCmd.PickUp)
+        val mateOk = bagged(c) == 1
+        w.tick(w.now + Rates.lootWardMs)
+        w.grid.teleportActor(b, drops(1).cell)
+        s.cmd(b, GameCmd.PickUp)
+        assertTrue(
+          hen.dead, exp0._1.value > 0, exp0._2.value == 0L,
+          drops.size == 2, drops.forall(_.ward.exists(_.owner == "甲")),
+          refused, mateOk, bagged(b) == 1
+        )
+      },
+      test("归属者停手超过 6 秒就作废，下一个打它的人接手（#1158）") {
+        val w   = world()
+        val s   = Sim(w)
+        val a   = join(w, "甲", Cell(20, 30))
+        val b   = join(w, "乙", Cell(40, 30))
+        val hen = put(w, "鸡", Cell(30, 30))
+        w.vitals.damage(hen, 1, Some(a.id))
+        s.run(6500)
+        w.vitals.damage(hen, 1, Some(b.id))
+        w.vitals.damage(hen, 1_000_000, Some(a.id))
+        assertTrue(hen.dead, b.exp.value > 0, a.exp.value == 0L, w.groundItems.forall(_.ward.exists(_.owner == "乙")))
+      },
       test("一人换图后从另一人视野消失") {
         val s = sim()
         val a = join(s.w, "甲", Cell(30, 30))
