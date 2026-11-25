@@ -146,7 +146,7 @@ cd scala && sbt test      # JVM 和 JS 都跑；测试会读 public/assets/data/
 
 ```sh
 sudo useradd --system --home /var/lib/mir176 --shell /usr/sbin/nologin mir176
-sudo mkdir -p /var/lib/mir176 /opt/mir176/{app,web,bin,public/assets,jre}
+sudo mkdir -p /var/lib/mir176 /opt/mir176/{releases,bin,public/assets,jre}
 sudo chown mir176: /var/lib/mir176
 # JRE 21：解压到 /opt/mir176/jre（deploy.sh 发现没有会自动从本机上传 Adoptium 的 linux x64 JRE）
 
@@ -154,7 +154,7 @@ sudo tee /etc/mir176.env >/dev/null <<EOF
 HOST=127.0.0.1
 PORT=18176
 ASSETS_DIR=/opt/mir176/public/assets
-WEB_DIR=/opt/mir176/web
+WEB_DIR=/opt/mir176/current/web
 DATA_DIR=/var/lib/mir176
 MIR_SESSION_SECRET=$(openssl rand -hex 24)
 EOF
@@ -172,9 +172,21 @@ MIR_JAVA_HOME=/path/to/jdk21 \
 deploy/jvm/deploy.sh
 ```
 
-[`deploy/jvm/deploy.sh`](deploy/jvm/deploy.sh) 做的事：本机打 jar 和客户端 → rsync 到服务器（jar 到 `/opt/mir176/app/`，页面到 `/opt/mir176/web/`，素材 `public/assets/` 到 `/opt/mir176/public/assets/`，命令行 `mir176ctl` 到 `/opt/mir176/bin/`）→ 装 systemd 单元 [`deploy/jvm/mir176.service`](deploy/jvm/mir176.service) 并重启 → 核对服务器上的 jar 和本机一致。ssh 登录的账号要能免密 sudo。`--dry-run` 只在本机打包。几个人同时跑会自动排队。
+[`deploy/jvm/deploy.sh`](deploy/jvm/deploy.sh) 做的事：
 
-不用脚本手工部署也一样：把上面几样东西放到对应目录，`sudo systemctl enable --now mir176`。
+1. 本机打 jar 和客户端，传到服务器上一个新的版本目录 `/opt/mir176/releases/<时间>-<提交>/`（`mir176.jar`、`web/`），素材 `public/assets/` 到 `/opt/mir176/public/assets/`（各版本共用）；这时旧服照常在跑。
+2. 在线备份数据库到 `DATA_DIR/backup/predeploy-<时间>.db`（留 10 份，服务器要装 `sqlite3`）。
+3. **试启动**：用这份备份的副本、另一个端口（`MIR_TRIAL_PORT`，默认 18177，只听 127.0.0.1）、限内存的临时 systemd 单元把新版跑起来：先 `check`（全部角色存档解得开），再开服等 `/healthz`，再 `smoke`（注册一次性账号、建角色、进图）。任何一步不过就中止，旧服没停过。试启动退出时顺便生成类缓存 `mir176.jsa`（加快之后的开服）。
+4. 装 systemd 单元 [`deploy/jvm/mir176.service`](deploy/jvm/mir176.service)，停旧服 → 软链 `/opt/mir176/current` 指向新版本 → 开服；60 秒内健康检查不过就自动切回上一版。版本目录留最近 3 个。
+5. 核对服务器上的 jar 和本机一致。
+
+ssh 登录的账号要能免密 sudo。几个人同时跑会自动排队。其他用法：
+
+- `deploy/jvm/deploy.sh --dry-run`：只在本机打包，并用临时库在本机试启动、跑冒烟检查。
+- `deploy/jvm/deploy.sh --trial`：只上传并在服务器上试启动，不换下旧服。
+- `deploy/jvm/deploy.sh --rollback`：切回上一版并重启（数据库不回退；旧版读不懂新版写的停服快照时只跳过那部分，角色存档不受影响）。
+
+不用脚本手工部署也一样：把 jar 和页面放进一个版本目录，`ln -sfn releases/<版本> /opt/mir176/current`，`sudo systemctl enable --now mir176`。
 
 注意：
 
