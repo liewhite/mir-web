@@ -72,7 +72,8 @@
     - 构建：`sbt client/fastLinkJS`（开发）/ `client/fullLinkJS`（发布，约 5MB）产物在 `client/web/js/main.js`（不进 git）；`client/web/` 是服务端在 `/` 提供的静态目录（index.html、style.css、图标）。
     - 选人画面用 ChrSel 图库（build_assets.py 整库导出的 `chrsel`）。
     - 本机看：`client/dev-serve.sh [端口]`（默认 18190，只听 127.0.0.1）后开 `http://127.0.0.1:18190/?local`：`net.LocalServer` 在浏览器里跑共用的世界当服务端（同一协议，指令消息都过 JSON），不用起服务端。`window.__mir` 给 browser-cli 测试：`state()`、`stick(方向,跑)`、`release()`、`tap(对象)`、`attack()`、`teleport(下标)`。
-    - 和服务端的约定（#1154 评论）：HTTP `api/login`/`api/me` 登录拿 cookie（素材要登录），WebSocket 在相对路径 `ws`，一帧一条 JSON；连上服务端先发 LoggedIn；断线自动重连后直接 `EnterGame(上次的角色)`。
+    - 和服务端的约定（#1154 评论）：HTTP `api/login`/`api/me` 登录拿 cookie（素材要登录），WebSocket 在相对路径 `ws`，一帧一条 JSON；连上服务端先发 LoggedIn；断线自动重连后等 LoggedIn 比过版本再 `EnterGame(上次的角色)`。
+    - 版本比对（#1242、#1289）：LoggedIn 带服务端的 `protocol/Release`（构建提交、通讯格式指纹、game.json 摘要）。通讯格式指纹是 `WireShape` 宏在编译期把 ClientCmd/ServerMsg 的类名、字段名和类型、分支展开取摘要，加手动版本号 `Release.WireRevision`（手写编解码器的取值、同一条消息含义变了这类结构看不出的改动要手动加一）。客户端 `Freshness`：提交一样照常；只有提交不同（Stale）就接着玩，重连回原处后的下一次 EnterMap（换图、回城、复活、同图传送）先发 `SessionCmd.Reloading` 再刷新，服务端对说了 Reloading 的连接断开时不下线角色，等新页面顶替（宝宝、状态、小组都在），30 秒没回来按掉线超时下线；在选人画面的直接刷；通讯格式或游戏数据不同（NPC 商店、传送点按数据表下标说话）马上刷新且不进游戏；为同一提交刷过还对不上就提示手动刷新。LoggedIn 的字段只加不改。
     - `net`：`Transport`（WsTransport / LocalServer）、`ServerClock`（进图粗定、Ping/Pong 按往返一半校正，只采信快的）。
     - `game`：`GameClient`（视野副本 + 一次性画面 + 发指令，不碰 DOM，测试里直接接 World 跑）、`SelfMotion`（本地先走：发 Walk/Run 同时本地走，MoveOk 才发下一步，MoveDenied 丢掉本地的回到服务端位置）、`Controller`（意图：摇杆走跑、点 NPC 走过去对话、点物品去捡、锁定攻击；自动喝药捡物还手烈火在服务端 AutoPlay）、`UiEvents`（给界面的一次性事件）。
     - `assets`（素材版本、图集块、地图格子 MapData、重试下载）、`render`（Frames 动作表、Renderer、Scene、Transients 特效飘字气泡）、`audio`、`input`（Joystick、Input：界面 Overlay 先接触摸和按键，按下结果 Press = 界面接了/就地起摇杆/交给地图；底栏左下角血魔球一块是摇杆区 `Hits.stick`，满地物品和怪时也能起摇杆，#1278）。
