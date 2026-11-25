@@ -2,11 +2,13 @@ package mir.client.ui
 
 import mir.client.render.ViewOptions
 import mir.model.{CharSettings, PickupKind}
-import mir.rules.{SpellRules, SwordRules}
+import mir.rules.{AutoRules, SpellRules, SwordRules}
 
 /** 设置窗的一页 */
 enum SettingTab(val label: String):
   case General extends SettingTab("通用")
+  /** 只管本机画面和声音的开关（通用页放不下了，#1307 拆出来） */
+  case Display extends SettingTab("画面")
   case Warrior extends SettingTab("战士")
   case Wizard  extends SettingTab("法师")
   case Taoist  extends SettingTab("道士")
@@ -38,7 +40,7 @@ object SettingRow:
   val PercentStep = 5
   val PercentMax  = 95
 
-  /** 设置窗的分页：通用一页，职业自动技能各一页 */
+  /** 设置窗的分页：通用、画面声音各一页，职业自动技能各一页 */
   val tabs: List[(SettingTab, List[SettingRow])] = List(
     SettingTab.General -> List(
       GameToggle("自动捡附近的物品（总开关）", _.autoPickup, (s, v) => s.copy(autoPickup = v)),
@@ -49,6 +51,11 @@ object SettingRow:
       GamePercent("蓝量低于多少自动喝蓝药（%，0 关闭）", _.autoMpPercent, (s, v) => s.copy(autoMpPercent = v)),
       GameToggle("点一下怪就一直打到死", _.stickyAttack, (s, v) => s.copy(stickyAttack = v)),
       GameToggle("站着被打时自动还手", _.autoFightBack, (s, v) => s.copy(autoFightBack = v)),
+      GameToggle(
+        s"自动打怪（闲着就去打 ${AutoRules.HuntRadius} 格内最近的野怪，别人在打的不抢；普通攻击，动摇杆就停）",
+        _.autoHunt, (s, v) => s.copy(autoHunt = v))
+    ),
+    SettingTab.Display -> List(
       LocalToggle("头顶显示血条", _.showHpBars, (o, v) => o.copy(showHpBars = v)),
       LocalToggle("地上物品显示名字", _.showItemNames, (o, v) => o.copy(showItemNames = v)),
       LocalToggle("比身上强的装备名字换色（粉紫）", _.upgradeHint, (o, v) => o.copy(upgradeHint = v)),
@@ -67,7 +74,15 @@ object SettingRow:
     ),
     SettingTab.Taoist -> List(
       GameToggle(s"自动召唤骷髅（不满 ${SpellRules.SummonsEach} 只就召，要学会召唤骷髅、带护身符）", _.autoSummonSkeleton, (s, v) => s.copy(autoSummonSkeleton = v)),
-      GameToggle(s"自动召唤神兽（不满 ${SpellRules.SummonsEach} 只就召，要学会召唤神兽、带护身符）", _.autoSummonShinsu, (s, v) => s.copy(autoSummonShinsu = v))
+      GameToggle(s"自动召唤神兽（不满 ${SpellRules.SummonsEach} 只就召，要学会召唤神兽、带护身符）", _.autoSummonShinsu, (s, v) => s.copy(autoSummonShinsu = v)),
+      GameToggle(
+        s"自动治愈术（自己、队友、宝宝血低于 ${AutoRules.HealBelowPercent}% 就治最缺血的，要学会治愈术）",
+        _.autoHeal, (s, v) => s.copy(autoHeal = v)),
+      GameToggle("自动神圣战甲术（加防御没了就补，身边的队友、宝宝一起加；要学会、带护身符）", _.autoHolyArmor, (s, v) => s.copy(autoHolyArmor = v)),
+      GameToggle("自动幽灵盾（加魔防没了就补，身边的队友、宝宝一起加；要学会、带护身符）", _.autoSoulShield, (s, v) => s.copy(autoSoulShield = v)),
+      GameToggle(
+        s"自动隐身术（安全区外隐身没了就补；打怪、放技能会现身，停手 ${AutoRules.ReHideAfterMs / 1000} 秒后再隐；要学会、带护身符）",
+        _.autoInvisible, (s, v) => s.copy(autoInvisible = v))
     )
   )
 

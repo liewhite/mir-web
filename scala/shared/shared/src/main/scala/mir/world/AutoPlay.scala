@@ -1,20 +1,22 @@
 package mir.world
 
 import mir.core.*
-import mir.model.PickupKind
-import mir.rules.{GearTiers, ItemKind, Skill, SpellRules, Upgrade}
+import mir.model.{CharSettings, Cover, PickupKind}
+import mir.rules.{AutoRules, GearTiers, ItemKind, Skill, SpellRules, Upgrade}
 import mir.terrain.{MeleeReach, Path, Reach}
 
 /**
- * 玩家的自动功能，按角色设置（CharSettings）在服务端执行：自动喝药、按住攻击（打到死）、被打还手、自动烈火、自动捡物、法师自动魔法盾、道士自动召唤。
+ * 玩家的自动功能，按角色设置（CharSettings）在服务端执行：自动喝药、按住攻击（打到死）、被打还手、自动打怪、自动烈火、自动捡物，
+ * 以及自动放的辅助技能（AutoCast：法师魔法盾，道士治愈、战甲、幽灵盾、召唤、隐身）。
  * 照 TS 版 game/controller.ts 移植。玩家亲手走动后 1 秒内不自动走动，免得和摇杆抢。
  */
 object AutoPlay:
+  import AutoRules.{CastRetryMs, HealBelowPercent, HealRetryMs, ReHideAfterMs}
+
   def run(w: World, p: Player): Unit =
     if !p.dead then
       autoPotion(w, p)
-      if w.now >= p.busyUntil then autoShield(w, p)
-      if w.now >= p.busyUntil then autoSummon(w, p)
+      if w.now >= p.busyUntil then autoCast(w, p)
       if w.now >= p.busyUntil then
         p.intent match
           case Intent.Hunt(target, once) => hunt(w, p, target, once)
@@ -50,10 +52,27 @@ object AutoPlay:
       // 被打自动还手
       val hitter = p.lastHitBy.flatMap(w.actor).filter(a => p.settings.autoFightBack && !a.dead && w.isEnemy(p, a) && p.cell.chebyshev(a.cell) <= 3)
       p.lastHitBy = None
-      hitter match
-        case Some(a) => p.intent = Intent.Hunt(a.id, once = false)
-        case None =>
-          if p.settings.autoPickup then nearestLoot(w, p, 6).foreach(g => p.intent = Intent.Fetch(g.id))
+      // 先还手，再捡东西，最后才自己找怪打
+      p.intent = hitter.map(a => Intent.Hunt(a.id, once = false))
+        .orElse(Option.when(p.settings.autoPickup)(nearestLoot(w, p, 6)).flatten.map(g => Intent.Fetch(g.id)))
+        .orElse(Option.when(p.settings.autoHunt)(nearestPrey(w, p)).flatten.map(m => Intent.Hunt(m.id, once = false)))
+        .getOrElse(Intent.Idle)
+
+  /** 自动打怪一次最多试几只怪的路（由近到远），免得周围怪多又都走不到时每一步算一堆路 */
+  private val HuntTries = 3
+
+  /**
+   * 自动打怪（#1307）挑的怪：附近看得见的野怪（不是宝宝、没钻地或变石像），不归别人（别人正在打的不抢，队友的可以），
+   * 走得到身边；取最近的。
+   */
+  private def nearestPrey(w: World, p: Player): Option[Monster] =
+    val reach = Reach.of(p.longHitOn, p.knows(Skill.LongHit))
+    w.monsters.iterator
+      .filter(m => !m.dead && m.master.isEmpty && m.cover == Cover.Open && w.isEnemy(p, m) && p.cell.chebyshev(m.cell) <= AutoRules.HuntRadius)
+      .filter(m => w.vitals.claimant(m).forall(o => w.allied(p, o)))
+      .toVector.sortBy(m => p.cell.chebyshev(m.cell)).iterator.take(HuntTries)
+      .find(m => MeleeReach.canStrike(reach, p.cell, m.cell, w.terrain.walkable) ||
+        MeleeReach.path(reach, w.walkableFor(p), w.terrain.walkable, p.cell, m.cell, PathNodes).isDefined)
 
   private val PathNodes = 3000
 
@@ -92,38 +111,64 @@ object AutoPlay:
           s.pickupKinds(kind) && (kind != PickupKind.Equip || GearTiers.passes(d.name, s.pickupTier) || upgrade) && PlayerOps.fits(p, d).isRight
         }
 
-  /** 自动召唤、自动魔法盾隔多久试一次（放不出来——没符、没蓝——也不刷提示，过会儿再试） */
-  val AutoCastRetryMs = 3000
+  /**
+   * 一个自动技能：哪个设置开关管它、放不出来隔多久再试、现在要不要放、放给谁（aim 返回 None 就是不用放）。
+   * 技能照常走 Combat.cast：耗蓝、护身符、施法间隔和手动放一样；没学会就跳过。
+   */
+  private final case class AutoCast(skill: Skill, on: CharSettings => Boolean, retryMs: Int)(val aim: (World, Player) => Option[SpellTarget])
 
-  /** 法师自动魔法盾（设置「法师」页）：学了、身上没盾就开；蓝不够时不发提示，过会儿再试。 */
-  private def autoShield(w: World, p: Player): Unit =
-    val id = Skill.MagicShield.id
-    if p.settings.autoMagicShield && w.now - p.lastAutoShield >= AutoCastRetryMs && p.skill(id).isDefined &&
-      !p.statuses.has(StatusKind.Shield)
-    then
-      p.lastAutoShield = w.now
-      Combat.cast(w, p, id, SpellTarget(p.cell, None)): Unit
+  private def onSelf(p: Player): SpellTarget = SpellTarget(p.cell, None)
+
+  /** 自己身上没有这个状态就给自己放 */
+  private def keepUp(kind: StatusKind)(w: World, p: Player): Option[SpellTarget] =
+    Option.when(!p.statuses.has(kind))(onSelf(p))
+
+  /** 自动技能，按先后：保命的治愈最先，隐身最后（放别的技能会现身）。每次只放一个。 */
+  private val autoCasts: List[AutoCast] = List(
+    AutoCast(Skill.Healing, _.autoHeal, HealRetryMs)(woundedFriend),
+    AutoCast(Skill.MagicShield, _.autoMagicShield, CastRetryMs)(keepUp(StatusKind.Shield)),
+    AutoCast(Skill.HolyArmor, _.autoHolyArmor, CastRetryMs)(keepUp(StatusKind.ArmorUp)),
+    AutoCast(Skill.SoulShield, _.autoSoulShield, CastRetryMs)(keepUp(StatusKind.MagicArmorUp)),
+    AutoCast(Skill.SummonSkeleton, _.autoSummonSkeleton, CastRetryMs)(shortOf(SpellRules.SkeletonPet)),
+    AutoCast(Skill.SummonShinsu, _.autoSummonShinsu, CastRetryMs)(shortOf(SpellRules.ShinsuPet)),
+    AutoCast(Skill.Invisible, _.autoInvisible, CastRetryMs)(hideAgain)
+  )
+
+  private def autoCast(w: World, p: Player): Unit =
+    autoCasts.iterator
+      .filter(a => a.on(p.settings) && p.knows(a.skill) && p.autoCastTried.get(a.skill).forall(w.now - _ >= a.retryMs))
+      .flatMap(a => a.aim(w, p).map(a.skill -> _))
+      .nextOption()
+      .foreach { (skill, target) =>
+        p.autoCastTried(skill) = w.now
+        Combat.cast(w, p, skill.id, target): Unit
+      }
 
   /**
-   * 道士自动召唤（设置「道士」页勾选）：勾了的种类不满 SpellRules.SummonsEach 只就放一次召唤技能，
-   * 先骷髅后神兽，一次只放一个；技能没学、没符、蓝不够时 Combat.cast 拒绝，不发提示。
+   * 自动治愈术的对象：施法范围内自己这边的（自己、队友、自己和队友的宝宝）里，
+   * 血加上还没回完的治疗量仍低于 HealBelowPercent 的，取最缺血的（按比例）。
    */
-  private def autoSummon(w: World, p: Player): Unit =
-    if w.now - p.lastAutoSummon >= AutoCastRetryMs then
-      val s = p.settings
-      def short(pet: MonsterName): Boolean =
-        p.pets.flatMap(w.actor).count {
-          case m: Monster => SpellRules.summonedAs(m.defn.name).contains(pet)
-          case _          => false
-        } < SpellRules.SummonsEach
-      val want = List(
-        (s.autoSummonSkeleton, Skill.SummonSkeleton, SpellRules.SkeletonPet),
-        (s.autoSummonShinsu, Skill.SummonShinsu, SpellRules.ShinsuPet)
-      ).collectFirst { case (true, sk, pet) if p.skill(sk.id).isDefined && short(pet) => sk }
-      want.foreach { sk =>
-        p.lastAutoSummon = w.now
-        Combat.cast(w, p, sk.id, SpellTarget(p.cell, None)): Unit
-      }
+  private def woundedFriend(w: World, p: Player): Option[SpellTarget] =
+    def ratio(a: Actor): Double = (a.hp + a.mending.fold(0)(_.left)).toDouble / math.max(1, a.maxHp)
+    w.actorsNow
+      .filter(a => !a.dead && !a.isInstanceOf[Npc] && w.allied(p, a) && p.cell.chebyshev(a.cell) <= SpellRules.CastRange)
+      .filter(a => ratio(a) * 100 < HealBelowPercent)
+      .minByOption(ratio)
+      .map(a => SpellTarget(a.cell, Some(a)))
+
+  /** 自动召唤：这种宝宝不满 SpellRules.SummonsEach 只（变了身的大神兽也算神兽） */
+  private def shortOf(pet: MonsterName)(w: World, p: Player): Option[SpellTarget] =
+    val have = p.pets.flatMap(w.actor).count {
+      case m: Monster => SpellRules.summonedAs(m.defn.name).contains(pet)
+      case _          => false
+    }
+    Option.when(have < SpellRules.SummonsEach)(onSelf(p))
+
+  /** 自动隐身：没隐身、不在安全区（不白费护身符）、没在追着怪打、上次出手已过 ReHideAfterMs */
+  private def hideAgain(w: World, p: Player): Option[SpellTarget] =
+    Option.when(
+      !p.statuses.has(StatusKind.Invisible) && !w.justice.inSafeZone(p) && p.intent == Intent.Idle && p.revealedAt.forall(w.now - _ >= ReHideAfterMs)
+    )(onSelf(p))
 
   /** 血蓝低于设定的百分比自动喝药：优先普通药（慢回），太阳水留着；每 1.5 秒最多一次。 */
   private def autoPotion(w: World, p: Player): Unit =

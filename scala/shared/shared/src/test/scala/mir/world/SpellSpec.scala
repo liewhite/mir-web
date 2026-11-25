@@ -180,6 +180,77 @@ object SpellSpec extends ZIOSpecDefault:
       s.run(5_000)
       assertTrue(!before, p.statuses.has(StatusKind.Shield))
     },
+    suite("道士辅助开关、自动打怪（#1307）")(
+      test("自动治愈术：勾了、血低于 70% 就给自己治（进待回治疗量）；血够或不勾不治") {
+        val s = sim()
+        val p = caster(s, Job.Taoist, List(2))
+        noRegen(p)
+        p.hp = 50_000
+        s.run(3000)
+        val before = p.mending.isDefined || p.hp > 50_000
+        p.settings = p.settings.copy(autoHeal = true)
+        s.run(1500)
+        val healing = p.mending.isDefined || p.hp > 50_000
+        p.hp = 90_000
+        s.run(1000) // 已放出去、还没落到身上的那一发
+        p.mending = None
+        val mp = p.mp
+        s.run(3000)
+        assertTrue(!before, healing, p.mp == mp, p.mending.isEmpty)
+      },
+      test("自动治愈术也治身边缺血的宝宝") {
+        val s = sim()
+        val p = caster(s, Job.Taoist, List(2, 17), charm = true)
+        s.cast(p, 17, None, p.cell); s.run(3000)
+        val pet = p.pets.flatMap(s.w.actor).collectFirst { case m: Monster => m }.get
+        pet.hp = 1
+        p.settings = p.settings.copy(autoHeal = true)
+        s.run(1500)
+        assertTrue(pet.mending.isDefined || pet.hp > 1)
+      },
+      test("自动神圣战甲术、自动幽灵盾：勾了就补上，不勾不放") {
+        val s = sim()
+        val p = caster(s, Job.Taoist, List(14, 15), charm = true)
+        s.run(3000)
+        val before = p.statuses.has(StatusKind.ArmorUp) || p.statuses.has(StatusKind.MagicArmorUp)
+        p.settings = p.settings.copy(autoHolyArmor = true, autoSoulShield = true)
+        s.run(4000)
+        assertTrue(!before, p.statuses.has(StatusKind.ArmorUp), p.statuses.has(StatusKind.MagicArmorUp))
+      },
+      test("自动隐身：勾了就隐身；出手现身后停手 5 秒内不补，过了再补") {
+        val s = sim()
+        val p = caster(s, Job.Taoist, List(18), charm = true)
+        p.settings = p.settings.copy(autoInvisible = true)
+        s.run(2000)
+        val hidden = p.statuses.has(StatusKind.Invisible)
+        Combat.attack(s.w, p, Dir.values.head): Unit
+        s.run(3000)
+        val waiting = !p.statuses.has(StatusKind.Invisible)
+        s.run(3000)
+        assertTrue(hidden, waiting, p.statuses.has(StatusKind.Invisible))
+      },
+      test("自动打怪：勾了就走过去把附近的怪打死；不勾不动；别人正在打的怪不抢") {
+        val s = sim()
+        val p = caster(s, Job.Warrior, Nil)
+        val m = put(s, "鸡", Cell(p.cell.x + 4, p.cell.y))
+        pin(m)
+        s.run(3000)
+        val idle = !m.dead && p.cell == Cell(30, 30)
+        p.settings = p.settings.copy(autoHunt = true)
+        s.run(10_000)
+        val killed = m.dead
+        // 别人的怪：归属给另一个在场的玩家
+        val other = s.w.join(CharacterData.newbie(catalog, "乙", Job.Warrior, Sex.Male, UidSource.counter(9000)).copy(place = Place(s.w.mapId, Cell(10, 10))))
+        val m2    = put(s, "鸡", Cell(p.cell.x + 3, p.cell.y + 3))
+        pin(m2)
+        s.w.vitals.setMaxHp(m2, 100_000)
+        m2.hp = 100_000
+        m2.claim = Some(mir.rules.Claim(other, s.w.now + 600_000))
+        val hpBefore = m2.hp
+        s.run(5000)
+        assertTrue(idle, killed, m2.hp == hpBefore, !m2.dead)
+      }
+    ),
     suite("神兽照原版变身喷火（#1255）")(
       test("小神兽不打架；附近有怪就原地变成神兽1：同一只、主人和等级不变、身板按神兽1 底数重算、血按比例；变了身也算神兽的名额") {
         val s = sim()

@@ -115,6 +115,9 @@ final class Vitals(w: World):
   private def heldClaim(m: Monster): Option[(Claim, Player)] =
     m.claim.filter(_.freshAt(w.now)).flatMap(c => w.player(c.owner).filter(!_.dead).map(c -> _))
 
+  /** 怪现在归谁（经验掉落给谁）：没人打或归属过期了是 None。 */
+  private[world] def claimant(m: Monster): Option[Player] = heldClaim(m).map(_._2)
+
   /** killer 是最后一下的来源（PK 算谁杀的）；怪的经验和掉落另按归属（Claim）给。 */
   private def kill(target: Actor, killer: Option[ActorId]): Unit =
     target.dead = true

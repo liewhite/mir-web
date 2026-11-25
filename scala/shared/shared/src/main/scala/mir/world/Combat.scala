@@ -23,6 +23,11 @@ final case class SpellTarget(cell: Cell, actor: Option[Actor])
 object Combat:
   import Sounds.SpellPhase
 
+  /** 出手（攻击、放技能）就现身，记下时刻（自动隐身照它等一会儿再补，AutoPlay）。 */
+  private def reveal(w: World, p: Player): Unit =
+    p.statuses.remove(StatusKind.Invisible)
+    p.revealedAt = Some(w.now)
+
   // ---------------- 技能熟练度 ----------------
 
   /** 练技能：熟练度够了且人物等级够了就升级（最高 3 级）。 */
@@ -53,7 +58,7 @@ object Combat:
       val target = front.find(w.canAttack(p, _)).orElse(front.headOption)
       if target.isEmpty && w.quarry.facesRock(p, dir) then dig(w, p, dir)
       else swing(w, p, dir, target)
-      p.statuses.remove(StatusKind.Invisible)
+      reveal(w, p)
       Outcome.Done
 
   /** 拿鹤嘴锄朝矿壁挥（原版 CM_HEAVYHIT 挖矿：只出重击动作，不算剑术）。 */
@@ -174,12 +179,12 @@ object Combat:
                     w.grid.setAction(p, ActKind.Spell, Pace.SpellAnimMs, spellEffect = Some(d.effect))
                     p.busyUntil = w.now + Pace.SpellIntervalMs
                     if e == Effect.Cast then train(w, p, skillId, 1 + rng.random(3))
-                    if !handler.keepsInvisible then p.statuses.remove(StatusKind.Invisible)
+                    if !handler.keepsInvisible then reveal(w, p)
                     Outcome.Done
                   case Effect.Acted(trained) =>
                     paid()
                     if trained then train(w, p, skillId, 1 + rng.random(3))
-                    p.statuses.remove(StatusKind.Invisible)
+                    reveal(w, p)
                     Outcome.Done
                   case Effect.Instant =>
                     paid()

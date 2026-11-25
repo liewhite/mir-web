@@ -104,10 +104,10 @@ final class Player(id: ActorId, val charName: String, val job: Job, val sex: Sex
   /** 玩家亲手走动后的一小段时间里不自动走动（免得和摇杆抢） */
   private[world] var manualUntil: Millis = Millis.zero
   private[world] var lastPotion: Millis  = Millis.zero
-  /** 上次尝试自动召唤宝宝的时刻（不管成没成，隔 AutoPlay.AutoCastRetryMs 再试） */
-  private[world] var lastAutoSummon: Millis = Millis.zero
-  /** 上次尝试自动开魔法盾的时刻 */
-  private[world] var lastAutoShield: Millis = Millis.zero
+  /** 每个自动技能上次尝试的时刻（不管成没成，隔一会儿再试；见 AutoPlay.AutoCast） */
+  private[world] val autoCastTried: mutable.Map[Skill, Millis] = mutable.Map.empty
+  /** 上次因为出手（攻击、放技能）现身的时刻：自动隐身等一会儿再补，不在打架时来回隐身 */
+  private[world] var revealedAt: Option[Millis] = None
   /** 还在回血回蓝的普通药（可以叠着喝） */
   private[world] var potions: List[PotionCourse] = Nil
   // PK（#1225，规则见 mir.rules.Pk，由 Justice 改）
