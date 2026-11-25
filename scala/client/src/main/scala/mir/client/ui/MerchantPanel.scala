@@ -4,8 +4,8 @@ import mir.client.input.Pt
 import mir.core.*
 import mir.data.{ItemDef, MerchantDef, MerchantService}
 import mir.model.{ItemInstance, ItemPlace}
-import mir.protocol.GameCmd
-import mir.rules.{Charges, Durability, ItemKind, Pricing, WeaponRefine}
+import mir.protocol.{GameCmd, Tone}
+import mir.rules.{Charges, Durability, ItemKind, Pricing, Purchase, WeaponRefine}
 
 /** 商人对话的哪一页：说话、买、卖、存、取。 */
 enum MerchantMode:
@@ -16,7 +16,7 @@ final case class MenuRow(name: String, col1: String, col2: String, defn: ItemDef
 
 /**
  * 商人和仓库（照 FState.pas DMerchantDlg / DMenuDlg / DSellDlg，TS 版 classic.ts 商人部分）：
- * 对话框里点「购买 / 出售 / 保管 / 取回」，买和取在商品列表里双击（手机点一下弹菜单）；
+ * 对话框里点「购买 / 出售 / 保管 / 取回」，买和取在商品列表里双击（手机点一下弹菜单），买时再问买几个；
  * 卖和存把物品放进出售框再点确定（手机在包裹里点物品选「卖出 / 保管」）。全部发指令给服务端。
  */
 final class MerchantPanel(ui: ClassicUi) extends Window:
@@ -143,10 +143,23 @@ final class MerchantPanel(ui: ClassicUi) extends Window:
           val dura = ItemKind.of(d) match
             case ItemKind.Amulet(_) => s"${Charges.perPiece(d)} 次"
             case _                  => if d.dura > 100 then Durability.shown(d.dura).toString else "-"
-          MenuRow(d.name.value, s"${Pricing.buy(d)} 金币", dura, d, None,
-            () => ui.send(GameCmd.Buy(s.npc, d.name)))
+          MenuRow(d.name.value, s"${Pricing.buy(d)} 金币", dura, d, None, () => buy(m, s, d))
         }
       }
+
+  /**
+   * 买（#1304）：弹数量框问买几个（默认 1，最多 = 金币、格子、一次上限取小）；只买得了 1 个就直接买，
+   * 一个也买不了就提示原因（和服务端同一套 Purchase 规则）。
+   */
+  private def buy(m: Me, s: Session, d: ItemDef): Unit =
+    val gold = m.stats.gold
+    val send = (n: Int) => ui.send(GameCmd.Buy(s.npc, d.name, n))
+    Purchase.most(d, gold, m.view.belt, m.view.bag) match
+      case 0 => Purchase.refusal(d, 1, gold, m.view.belt, m.view.bag).foreach(ui.message(_, Tone.Bad))
+      case 1 => send(1)
+      case most =>
+        ui.itemMenu.close()
+        ui.quantity.show(QuantityAsk(s"购买 ${d.name.value}", most, n => Some(s"共 ${Purchase.cost(d, n)} 金币"), send, start = Some(1), maxLabel = "最多"))
 
   private def rowRect(o: Pt, row: Int): Rect = Rect(o.x + 14, o.y + 176 + 32 + row * LineH, 265, LineH)
 

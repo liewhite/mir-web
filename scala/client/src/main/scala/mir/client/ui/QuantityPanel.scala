@@ -2,12 +2,22 @@ package mir.client.ui
 
 import org.scalajs.dom
 
-/** 问一次数量：标题、这一叠一共几个、选 n 个时的说明（如「得到 120 金币」）、确定后做什么。 */
-final case class QuantityAsk(title: String, max: Int, note: Int => Option[String], ok: Int => Unit)
+/**
+ * 问一次数量：标题、最多几个（一叠的全部、或最多买得了几个）、选 n 个时的说明（如「得到 120 金币」）、确定后做什么；
+ * start 是一开始填的数（空为最多），maxLabel 是「设成最多」那个按钮的字。
+ */
+final case class QuantityAsk(
+    title: String,
+    max: Int,
+    note: Int => Option[String],
+    ok: Int => Unit,
+    start: Option[Int] = None,
+    maxLabel: String = "全部"
+)
 
 /**
  * 数量框（#1159，照 TS 版 ui/classic/quantity.ts）：卖、存、取一叠东西时问要几个，默认全部。原版不叠物品，没有这个窗，
- * 画成和传送窗同色调的面板。−10 −1 +1 +10 调数，「1 个」「一半」「全部」一键设；点数字可以直接输入；最下面取消、确定。
+ * 商店买东西（#1304）也用它问买几个（默认 1 个）。画成和传送窗同色调的面板。−10 −1 +1 +10 调数，「1 个」「一半」「全部」一键设；点数字可以直接输入；最下面取消、确定。
  */
 final class QuantityPanel(ui: ClassicUi) extends Window:
   import QuantityPanel.*
@@ -20,7 +30,7 @@ final class QuantityPanel(ui: ClassicUi) extends Window:
 
   def show(a: QuantityAsk): Unit =
     ask = Some(a)
-    value = a.max
+    value = a.start.fold(a.max)(n => math.max(1, math.min(a.max, n)))
 
   def close(): Unit = ask = None
 
@@ -38,7 +48,7 @@ final class QuantityPanel(ui: ClassicUi) extends Window:
     val yellow  = "#ffe08a"
     val buttons =
       row(62, List(("−10", () => set(value - 10), yellow), ("−1", () => set(value - 1), yellow), ("+1", () => set(value + 1), yellow), ("+10", () => set(value + 10), yellow))) ++
-        row(62 + BtnH + Gap, List(("1 个", () => set(1), yellow), ("一半", () => set((a.max + 1) / 2), yellow), ("全部", () => set(a.max), yellow))) ++
+        row(62 + BtnH + Gap, List(("1 个", () => set(1), yellow), ("一半", () => set((a.max + 1) / 2), yellow), (a.maxLabel, () => set(a.max), yellow))) ++
         row(62 + (BtnH + Gap) * 2, List(
           ("取消", () => close(), yellow),
           ("确定", () => { val n = value; close(); a.ok(n) }, "#9cff8a")

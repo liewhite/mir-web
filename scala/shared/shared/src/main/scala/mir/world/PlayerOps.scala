@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.{ItemDef, MerchantService}
 import mir.model.*
 import mir.protocol.{Anchor, GameCmd, InspectView, ServerMsg, ChatKind, Tone}
-import mir.rules.{ItemKind, ItemSounds, Pace, PotionRules, Pricing, Requirement, Rng, ScrollEffect, Skill, WeaponRefine}
+import mir.rules.{Charges, ItemKind, ItemSounds, Pace, PotionRules, Pricing, Purchase, Requirement, Rng, ScrollEffect, Skill, WeaponRefine}
 
 /**
  * 玩家指令的执行：移动、攻击、施法、物品、NPC 买卖存取、设置、说话。
@@ -43,7 +43,7 @@ object PlayerOps:
     case GameCmd.MoveItem(uid, to)      => result(w, p, moveItem(w, p, uid, to))
     case GameCmd.DropItem(uid)          => result(w, p, dropItem(w, p, uid))
     case GameCmd.QuickSell(uid, n)      => result(w, p, quickSell(w, p, uid, n))
-    case GameCmd.Buy(npc, item)         => result(w, p, buy(w, p, npc, item))
+    case GameCmd.Buy(npc, item, n)      => result(w, p, buy(w, p, npc, item, n))
     case GameCmd.Sell(npc, uid, n)      => result(w, p, sell(w, p, npc, uid, n))
     case GameCmd.Deposit(npc, uid, n)   => result(w, p, deposit(w, p, npc, uid, n))
     case GameCmd.Withdraw(npc, uid, n)  => result(w, p, withdraw(w, p, npc, uid, n))
@@ -316,18 +316,25 @@ object PlayerOps:
       _ <- Either.cond(service(n.defn.service), (), s"${n.defn.name}不做这个")
     yield n
 
-  def buy(w: World, p: Player, npc: ActorId, name: ItemName): Result =
+  /**
+   * 买 count 个（#1304）：金币、格子不够买这么多就整单拒绝并说明最多几个（不擅自少买），规则见 Purchase。
+   * 可叠的做成一叠并进身上，不可叠的一件一格。
+   */
+  def buy(w: World, p: Player, npc: ActorId, name: ItemName, count: Int = 1): Result =
     for
       n <- npcFor(w, p, npc, _ == MerchantService.Shop)
       _ <- Either.cond(n.defn.goods.exists(_.name == name), (), s"${n.defn.name}不卖这个")
       d <- w.catalog.item(name).toRight("数据表里没有这件物品")
-      _ <- Either.cond(p.gold.value >= Pricing.buy(d), (), "金币不够")
-      _ <- fits(p, d)
-      it <- w.newItem(name).toRight("数据表里没有这件物品")
+      _ <- Purchase.refusal(d, count, p.gold, p.belt.toSeq, p.bag.toSeq).toLeft(())
     yield
-      addToBag(w, p, it)
-      p.gold = p.gold - Gold(Pricing.buy(d))
-      w.out.notice(p, s"买了 ${d.name.value}，花费 ${Pricing.buy(d)} 金币", Tone.Item)
+      val cost  = Purchase.cost(d, count).toInt // refusal 已保证不超过身上金币
+      val batch =
+        if ItemKind.stacks(d) then List(Charges.settle(d, ItemInstance.fresh(w.newUid(), d).copy(count = count)))
+        else List.fill(count)(Charges.fresh(w.newUid(), d))
+      batch.foreach(addToBag(w, p, _))
+      p.gold = p.gold - Gold(cost)
+      val what = if count > 1 then s"${d.name.value} ×$count" else d.name.value
+      w.out.notice(p, s"买了 $what，花费 $cost 金币", Tone.Item)
 
   /** 卖给商店：只收这家店经营的种类。 */
   def sell(w: World, p: Player, npc: ActorId, uid: ItemUid, n: Option[Int] = None): Result =

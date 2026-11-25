@@ -16,9 +16,7 @@ import scala.collection.mutable
 private[world] object Inventory:
 
   /** 药品、卷轴可以放快捷栏 */
-  def beltable(k: ItemKind): Boolean = k match
-    case ItemKind.Potion(_, _, _) | ItemKind.Scroll(_) => true
-    case _                                             => false
+  def beltable(k: ItemKind): Boolean = ItemKind.beltable(k)
 
   /** 包裹或快捷栏里的一件物品和它的位置。 */
   def carried(p: Player, uid: ItemUid): Option[(ItemPlace, ItemInstance)] =

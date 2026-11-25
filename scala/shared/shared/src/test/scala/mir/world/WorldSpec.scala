@@ -727,6 +727,51 @@ object WorldSpec extends ZIOSpecDefault:
           s.consistent(p)
         )
       },
+      test("批量买（#1304）：药并成一叠、装备一件一格；金币或格子不够买这么多、数量非法都整单拒绝") {
+        val bichi = catalog.map(MapId("0")).get
+        val s     = sim(bichi)
+        def shopSelling(n: String) =
+          val i = catalog.data.merchants.indexWhere(m => m.map == bichi.id && m.goods.exists(_.name == ItemName(n)))
+          s.w.actorsNow.collectFirst { case npc: Npc if npc.ref == MerchantRef(i) => npc }.get
+        val drug  = shopSelling("金创药(小量)")
+        val p     = join(s.w, "甲", drug.cell.step(Dir.Down, 2))
+        s.flush()
+        def refused(r: Vector[ServerMsg]) = r.exists { case ServerMsg.Refused(_) => true; case _ => false }
+        def potions = (p.belt.toVector ++ p.bag.toVector).flatten.filter(_.name == ItemName("金创药(小量)"))
+        val price  = catalog.item(ItemName("金创药(小量)")).get.price
+        p.gold = Gold(price * 30)
+        val have0  = potions.map(_.count).sum
+        val stacks0 = potions.size
+        s.cmd(p, GameCmd.Buy(drug.id, ItemName("金创药(小量)"), 25))
+        val bought = potions.map(_.count).sum == have0 + 25 && potions.size == math.max(1, stacks0) && p.gold == Gold(price * 5)
+        val poor   = s.cmd(p, GameCmd.Buy(drug.id, ItemName("金创药(小量)"), 6))
+        val zero   = s.cmd(p, GameCmd.Buy(drug.id, ItemName("金创药(小量)"), 0))
+        val neg    = s.cmd(p, GameCmd.Buy(drug.id, ItemName("金创药(小量)"), -3))
+        p.gold = Gold(Int.MaxValue)
+        val huge   = s.cmd(p, GameCmd.Buy(drug.id, ItemName("金创药(小量)"), Int.MaxValue))
+        val afterBad = p.gold == Gold(Int.MaxValue) && potions.map(_.count).sum == have0 + 25
+        // 装备：包裹只剩 2 格时买 3 把整单拒绝，买 2 把正好放满
+        val weapon = catalog.data.merchants.find(m => m.map == bichi.id && m.goods.exists(g => catalog.item(g.name).exists(d => !mir.rules.ItemKind.stacks(d))))
+          .flatMap(_.goods.map(_.name).find(n => catalog.item(n).exists(d => !mir.rules.ItemKind.stacks(d)))).get
+        val smith  = shopSelling(weapon.value)
+        s.w.grid.teleportActor(p, smith.cell.step(Dir.Down, 2))
+        val filler = ItemInstance.fresh(ItemUid(888_000_000L), catalog.item(weapon).get)
+        p.bag.indices.foreach(i => p.bag(i) = Option.when(i >= 2)(filler.copy(uid = ItemUid(888_000_000L + i))))
+        val free   = p.bag.count(_.isEmpty)
+        val tooMany = s.cmd(p, GameCmd.Buy(smith.id, weapon, free + 1))
+        val g2     = p.gold
+        s.cmd(p, GameCmd.Buy(smith.id, weapon, free))
+        val wprice = catalog.item(weapon).get.price
+        assertTrue(
+          bought,
+          refused(poor), refused(zero), refused(neg), refused(huge),
+          afterBad,
+          free == 2, refused(tooMany),
+          p.bag.forall(_.isDefined),
+          p.gold == g2 - Gold(wprice * free),
+          s.consistent(p)
+        )
+      },
       test("随时出售（#1178）：不用 NPC，一叠可只卖几个，价钱同商店；穿着的、不在身上的、死了都卖不了") {
         val s     = sim()
         val p     = join(s.w, "甲", Cell(30, 30))

@@ -84,7 +84,8 @@ enum GameCmd:
   case QuickSell(uid: ItemUid, count: Option[Int] = None)
 
   // ---- NPC ----
-  case Buy(npc: ActorId, item: ItemName)
+  /** 买 count 个（#1304 批量买，1–Purchase.MaxPerBuy） */
+  case Buy(npc: ActorId, item: ItemName, count: Int = 1)
   /** 卖出；count 是一叠里卖几个，空为整叠（#1159） */
   case Sell(npc: ActorId, uid: ItemUid, count: Option[Int] = None)
   /** 存进仓库；count 同上 */

@@ -129,6 +129,4 @@ object ItemMenuWindow:
     case ItemKind.Material | ItemKind.Other            => None
 
   /** 能放快捷栏：药和卷轴 */
-  def beltable(k: ItemKind): Boolean = k match
-    case ItemKind.Potion(_, _, _) | ItemKind.Scroll(_) => true
-    case _                                             => false
+  def beltable(k: ItemKind): Boolean = ItemKind.beltable(k)

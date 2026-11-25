@@ -84,6 +84,11 @@ object ItemKind:
 
   def stacks(d: ItemDef): Boolean = stacks(of(d))
 
+  /** 能放快捷栏：药和卷轴。 */
+  def beltable(k: ItemKind): Boolean = k match
+    case Potion(_, _, _) | Scroll(_) => true
+    case _                           => false
+
   /** 肉（StdMode 40）：ItemKind 里归「其他」（与 TS 版对照一致），自动捡物时和矿石、材料算一类。 */
   private val MeatMode = 40
 
