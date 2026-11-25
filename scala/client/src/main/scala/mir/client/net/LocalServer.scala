@@ -64,7 +64,8 @@ final class LocalServer(catalog: Catalog, assets: Assets, listener: LinkEvent =>
     case SessionCmd.CreateChar(name, job, sex) =>
       val id = CharId(chars.size + 1L)
       val base = CharacterData.newbie(catalog, name, job, sex, uids)
-      val data = if hero then heroOf(base) else base
+      val strong = if hero then heroOf(base) else base
+      val data   = if miner then minerOf(strong) else strong
       chars :+= CharSummary(id, name, job, sex, data.level) -> data
       deliver(ServerMsg.CharList(chars.map(_._1).toList))
     case SessionCmd.DeleteChar(id) =>
@@ -101,6 +102,20 @@ final class LocalServer(catalog: Catalog, assets: Assets, listener: LinkEvent =>
     val free    = d.bag.indices.filter(d.bag(_).isEmpty)
     val bag     = free.zip(powders).foldLeft(d.bag)((b, p) => b.updated(p._1, Some(p._2)))
     d.copy(level = 40, hp = Hp(99_999), mp = Mp(99_999), skills = skills.toList, bag = bag, worn = d.worn ++ charm.map(mir.model.EquipSlot.BraceletL -> _))
+
+  /**
+   * 地址带 &miner（#1286，本机看挖矿、武器升级用）：新建的角色包裹里放鹤嘴锄、炼狱、几块不同纯度的黑铁矿石、
+   * 力量戒指和绿色项链，5 万金币。
+   */
+  private def miner: Boolean = dom.window.location.search.contains("miner")
+
+  private def minerOf(d: CharacterData): CharacterData =
+    def one(n: String, dura: Option[Int] = None) =
+      catalog.item(ItemName(n)).map(it => mir.model.ItemInstance.fresh(uids.next(), it)).map(i => dura.fold(i)(x => i.copy(dura = x)))
+    val kit = List(one("鹤嘴锄"), one("炼狱"), one("力量戒指"), one("绿色项链")) ++
+      List(17000, 15000, 12000, 9000).map(p => one("黑铁矿石", Some(p)))
+    val free = d.bag.indices.filter(d.bag(_).isEmpty)
+    d.copy(gold = Gold(50_000), bag = free.zip(kit.flatten).foldLeft(d.bag)((b, p) => b.updated(p._1, Some(p._2))))
 
   private def enter(data: CharacterData, carried: Carried): Unit =
     world(data.place.map).recoverWith(_ => world(CharacterData.start.map)).foreach { w =>

@@ -218,6 +218,25 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
     val taken = actors.iterator.filter(a => !a.dead && !view.me.contains(a.id) && a.look.blocksPlayers).map(_.cell).toSet
     c => map.exists(_.terrain.walkable(c)) && !taken.contains(c)
 
+  /**
+   * 挖矿（#1286）：在矿区地图上、手上是有持久的鹤嘴锄时，身边挡路的格子（矿壁）朝哪个方向——先看正朝着的，再按方向顺序找；
+   * 不是矿区、没拿鹤嘴锄或身边没有为空（别的图上攻击键照常找怪）。
+   */
+  def rockToDig: Option[Dir] = rocksAround.headOption
+
+  /** 同上，身边全部能挖的方向（正朝着的在前）。 */
+  def rocksAround: List[Dir] =
+    (for
+      me   <- self
+      md   <- map
+      _    <- view.map.flatMap(catalog.map).filter(_.has(mir.data.MapFlag.Mine))
+      wpn  <- view.worn.get(mir.model.EquipSlot.Weapon) if wpn.dura > 0
+      d    <- catalog.item(wpn.name) if mir.rules.Mining.isPickaxe(d)
+    yield (me.dir :: Dir.values.toList).distinct.filter { d =>
+      val c = me.cell.step(d)
+      md.terrain.inside(c) && !md.terrain.walkable(c)
+    }).getOrElse(Nil)
+
   def scene(local: Double): Option[Scene] =
     for
       md <- map

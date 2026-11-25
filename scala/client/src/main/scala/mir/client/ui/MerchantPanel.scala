@@ -5,7 +5,7 @@ import mir.core.*
 import mir.data.{ItemDef, MerchantDef, MerchantService}
 import mir.model.{ItemInstance, ItemPlace}
 import mir.protocol.GameCmd
-import mir.rules.{Charges, Durability, ItemKind, Pricing}
+import mir.rules.{Charges, Durability, ItemKind, Pricing, WeaponRefine}
 
 /** 商人对话的哪一页：说话、买、卖、存、取。 */
 enum MerchantMode:
@@ -56,7 +56,9 @@ final class MerchantPanel(ui: ClassicUi) extends Window:
 
   private def text(d: MerchantDef): String = d.service match
     case MerchantService.Storage => s"${d.name}：\\我替你保管物品，要存还是要取？\\ \\<保管物品/@store>   <取回物品/@getback>\\ \\<离开/@exit>"
-    case _                       => s"${d.name}：\\欢迎光临，看看有什么需要的？\\ \\<购买物品/@buy>   <出售物品/@sell>\\ \\<离开/@exit>"
+    case MerchantService.WeaponUpgrade =>
+      s"${d.name}：\\我能帮你升级手上拿着的武器，每次 ${WeaponRefine.Price} 金币。\\包裹里的黑铁矿石和首饰我会全部收走，\\不想用的先存仓库。\\ \\<升级武器/@upgrade>   <离开/@exit>"
+    case MerchantService.Shop    => s"${d.name}：\\欢迎光临，看看有什么需要的？\\ \\<购买物品/@buy>   <出售物品/@sell>\\ \\<离开/@exit>"
 
   def draw(m: Me): Unit = session.foreach { s =>
     // NPC 不在视野里了（走远、换图）：关掉
@@ -102,6 +104,7 @@ final class MerchantPanel(ui: ClassicUi) extends Window:
     menuIndex = -1
     menuTop = 0
     modeOf(cmd) match
+      case None if cmd == "@upgrade" => session.foreach(refine)
       case None => close()
       case Some(md) =>
         mode = md
@@ -110,6 +113,13 @@ final class MerchantPanel(ui: ClassicUi) extends Window:
             case MerchantMode.Sell  => ui.message("点包裹里的物品，选「卖出」")
             case MerchantMode.Store => ui.message("点包裹里的物品，选「保管」")
             case _                  => ()
+
+  /** 升级武器（#1286）：先弹确认框，列出会收走什么和各种结果的概率，点「确定升级」才发。 */
+  private def refine(s: Session): Unit = ui.me.foreach { m =>
+    val (lines, offer) = RefineInfo(catalog, m.view, m.stats.gold.value)
+    val go = offer.map(o => MenuAction("确定升级", () => ui.send(GameCmd.RefineWeapon(s.npc, o.weapon.uid, o.materials))))
+    ui.itemMenu.show(ItemMenu(lines, go.toList :+ MenuAction("取消", () => ()), Rect(origin.x, origin.y, 416, 176)))
+  }
 
   // ---------------- 商品列表（买、取） ----------------
 

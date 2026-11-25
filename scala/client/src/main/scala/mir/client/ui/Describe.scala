@@ -3,7 +3,7 @@ package mir.client.ui
 import mir.data.{Catalog, ItemDef, SkillDef, Span}
 import mir.model.{EquipSlot, ItemBonus, ItemInstance, Job, LearnedSkill, PoisonKind}
 import mir.protocol.SelfStats
-import mir.rules.{Pk, PkStanding, SafeZone, Upgrade, Charges, Durability, Rates, ItemEffects, ItemKind, PotionRules, Pricing, Recovery, Requirement, Rules, ScrollEffect, dressSex}
+import mir.rules.{Mining, WeaponRefine, Pk, PkStanding, SafeZone, Upgrade, Charges, Durability, Rates, ItemEffects, ItemKind, PotionRules, Pricing, Recovery, Requirement, Rules, ScrollEffect, dressSex}
 
 /**
  * 把物品、属性、技能讲成可量化的说明（用户 #1165：所有效果给精确数值）。纯函数，只出文字。
@@ -139,14 +139,32 @@ object Describe:
       case ItemKind.Equip(slots) =>
         val e = ItemEffects.of(d, inst.flatMap(_.bonus))
         Line(s"装备位置：${slots.map(_.label).mkString("或")}", Tint.Dim) :: effectLines(e) ++ bonusLines(d, inst) ++
-          wearLines(d, slots, me) ++ durabilityLines(slots, inst) ++
+          wearLines(d, slots, me) ++ durabilityLines(slots, inst) ++ pickaxeLines(d) ++
           compareWith.fold(Nil)((c, cb) => compareLines(e, ItemEffects.of(c, cb), c.name.value))
-      case ItemKind.Material | ItemKind.Other => Nil
+      case ItemKind.Material                  => oreLines(d, inst)
+      case ItemKind.Other                     => Nil
     val titleText = if inst.exists(_.special) then s"${d.name.value}（极品）" else d.name.value
     val title = Line(titleText, if upgrade.isDefined then Tint.Upgrade else if inst.exists(_.special) then Tint.Special else Tint.Title)
     title :: upgradeLines(upgrade) ++ body ++ List(
       Line(s"商店收购价 ${if Charges.perPiece(d) > 1 then Pricing.sellUnit(d) else Pricing.sell(d).toString} 金币", Tint.Gold)
     )
+
+  /** 鹤嘴锄（#1286） */
+  private def pickaxeLines(d: ItemDef): List[Line] =
+    if !Mining.isPickaxe(d) then Nil
+    else
+      List(
+        Line("拿在手上、在矿区朝矿壁攻击就是挖矿（攻击键自动对着身边的矿壁一直挖）"),
+        Line(s"每挖一下 1/${Mining.ChipOdds} 机会敲下碎石，敲下时 1/${Mining.OreOdds} 出一块矿石；一处矿壁挖空了要等 ${Mining.RefillMs / 60_000} 分钟", Tint.Dim)
+      )
+
+  /** 矿石（#1286）：纯度存在持久里。 */
+  private def oreLines(d: ItemDef, inst: Option[ItemInstance]): List[Line] =
+    val ore = Mining.Ore.values.find(_.item == d.name)
+    inst.filter(_ => ore.isDefined).map(i => Line(s"纯度 ${Mining.shownPurity(i.dura)}")).toList ++
+      Option.when(d.name == WeaponRefine.BlackIron)(
+        Line(s"武器店升级武器的材料：纯度最高的 ${WeaponRefine.TopOres} 块定升级后持久上限怎么变，纯度越高越好", Tint.Dim)
+      )
 
   /** 高级物品提醒（#1200）：换上它主属性净提升多少。 */
   private def upgradeLines(g: Option[Upgrade.Gain]): List[Line] =

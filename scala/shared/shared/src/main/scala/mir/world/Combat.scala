@@ -51,25 +51,36 @@ object Combat:
       // 有人穿怪站在怪身上时一格叠着几个：先挑能打的
       val front  = w.occupants(p.cell.step(dir))
       val target = front.find(w.canAttack(p, _)).orElse(front.headOption)
-      val style =
-        if p.fireReady && target.exists(w.canAttack(p, _)) then HitStyle.Fire
-        else if p.powerHitReady && p.knows(Skill.PowerHit) then HitStyle.Power
-        else if p.knows(Skill.WideHit) && p.mp >= SwordRules.WideHitMp && (p.wideHitOn || smartWide(w, p)) then HitStyle.Wide
-        else if p.longHitOn && p.knows(Skill.LongHit) then HitStyle.Long
-        else HitStyle.Normal
-      w.grid.setAction(p, if style == HitStyle.Normal then ActKind.Attack else ActKind.Heavy, Pace.HitAnimMs, hit = Some(style))
-      p.busyUntil = w.now + math.max(Pace.HitAnimMs, p.stats.hitInterval)
-      w.out.sound(p.cell, Sounds.weaponSwing(w.vitals.weaponShape(p)))
-      val styleSound = style match
-        case HitStyle.Power  => Some(if p.sex == Sex.Female then Sounds.yedoWoman else Sounds.yedoMan)
-        case HitStyle.Wide   => Some(Sounds.wideHit)
-        case HitStyle.Fire   => Some(Sounds.fireHit)
-        case HitStyle.Long   => Option.when(target.isDefined)(Sounds.longHit)
-        case HitStyle.Normal => None
-      styleSound.foreach(w.out.sound(p.cell, _))
-      resolveHit(w, p, dir, style, target)
+      if target.isEmpty && w.quarry.facesRock(p, dir) then dig(w, p, dir)
+      else swing(w, p, dir, target)
       p.statuses.remove(StatusKind.Invisible)
       Outcome.Done
+
+  /** 拿鹤嘴锄朝矿壁挥（原版 CM_HEAVYHIT 挖矿：只出重击动作，不算剑术）。 */
+  private def dig(w: World, p: Player, dir: Dir): Unit =
+    w.grid.setAction(p, ActKind.Heavy, Pace.HitAnimMs)
+    p.busyUntil = w.now + math.max(Pace.HitAnimMs, p.stats.hitInterval)
+    w.out.sound(p.cell, Sounds.weaponSwing(w.vitals.weaponShape(p)))
+    w.quarry.dig(p, dir)
+
+  private def swing(w: World, p: Player, dir: Dir, target: Option[Actor]): Unit =
+    val style =
+      if p.fireReady && target.exists(w.canAttack(p, _)) then HitStyle.Fire
+      else if p.powerHitReady && p.knows(Skill.PowerHit) then HitStyle.Power
+      else if p.knows(Skill.WideHit) && p.mp >= SwordRules.WideHitMp && (p.wideHitOn || smartWide(w, p)) then HitStyle.Wide
+      else if p.longHitOn && p.knows(Skill.LongHit) then HitStyle.Long
+      else HitStyle.Normal
+    w.grid.setAction(p, if style == HitStyle.Normal then ActKind.Attack else ActKind.Heavy, Pace.HitAnimMs, hit = Some(style))
+    p.busyUntil = w.now + math.max(Pace.HitAnimMs, p.stats.hitInterval)
+    w.out.sound(p.cell, Sounds.weaponSwing(w.vitals.weaponShape(p)))
+    val styleSound = style match
+      case HitStyle.Power  => Some(if p.sex == Sex.Female then Sounds.yedoWoman else Sounds.yedoMan)
+      case HitStyle.Wide   => Some(Sounds.wideHit)
+      case HitStyle.Fire   => Some(Sounds.fireHit)
+      case HitStyle.Long   => Option.when(target.isDefined)(Sounds.longHit)
+      case HitStyle.Normal => None
+    styleSound.foreach(w.out.sound(p.cell, _))
+    resolveHit(w, p, dir, style, target)
 
   /**
    * 智能半月（#1273，设置开关）：半月关着时，身边一圈 8 格里的野怪够 SwordRules.SmartWideHitMin 只就这一刀用半月。

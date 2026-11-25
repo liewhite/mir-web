@@ -3,8 +3,8 @@ package mir.world
 import mir.core.*
 import mir.data.{ItemDef, MerchantService}
 import mir.model.*
-import mir.protocol.{GameCmd, InspectView, ServerMsg, ChatKind, Tone}
-import mir.rules.{ItemKind, Pace, PotionRules, Pricing, Requirement, ScrollEffect, Skill}
+import mir.protocol.{Anchor, GameCmd, InspectView, ServerMsg, ChatKind, Tone}
+import mir.rules.{ItemKind, Pace, PotionRules, Pricing, Requirement, Rng, ScrollEffect, Skill, WeaponRefine}
 
 /**
  * 玩家指令的执行：移动、攻击、施法、物品、NPC 买卖存取、设置、说话。
@@ -47,6 +47,7 @@ object PlayerOps:
     case GameCmd.Sell(npc, uid, n)      => result(w, p, sell(w, p, npc, uid, n))
     case GameCmd.Deposit(npc, uid, n)   => result(w, p, deposit(w, p, npc, uid, n))
     case GameCmd.Withdraw(npc, uid, n)  => result(w, p, withdraw(w, p, npc, uid, n))
+    case GameCmd.RefineWeapon(npc, weapon, materials) => result(w, p, refine(w, p, npc, weapon, materials))
     case GameCmd.DealTry(partner)       => w.trades.request(p, partner)
     case GameCmd.DealPut(uid, n)        => w.trades.put(p, uid, n)
     case GameCmd.DealTake(uid)          => w.trades.take(p, uid)
@@ -380,6 +381,38 @@ object PlayerOps:
     yield
       addToBag(w, p, got)
       w.out.notice(p, s"取回 ${label(got)}", Tone.Item)
+
+  /**
+   * 升级手上的武器（#1286，规则见 WeaponRefine）：收钱和包裹里全部黑铁矿石、首饰，当场定结果。
+   * 玩家确认时看到的武器、材料和此刻的不一样就拒绝，让他重新确认。
+   */
+  def refine(w: World, p: Player, npc: ActorId, weaponUid: ItemUid, seen: Set[ItemUid]): Result =
+    val weapon = p.worn.get(EquipSlot.Weapon)
+    val m      = WeaponRefine.materials(p.bag.flatten, w.catalog.item)
+    for
+      smith  <- npcFor(w, p, npc, _ == MerchantService.WeaponUpgrade)
+      _      <- WeaponRefine.refusal(weapon, p.gold.value, m).toLeft(())
+      wpn    <- weapon.filter(_.uid == weaponUid).toRight("手上的武器换了，请重新确认")
+      _      <- Either.cond(m.uids == seen, (), "包裹里的东西变了，请重新确认要收走的材料")
+      recipe <- WeaponRefine.recipe(m).toRight("包裹里没有黑铁矿石")
+    yield
+      given Rng = w.rngOf
+      p.gold = p.gold - Gold(WeaponRefine.Price)
+      m.uids.foreach(uid => Inventory.take(p, uid, None, () => w.newUid()))
+      WeaponRefine.refine(wpn, recipe) match
+        case WeaponRefine.Result.Raised(aspect, by, better) =>
+          p.worn(EquipSlot.Weapon) = better
+          w.out.selfSound(p, Sounds.money)
+          w.out.notice(p, s"${smith.defn.name}：升级成功！${wpn.name.value} ${aspect.label} +$by", Tone.Good)
+        case WeaponRefine.Result.Broken =>
+          p.worn.remove(EquipSlot.Weapon)
+          w.out.effect("magic", WeaponBreakFx + p.dir.ordinal * 10, 5, 120, Anchor.OnActor(p.id))
+          w.out.notice(p, s"${smith.defn.name}：升级失败，${wpn.name.value}碎了", Tone.Bad)
+      w.vitals.recalc(p)
+      w.out.checkpoint(p)
+
+  /** 武器碎裂的光效（原版 HumActor.pas DoWeaponBreakEffect：Magic 库 WPEFFECTBASE + 方向×10，5 帧、每帧 120 毫秒） */
+  private val WeaponBreakFx = 3750
 
   // ---------------- 其他 ----------------
 

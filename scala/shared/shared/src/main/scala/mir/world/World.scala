@@ -63,7 +63,7 @@ object World:
  * - 这里只放对象表、时钟、定时器和每次推进的顺序；各管一摊的部分在各自的类里，只对 world 包开放：
  *   Mailbox（要发的消息）、Trades（玩家交易）、Placement（占位与移动：格子、朝向、动作只由它改）、Vitals（血蓝与生死：血量蓝量只由它改）、
  *   Conditions（身上状态、地上法术）、Hostility（敌我）、Justice（PK：灰名、PK 值、红名掉东西）、Roster（进出图）、Spawner（开图放 NPC 守卫、刷怪）、
- *   Visibility（按视野算出每个玩家要收的消息）。
+ *   Visibility（按视野算出每个玩家要收的消息）、Quarry（矿区的矿脉、挖矿）。
  */
 final class World(
     val catalog: Catalog,
@@ -98,6 +98,7 @@ final class World(
   private[world] val spawner: Spawner           = Spawner(this, start)
   private[world] val visibility: Visibility     = Visibility(this)
   private[world] val trades: Trades             = Trades(this)
+  private[world] val quarry: Quarry             = Quarry(this)
 
   // 对外（服务端、测试）开放的查询和进出图
   export grid.{occupant, occupants, canEnter, walkableFor, freeCellNear, randomSpot}

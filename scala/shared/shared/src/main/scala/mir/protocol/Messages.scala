@@ -86,6 +86,11 @@ enum GameCmd:
   case Deposit(npc: ActorId, uid: ItemUid, count: Option[Int] = None)
   /** 从仓库取；count 同上 */
   case Withdraw(npc: ActorId, uid: ItemUid, count: Option[Int] = None)
+  /**
+   * 武器店升级手上的武器（#1286，原版 @upgradenow，本服当场出结果）。weapon、materials 是玩家确认时看到的武器和要收走的材料：
+   * 和服务端此刻算出的不一样（包裹变了）就拒绝，免得收走玩家没看到的东西。
+   */
+  case RefineWeapon(npc: ActorId, weapon: ItemUid, materials: Set[ItemUid])
 
   // ---- 交易（#1222，原版 CM_DEALTRY / DEALADDITEM / DEALDELITEM / DEALCHGGOLD / DEALEND / DEALCANCEL） ----
   /** 请求和相邻的玩家交易；对方 30 秒内也对我点「交易」就打开交易窗口 */

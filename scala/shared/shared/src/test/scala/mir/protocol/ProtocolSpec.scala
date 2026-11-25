@@ -52,6 +52,7 @@ object ProtocolSpec extends ZIOSpecDefault:
     GameCmd.Sell(ActorId(5), ItemUid(44L), Some(3)),
     GameCmd.Deposit(ActorId(6), ItemUid(44L)),
     GameCmd.Withdraw(ActorId(6), ItemUid(44L)),
+    GameCmd.RefineWeapon(ActorId(6), ItemUid(45L), Set(ItemUid(46L), ItemUid(47L))),
     GameCmd.SetSkillKey(SkillId(2), Some(3)),
     GameCmd.SetSkillKey(SkillId(2), None),
     GameCmd.UpdateSettings(CharSettings(autoHpPercent = 55, autoPickup = false)),

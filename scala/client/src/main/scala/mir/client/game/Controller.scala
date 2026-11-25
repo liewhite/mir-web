@@ -19,6 +19,8 @@ enum Intent:
   case Fight(target: ActorId)
   /** 沿算好的路走到某一格（点全景地图） */
   case GoTo(route: Travel.Route)
+  /** 朝这个方向的矿壁一直挖（#1286，原版 g_boAutoDig：挖到做别的事为止） */
+  case Dig(dir: Dir)
 
 /**
  * 输入意图 → 游戏指令（照 TS 版 game/controller.ts，自动喝药、自动捡物、还手、烈火已挪到服务端 AutoPlay）。
@@ -61,12 +63,20 @@ final class Controller(client: GameClient):
       case _                                            => ()
     client.locked = None
 
-  /** 攻击键：打锁定的怪（锁定的守卫也打）；没锁定就锁身边最近的怪。 */
-  def attack(): Unit = autoTarget() match
-    case Some(t) =>
-      client.locked = Some(t)
-      intent = Intent.Fight(t)
-    case None => client.ui.notice("附近没有怪", Tone.Bad)
+  /**
+   * 攻击键：打锁定的怪（锁定的守卫也打）；在矿区拿着鹤嘴锄、身边有矿壁就挖矿（#1286）；
+   * 都不是就锁身边最近的怪。
+   */
+  def attack(): Unit =
+    val next = lockedInReach(client.canAttack).map(a => Intent.Fight(a.id))
+      .orElse(client.rockToDig.map(Intent.Dig(_)))
+      .orElse(nearest(client.isEnemy).map(a => Intent.Fight(a.id)))
+    next match
+      case Some(f @ Intent.Fight(t)) =>
+        client.locked = Some(t)
+        intent = f
+      case Some(other) => intent = other
+      case None        => client.ui.notice("附近没有怪", Tone.Bad)
 
   /** 放 F1–F8 上的技能。 */
   def castKey(key: Int): Unit =
@@ -149,6 +159,12 @@ final class Controller(client: GameClient):
               // 服务端「按住攻击」关着时只打一下
               if !client.view.settings.stickyAttack then intent = Intent.Idle
           case Some(a) => follow(me.cell, a.cell, MeleeReach.path(reach, client.passable, ground, me.cell, a.cell, PathNodes))
+      // 被挤开、自动捡物走开了、换了武器：这个方向不再是矿壁就停
+      case Intent.Dig(dir) if !client.rocksAround.contains(dir) => intent = Intent.Idle
+      case Intent.Dig(dir) =>
+        if now >= nextAttack && client.motion.ready(now) && client.actionDone(me, now) then
+          client.send(GameCmd.Attack(dir, None))
+          nextAttack = now + Pace.HitAnimMs + AttackGapMs
       case Intent.GoTo(route) =>
         Travel.follow(route, me.cell) match
           case Travel.Step.Arrived => intent = Intent.Idle
