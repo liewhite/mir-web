@@ -51,7 +51,7 @@ object Smoke:
   /** 连上 → LoggedIn（版本要是本 jar 的）→ 建角色 → 进图。 */
   private def enter(bot: SmokeBot, name: String): Either[String, String] =
     for
-      build <- bot.await("LoggedIn") { case ServerMsg.LoggedIn(_, b) => b }
+      build <- bot.await("LoggedIn") { case ServerMsg.LoggedIn(_, b, _, _) => b }
       _     <- Either.cond(build == Build.commit, (), s"服务端版本 $build，不是这个 jar 的 ${Build.commit}")
       _      = bot.send(SessionCmd.CreateChar(name, Job.Warrior, Sex.Male))
       id    <- bot.await("建角色后的 CharList") { case ServerMsg.CharList(cs) if cs.exists(_.name == name) => cs.find(_.name == name).get.id }

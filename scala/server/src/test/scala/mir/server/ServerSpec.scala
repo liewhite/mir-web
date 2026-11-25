@@ -346,7 +346,7 @@ object ServerSpec extends ZIOSpecDefault:
         val g = Bot(http, http.login("ivan", "secret1").get)
         enter(g, "停服甲", Job.Warrior)
         val h = Bot(http, http.login("judy", "secret1").get) // 停在选人
-        h.await("LoggedIn") { case ServerMsg.LoggedIn(_, _) => () }
+        h.await("LoggedIn") { case ServerMsg.LoggedIn(_, _, _, _) => () }
         (g, h)
       }.flatMap { (g, h) =>
         // 关闭帧在停服过程中就发出了，回调稍后才到：最多等 2 秒

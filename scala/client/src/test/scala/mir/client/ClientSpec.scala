@@ -610,8 +610,7 @@ object ClientSpec extends ZIOSpecDefault:
         afterRejoin == (Vector.empty, Some(MapId("0"))),
         afterCut == (Vector("bbb"), Some(SessionCmd.Reloading)),
         refreshed == Vector("bbb")
-        )
-      }
+      )
     },
     test("断线重连（#1290）：服务器说在重启就每 0.5 秒试、重启期间连不上也不变，1 分钟没回来按普通断线；普通断线退避到 5 秒") {
       import mir.client.net.{Outage, Reconnect}
