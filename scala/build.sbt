@@ -50,6 +50,16 @@ lazy val buildInfo = Def.settings(
   }.taskValue
 )
 
+// 通讯格式指纹（mir.protocol.Release.wire）由 WireShape 宏在编译期展开协议类型算出，但增量编译只在 Release.scala 自己变了
+// 才重新展开宏：协议用到的类型在别的文件里改了（如 Owned.scala 的 CharSettings 加字段），指纹不变，旧页面就不会马上刷新（#1303）。
+// 所以每次编译前删掉 Release 的产物（.class/.tasty/.sjsir），增量编译见产物缺了就把它和这次的改动一起重编。只多编一个小文件。
+lazy val wireFresh = Def.settings(
+  Compile / compileIncremental := (Compile / compileIncremental).dependsOn(Def.task {
+    val dir = (Compile / classDirectory).value / "mir" / "protocol"
+    IO.delete((dir * ("Release.*" | "Release$*")).get)
+  }).value
+)
+
 lazy val zioTest = Def.settings(
   libraryDependencies ++= Seq(
     "dev.zio" %%% "zio-test"     % V.zio % Test,
@@ -64,6 +74,7 @@ lazy val shared = crossProject(JVMPlatform, JSPlatform)
   .settings(zioTest)
   .settings(libraryDependencies += "dev.zio" %%% "zio-json" % V.zioJson)
   .settings(buildInfo)
+  .settings(wireFresh)
   .jvmSettings(
     Test / fork := true,
     Test / javaOptions ++= Seq("-Dfile.encoding=UTF-8", s"-Dmir.gameJson=${gameJson.value}", s"-Dmir.tsGolden=${tsGolden.value}", s"-Dmir.scalaRoot=${(ThisBuild / baseDirectory).value}")

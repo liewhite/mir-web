@@ -117,6 +117,12 @@ if [[ $MODE == --dry-run ]]; then
 fi
 
 REL=$(date +%Y%m%d-%H%M%S)-$COMMIT
+# 通讯格式指纹（#1289、#1303）：变了旧页面重连时马上刷新；没变就先接着玩，等换图、回城、复活时再刷新
+WIRE_PY='import sys,zipfile,re; m=re.findall(rb"[0-9a-f]{16}", zipfile.ZipFile(sys.argv[1]).read("mir/protocol/Release$.class")); print(m[0].decode() if m else "?")'
+NEW_WIRE=$(/usr/bin/python3 -c "$WIRE_PY" "$JAR")
+OLD_WIRE=$(ssh $H python3 - /opt/mir176/current/mir176.jar <<<"$WIRE_PY" 2>/dev/null || echo "?")
+if [[ $NEW_WIRE == "$OLD_WIRE" ]]; then echo "== 通讯格式没变（$NEW_WIRE）：旧页面先接着玩，换图、回城、复活时刷新"
+else echo "== 通讯格式变了（$OLD_WIRE → $NEW_WIRE）：旧页面重连时马上刷新"; fi
 echo "== 上传新版本 $REL（旧服照常在跑）"
 ssh $H 'sudo mkdir -p /opt/mir176/releases /opt/mir176/bin /opt/mir176/public && sudo chown "$(id -un)": /opt/mir176 /opt/mir176/releases /opt/mir176/bin /opt/mir176/public'
 if ! ssh $H 'test -x /opt/mir176/jre/bin/java'; then
