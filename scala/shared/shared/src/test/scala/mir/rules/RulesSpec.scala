@@ -163,7 +163,8 @@ object RulesSpec extends ZIOSpecDefault:
       test("boss 刷新最长 2 小时，表里更短的和普通怪照表（#1262）") {
         def minutesOf(name: String) =
           val m = MonsterName(name)
-          catalog.data.spawns.filter(_.monster == m).map(s => Rates.respawnMinutes(m, s.minutes)).toSet
+          // 只看 1.76 数据表的刷怪点（幻境 H0xx 是补充表里另定的间隔，#1317）
+          catalog.data.spawns.filter(s => s.monster == m && !s.map.value.startsWith("H0")).map(s => Rates.respawnMinutes(m, s.minutes)).toSet
         val bossMax = catalog.data.spawns.filter(s => Rates.bosses(s.monster)).map(s => Rates.respawnMinutes(s.monster, s.minutes)).max
         assertTrue(
           minutesOf("赤月恶魔") == Set(120), // 表里 360

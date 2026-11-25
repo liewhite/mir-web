@@ -1136,6 +1136,20 @@ object WorldSpec extends ZIOSpecDefault:
           after.nextRefill == spot.nextRefill
         )
       },
+      test("幻境十层刷牛魔小怪和赤月恶魔、牛魔王、暗之牛魔王、暗之双头金刚，打得死（#1317）") {
+        val map   = catalog.map(MapId("H010")).get
+        val w     = world(map)
+        val p     = join(w, "甲", Cell(155, 157))
+        w.tick(Millis(50))
+        val names = w.monsters.map(_.defn.name.value).toSet
+        val boss  = w.monsters.find(_.defn.name == MonsterName("暗之牛魔王")).get
+        w.vitals.damage(boss, boss.hp, Some(p.id))
+        assertTrue(
+          Set("牛魔战士", "牛魔法师", "赤月恶魔", "牛魔王", "暗之牛魔王", "暗之双头金刚").subsetOf(names),
+          !names.exists(_.startsWith("宝箱")),
+          boss.dead
+        )
+      },
       test("普通怪死了不报") {
         val s = sim()
         val p = join(s.w, "甲", Cell(30, 30))

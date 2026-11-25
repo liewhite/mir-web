@@ -1,0 +1,2241 @@
+{
+ "_说明": "幻境一层～十层（#1317），由 tools/import_huanjing.py 生成，格式同 ref/Mir176 catalog.json，见 tools/catalog.py",
+ "maps": [
+  {
+   "id": "H001",
+   "asset": "E602",
+   "title": "幻境一层",
+   "flags": "NORECALL NORECONNECT(3)",
+   "width": 150,
+   "height": 150
+  },
+  {
+   "id": "H002",
+   "asset": "D711",
+   "title": "幻境二层",
+   "flags": "NORECALL NORECONNECT(3)",
+   "width": 400,
+   "height": 400
+  },
+  {
+   "id": "H003",
+   "asset": "D024",
+   "title": "幻境三层",
+   "flags": "NORECALL NORECONNECT(3)",
+   "width": 100,
+   "height": 100
+  },
+  {
+   "id": "H004",
+   "asset": "D606",
+   "title": "幻境四层",
+   "flags": "NORECALL NORECONNECT(3)",
+   "width": 200,
+   "height": 200
+  },
+  {
+   "id": "H005",
+   "asset": "D2053",
+   "title": "幻境五层",
+   "flags": "NORECALL NORECONNECT(3)",
+   "width": 300,
+   "height": 300
+  },
+  {
+   "id": "H006",
+   "asset": "D717",
+   "title": "幻境六层",
+   "flags": "NORECALL NORECONNECT(3)",
+   "width": 100,
+   "height": 100
+  },
+  {
+   "id": "H007",
+   "asset": "D505",
+   "title": "幻境七层",
+   "flags": "NORECALL NORECONNECT(3)",
+   "width": 200,
+   "height": 200
+  },
+  {
+   "id": "H008",
+   "asset": "D2013",
+   "title": "幻境八层",
+   "flags": "NORECALL NORECONNECT(3)",
+   "width": 100,
+   "height": 100
+  },
+  {
+   "id": "H009",
+   "asset": "D10031",
+   "title": "幻境九层",
+   "flags": "NORECALL NORECONNECT(3)",
+   "width": 300,
+   "height": 300
+  },
+  {
+   "id": "H010",
+   "asset": "D2073",
+   "title": "幻境十层",
+   "flags": "NORECALL NORECONNECT(3)",
+   "width": 400,
+   "height": 400
+  }
+ ],
+ "routes": [
+  {
+   "from": "H001",
+   "x": 72,
+   "y": 65,
+   "to": "3",
+   "tx": 350,
+   "ty": 340
+  },
+  {
+   "from": "H001",
+   "x": 10,
+   "y": 9,
+   "to": "H002",
+   "tx": 205,
+   "ty": 198
+  },
+  {
+   "from": "H002",
+   "x": 205,
+   "y": 197,
+   "to": "H001",
+   "tx": 11,
+   "ty": 10
+  },
+  {
+   "from": "H002",
+   "x": 364,
+   "y": 229,
+   "to": "H003",
+   "tx": 16,
+   "ty": 19
+  },
+  {
+   "from": "H003",
+   "x": 16,
+   "y": 18,
+   "to": "H002",
+   "tx": 363,
+   "ty": 230
+  },
+  {
+   "from": "H003",
+   "x": 88,
+   "y": 81,
+   "to": "H004",
+   "tx": 9,
+   "ty": 27
+  },
+  {
+   "from": "H004",
+   "x": 9,
+   "y": 25,
+   "to": "H003",
+   "tx": 87,
+   "ty": 81
+  },
+  {
+   "from": "H004",
+   "x": 193,
+   "y": 124,
+   "to": "H005",
+   "tx": 193,
+   "ty": 279
+  },
+  {
+   "from": "H005",
+   "x": 193,
+   "y": 280,
+   "to": "H004",
+   "tx": 192,
+   "ty": 123
+  },
+  {
+   "from": "H005",
+   "x": 36,
+   "y": 225,
+   "to": "H006",
+   "tx": 26,
+   "ty": 74
+  },
+  {
+   "from": "H006",
+   "x": 25,
+   "y": 75,
+   "to": "H005",
+   "tx": 38,
+   "ty": 227
+  },
+  {
+   "from": "H006",
+   "x": 83,
+   "y": 25,
+   "to": "H007",
+   "tx": 161,
+   "ty": 172
+  },
+  {
+   "from": "H007",
+   "x": 5,
+   "y": 102,
+   "to": "H006",
+   "tx": 26,
+   "ty": 74
+  },
+  {
+   "from": "H007",
+   "x": 123,
+   "y": 10,
+   "to": "H008",
+   "tx": 79,
+   "ty": 80
+  },
+  {
+   "from": "H008",
+   "x": 82,
+   "y": 83,
+   "to": "H007",
+   "tx": 122,
+   "ty": 11
+  },
+  {
+   "from": "H008",
+   "x": 21,
+   "y": 25,
+   "to": "H009",
+   "tx": 289,
+   "ty": 150
+  },
+  {
+   "from": "H009",
+   "x": 290,
+   "y": 151,
+   "to": "H008",
+   "tx": 22,
+   "ty": 25
+  },
+  {
+   "from": "H009",
+   "x": 149,
+   "y": 103,
+   "to": "H010",
+   "tx": 155,
+   "ty": 157
+  },
+  {
+   "from": "H010",
+   "x": 155,
+   "y": 156,
+   "to": "H009",
+   "tx": 151,
+   "ty": 105
+  }
+ ],
+ "spawns": [
+  {
+   "map": "H001",
+   "x": 75,
+   "y": 75,
+   "monster": "蜈蚣",
+   "radius": 75,
+   "count": 40,
+   "minutes": 23
+  },
+  {
+   "map": "H001",
+   "x": 75,
+   "y": 75,
+   "monster": "恶灵僵尸",
+   "radius": 75,
+   "count": 35,
+   "minutes": 23
+  },
+  {
+   "map": "H001",
+   "x": 75,
+   "y": 75,
+   "monster": "恶灵尸王",
+   "radius": 75,
+   "count": 35,
+   "minutes": 23
+  },
+  {
+   "map": "H001",
+   "x": 75,
+   "y": 75,
+   "monster": "钳虫",
+   "radius": 75,
+   "count": 35,
+   "minutes": 23
+  },
+  {
+   "map": "H001",
+   "x": 75,
+   "y": 75,
+   "monster": "跳跳蜂",
+   "radius": 75,
+   "count": 35,
+   "minutes": 23
+  },
+  {
+   "map": "H001",
+   "x": 75,
+   "y": 75,
+   "monster": "蜈蚣",
+   "radius": 75,
+   "count": 35,
+   "minutes": 23
+  },
+  {
+   "map": "H001",
+   "x": 75,
+   "y": 75,
+   "monster": "黑色恶蛆",
+   "radius": 75,
+   "count": 35,
+   "minutes": 23
+  },
+  {
+   "map": "H001",
+   "x": 75,
+   "y": 75,
+   "monster": "跳跳蜂",
+   "radius": 75,
+   "count": 35,
+   "minutes": 23
+  },
+  {
+   "map": "H001",
+   "x": 75,
+   "y": 75,
+   "monster": "钳虫",
+   "radius": 75,
+   "count": 35,
+   "minutes": 23
+  },
+  {
+   "map": "H001",
+   "x": 75,
+   "y": 75,
+   "monster": "骷髅精灵",
+   "radius": 75,
+   "count": 2,
+   "minutes": 30
+  },
+  {
+   "map": "H001",
+   "x": 75,
+   "y": 75,
+   "monster": "尸王",
+   "radius": 75,
+   "count": 2,
+   "minutes": 30
+  },
+  {
+   "map": "H001",
+   "x": 75,
+   "y": 75,
+   "monster": "石墓尸王",
+   "radius": 75,
+   "count": 1,
+   "minutes": 90
+  },
+  {
+   "map": "H001",
+   "x": 75,
+   "y": 75,
+   "monster": "黄泉教主",
+   "radius": 75,
+   "count": 1,
+   "minutes": 90
+  },
+  {
+   "map": "H002",
+   "x": 251,
+   "y": 41,
+   "monster": "红野猪",
+   "radius": 30,
+   "count": 8,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 321,
+   "y": 72,
+   "monster": "红野猪",
+   "radius": 30,
+   "count": 8,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 363,
+   "y": 146,
+   "monster": "红野猪",
+   "radius": 30,
+   "count": 7,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 172,
+   "y": 59,
+   "monster": "红野猪",
+   "radius": 30,
+   "count": 7,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 210,
+   "y": 93,
+   "monster": "红野猪",
+   "radius": 30,
+   "count": 7,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 262,
+   "y": 140,
+   "monster": "红野猪",
+   "radius": 30,
+   "count": 7,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 309,
+   "y": 19,
+   "monster": "红野猪",
+   "radius": 30,
+   "count": 7,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 350,
+   "y": 303,
+   "monster": "红野猪",
+   "radius": 30,
+   "count": 7,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 111,
+   "y": 105,
+   "monster": "红野猪",
+   "radius": 30,
+   "count": 7,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 158,
+   "y": 149,
+   "monster": "红野猪",
+   "radius": 30,
+   "count": 7,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 200,
+   "y": 200,
+   "monster": "红野猪",
+   "radius": 30,
+   "count": 7,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 255,
+   "y": 306,
+   "monster": "红野猪",
+   "radius": 30,
+   "count": 7,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 287,
+   "y": 286,
+   "monster": "红野猪",
+   "radius": 30,
+   "count": 7,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 56,
+   "y": 158,
+   "monster": "红野猪",
+   "radius": 30,
+   "count": 7,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 153,
+   "y": 237,
+   "monster": "红野猪",
+   "radius": 30,
+   "count": 7,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 112,
+   "y": 250,
+   "monster": "红野猪",
+   "radius": 30,
+   "count": 7,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 114,
+   "y": 314,
+   "monster": "红野猪",
+   "radius": 30,
+   "count": 7,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 304,
+   "y": 340,
+   "monster": "红野猪",
+   "radius": 30,
+   "count": 7,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 251,
+   "y": 41,
+   "monster": "黑野猪",
+   "radius": 30,
+   "count": 5,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 321,
+   "y": 72,
+   "monster": "黑野猪",
+   "radius": 30,
+   "count": 5,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 363,
+   "y": 146,
+   "monster": "黑野猪",
+   "radius": 30,
+   "count": 5,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 172,
+   "y": 59,
+   "monster": "黑野猪",
+   "radius": 30,
+   "count": 5,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 210,
+   "y": 93,
+   "monster": "黑野猪",
+   "radius": 30,
+   "count": 5,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 262,
+   "y": 140,
+   "monster": "黑野猪",
+   "radius": 30,
+   "count": 5,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 309,
+   "y": 19,
+   "monster": "黑野猪",
+   "radius": 30,
+   "count": 5,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 350,
+   "y": 303,
+   "monster": "黑野猪",
+   "radius": 30,
+   "count": 5,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 111,
+   "y": 105,
+   "monster": "黑野猪",
+   "radius": 30,
+   "count": 5,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 158,
+   "y": 149,
+   "monster": "黑野猪",
+   "radius": 30,
+   "count": 5,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 200,
+   "y": 200,
+   "monster": "黑野猪",
+   "radius": 30,
+   "count": 5,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 255,
+   "y": 306,
+   "monster": "黑野猪",
+   "radius": 30,
+   "count": 5,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 287,
+   "y": 286,
+   "monster": "黑野猪",
+   "radius": 30,
+   "count": 5,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 56,
+   "y": 158,
+   "monster": "黑野猪",
+   "radius": 30,
+   "count": 5,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 153,
+   "y": 237,
+   "monster": "黑野猪",
+   "radius": 30,
+   "count": 5,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 112,
+   "y": 250,
+   "monster": "黑野猪",
+   "radius": 30,
+   "count": 5,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 114,
+   "y": 314,
+   "monster": "黑野猪",
+   "radius": 30,
+   "count": 5,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 304,
+   "y": 340,
+   "monster": "黑野猪",
+   "radius": 30,
+   "count": 5,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 251,
+   "y": 41,
+   "monster": "黑色恶蛆",
+   "radius": 30,
+   "count": 8,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 321,
+   "y": 72,
+   "monster": "黑色恶蛆",
+   "radius": 30,
+   "count": 8,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 363,
+   "y": 146,
+   "monster": "黑色恶蛆",
+   "radius": 30,
+   "count": 8,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 172,
+   "y": 59,
+   "monster": "黑色恶蛆",
+   "radius": 30,
+   "count": 8,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 210,
+   "y": 93,
+   "monster": "黑色恶蛆",
+   "radius": 30,
+   "count": 8,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 262,
+   "y": 140,
+   "monster": "黑色恶蛆",
+   "radius": 30,
+   "count": 8,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 309,
+   "y": 19,
+   "monster": "黑色恶蛆",
+   "radius": 30,
+   "count": 8,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 350,
+   "y": 303,
+   "monster": "黑色恶蛆",
+   "radius": 30,
+   "count": 8,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 111,
+   "y": 105,
+   "monster": "黑色恶蛆",
+   "radius": 30,
+   "count": 8,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 158,
+   "y": 149,
+   "monster": "黑色恶蛆",
+   "radius": 30,
+   "count": 8,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 200,
+   "y": 200,
+   "monster": "黑色恶蛆",
+   "radius": 30,
+   "count": 8,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 255,
+   "y": 306,
+   "monster": "黑色恶蛆",
+   "radius": 30,
+   "count": 8,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 287,
+   "y": 286,
+   "monster": "黑色恶蛆",
+   "radius": 30,
+   "count": 8,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 56,
+   "y": 158,
+   "monster": "黑色恶蛆",
+   "radius": 30,
+   "count": 8,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 153,
+   "y": 237,
+   "monster": "黑色恶蛆",
+   "radius": 30,
+   "count": 8,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 112,
+   "y": 250,
+   "monster": "黑色恶蛆",
+   "radius": 30,
+   "count": 8,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 114,
+   "y": 314,
+   "monster": "黑色恶蛆",
+   "radius": 30,
+   "count": 8,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 304,
+   "y": 340,
+   "monster": "黑色恶蛆",
+   "radius": 30,
+   "count": 8,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 200,
+   "y": 200,
+   "monster": "楔蛾",
+   "radius": 200,
+   "count": 25,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 200,
+   "y": 200,
+   "monster": "红野猪",
+   "radius": 200,
+   "count": 5,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 200,
+   "y": 200,
+   "monster": "黑野猪",
+   "radius": 200,
+   "count": 5,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 200,
+   "y": 200,
+   "monster": "楔蛾",
+   "radius": 200,
+   "count": 5,
+   "minutes": 10
+  },
+  {
+   "map": "H002",
+   "x": 200,
+   "y": 200,
+   "monster": "石墓尸王",
+   "radius": 200,
+   "count": 1,
+   "minutes": 90
+  },
+  {
+   "map": "H002",
+   "x": 200,
+   "y": 200,
+   "monster": "千年树妖",
+   "radius": 200,
+   "count": 1,
+   "minutes": 90
+  },
+  {
+   "map": "H003",
+   "x": 50,
+   "y": 50,
+   "monster": "沃玛战士",
+   "radius": 30,
+   "count": 1,
+   "minutes": 60
+  },
+  {
+   "map": "H003",
+   "x": 40,
+   "y": 40,
+   "monster": "沃玛勇士",
+   "radius": 20,
+   "count": 6,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 40,
+   "y": 40,
+   "monster": "沃玛战将",
+   "radius": 20,
+   "count": 6,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 40,
+   "y": 40,
+   "monster": "火焰沃玛",
+   "radius": 20,
+   "count": 6,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 40,
+   "y": 40,
+   "monster": "沃玛勇士",
+   "radius": 20,
+   "count": 5,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 50,
+   "y": 50,
+   "monster": "沃玛勇士",
+   "radius": 20,
+   "count": 7,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 50,
+   "y": 50,
+   "monster": "沃玛战将",
+   "radius": 20,
+   "count": 7,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 50,
+   "y": 50,
+   "monster": "火焰沃玛",
+   "radius": 20,
+   "count": 7,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 50,
+   "y": 50,
+   "monster": "沃玛战将",
+   "radius": 20,
+   "count": 5,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 60,
+   "y": 60,
+   "monster": "沃玛勇士",
+   "radius": 20,
+   "count": 3,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 60,
+   "y": 60,
+   "monster": "沃玛战将",
+   "radius": 20,
+   "count": 3,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 60,
+   "y": 60,
+   "monster": "火焰沃玛",
+   "radius": 20,
+   "count": 3,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 60,
+   "y": 60,
+   "monster": "火焰沃玛",
+   "radius": 20,
+   "count": 5,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 40,
+   "y": 50,
+   "monster": "沃玛勇士",
+   "radius": 20,
+   "count": 3,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 40,
+   "y": 50,
+   "monster": "沃玛战将",
+   "radius": 20,
+   "count": 3,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 40,
+   "y": 50,
+   "monster": "火焰沃玛",
+   "radius": 20,
+   "count": 3,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 40,
+   "y": 50,
+   "monster": "沃玛战士",
+   "radius": 20,
+   "count": 5,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 50,
+   "y": 40,
+   "monster": "沃玛勇士",
+   "radius": 20,
+   "count": 3,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 50,
+   "y": 40,
+   "monster": "沃玛战将",
+   "radius": 20,
+   "count": 3,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 50,
+   "y": 40,
+   "monster": "火焰沃玛",
+   "radius": 20,
+   "count": 3,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 50,
+   "y": 40,
+   "monster": "沃玛勇士",
+   "radius": 20,
+   "count": 5,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 60,
+   "y": 50,
+   "monster": "沃玛勇士",
+   "radius": 20,
+   "count": 3,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 60,
+   "y": 50,
+   "monster": "沃玛战将",
+   "radius": 20,
+   "count": 3,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 60,
+   "y": 50,
+   "monster": "火焰沃玛",
+   "radius": 20,
+   "count": 3,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 60,
+   "y": 50,
+   "monster": "沃玛战将",
+   "radius": 20,
+   "count": 5,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 50,
+   "y": 60,
+   "monster": "沃玛勇士",
+   "radius": 20,
+   "count": 3,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 50,
+   "y": 60,
+   "monster": "沃玛战将",
+   "radius": 20,
+   "count": 3,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 50,
+   "y": 60,
+   "monster": "火焰沃玛",
+   "radius": 20,
+   "count": 3,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 50,
+   "y": 60,
+   "monster": "火焰沃玛",
+   "radius": 20,
+   "count": 5,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 83,
+   "y": 84,
+   "monster": "沃玛战士",
+   "radius": 7,
+   "count": 5,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 83,
+   "y": 84,
+   "monster": "沃玛勇士",
+   "radius": 7,
+   "count": 5,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 83,
+   "y": 84,
+   "monster": "火焰沃玛",
+   "radius": 7,
+   "count": 5,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 83,
+   "y": 84,
+   "monster": "沃玛战士",
+   "radius": 7,
+   "count": 8,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 20,
+   "y": 21,
+   "monster": "沃玛勇士",
+   "radius": 7,
+   "count": 5,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 20,
+   "y": 21,
+   "monster": "沃玛战将",
+   "radius": 7,
+   "count": 5,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 20,
+   "y": 21,
+   "monster": "火焰沃玛",
+   "radius": 7,
+   "count": 5,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 20,
+   "y": 21,
+   "monster": "沃玛勇士",
+   "radius": 7,
+   "count": 8,
+   "minutes": 5
+  },
+  {
+   "map": "H003",
+   "x": 42,
+   "y": 49,
+   "monster": "沃玛战将",
+   "radius": 30,
+   "count": 2,
+   "minutes": 10
+  },
+  {
+   "map": "H003",
+   "x": 42,
+   "y": 49,
+   "monster": "火焰沃玛",
+   "radius": 30,
+   "count": 2,
+   "minutes": 10
+  },
+  {
+   "map": "H003",
+   "x": 42,
+   "y": 49,
+   "monster": "沃玛战士",
+   "radius": 30,
+   "count": 2,
+   "minutes": 10
+  },
+  {
+   "map": "H003",
+   "x": 42,
+   "y": 49,
+   "monster": "沃玛勇士",
+   "radius": 30,
+   "count": 2,
+   "minutes": 10
+  },
+  {
+   "map": "H003",
+   "x": 50,
+   "y": 50,
+   "monster": "沃玛战将",
+   "radius": 20,
+   "count": 1,
+   "minutes": 180
+  },
+  {
+   "map": "H003",
+   "x": 50,
+   "y": 50,
+   "monster": "沃玛卫士",
+   "radius": 50,
+   "count": 2,
+   "minutes": 60
+  },
+  {
+   "map": "H003",
+   "x": 50,
+   "y": 50,
+   "monster": "沃玛教主",
+   "radius": 50,
+   "count": 1,
+   "minutes": 90
+  },
+  {
+   "map": "H003",
+   "x": 50,
+   "y": 50,
+   "monster": "暗之沃玛教主",
+   "radius": 50,
+   "count": 1,
+   "minutes": 90
+  },
+  {
+   "map": "H004",
+   "x": 100,
+   "y": 100,
+   "monster": "蜈蚣",
+   "radius": 100,
+   "count": 50,
+   "minutes": 8
+  },
+  {
+   "map": "H004",
+   "x": 100,
+   "y": 100,
+   "monster": "跳跳蜂",
+   "radius": 100,
+   "count": 50,
+   "minutes": 8
+  },
+  {
+   "map": "H004",
+   "x": 100,
+   "y": 100,
+   "monster": "巨型蠕虫",
+   "radius": 100,
+   "count": 50,
+   "minutes": 8
+  },
+  {
+   "map": "H004",
+   "x": 100,
+   "y": 100,
+   "monster": "黑色恶蛆",
+   "radius": 100,
+   "count": 50,
+   "minutes": 8
+  },
+  {
+   "map": "H004",
+   "x": 100,
+   "y": 100,
+   "monster": "钳虫",
+   "radius": 100,
+   "count": 50,
+   "minutes": 8
+  },
+  {
+   "map": "H004",
+   "x": 100,
+   "y": 100,
+   "monster": "蜈蚣",
+   "radius": 100,
+   "count": 3,
+   "minutes": 8
+  },
+  {
+   "map": "H004",
+   "x": 100,
+   "y": 100,
+   "monster": "钳虫",
+   "radius": 100,
+   "count": 3,
+   "minutes": 8
+  },
+  {
+   "map": "H004",
+   "x": 100,
+   "y": 100,
+   "monster": "巨型蠕虫",
+   "radius": 100,
+   "count": 3,
+   "minutes": 8
+  },
+  {
+   "map": "H004",
+   "x": 100,
+   "y": 100,
+   "monster": "跳跳蜂",
+   "radius": 100,
+   "count": 3,
+   "minutes": 8
+  },
+  {
+   "map": "H004",
+   "x": 100,
+   "y": 100,
+   "monster": "黑色恶蛆",
+   "radius": 100,
+   "count": 3,
+   "minutes": 8
+  },
+  {
+   "map": "H004",
+   "x": 100,
+   "y": 100,
+   "monster": "蜈蚣",
+   "radius": 100,
+   "count": 1,
+   "minutes": 60
+  },
+  {
+   "map": "H004",
+   "x": 100,
+   "y": 100,
+   "monster": "邪恶钳虫",
+   "radius": 100,
+   "count": 1,
+   "minutes": 20
+  },
+  {
+   "map": "H004",
+   "x": 100,
+   "y": 100,
+   "monster": "触龙神",
+   "radius": 100,
+   "count": 1,
+   "minutes": 20
+  },
+  {
+   "map": "H004",
+   "x": 100,
+   "y": 100,
+   "monster": "祖玛教主",
+   "radius": 100,
+   "count": 1,
+   "minutes": 90
+  },
+  {
+   "map": "H004",
+   "x": 100,
+   "y": 100,
+   "monster": "暗之虹魔教主",
+   "radius": 100,
+   "count": 1,
+   "minutes": 90
+  },
+  {
+   "map": "H005",
+   "x": 150,
+   "y": 150,
+   "monster": "骷髅长枪兵",
+   "radius": 150,
+   "count": 80,
+   "minutes": 10
+  },
+  {
+   "map": "H005",
+   "x": 150,
+   "y": 150,
+   "monster": "骷髅锤兵",
+   "radius": 150,
+   "count": 50,
+   "minutes": 10
+  },
+  {
+   "map": "H005",
+   "x": 150,
+   "y": 150,
+   "monster": "骷髅刀斧手",
+   "radius": 150,
+   "count": 30,
+   "minutes": 10
+  },
+  {
+   "map": "H005",
+   "x": 150,
+   "y": 150,
+   "monster": "骷髅弓箭手",
+   "radius": 150,
+   "count": 2,
+   "minutes": 10
+  },
+  {
+   "map": "H005",
+   "x": 150,
+   "y": 150,
+   "monster": "骷髅长枪兵",
+   "radius": 150,
+   "count": 2,
+   "minutes": 10
+  },
+  {
+   "map": "H005",
+   "x": 150,
+   "y": 150,
+   "monster": "黄泉教主",
+   "radius": 150,
+   "count": 1,
+   "minutes": 120
+  },
+  {
+   "map": "H005",
+   "x": 150,
+   "y": 150,
+   "monster": "暗之黄泉教主",
+   "radius": 150,
+   "count": 1,
+   "minutes": 90
+  },
+  {
+   "map": "H006",
+   "x": 80,
+   "y": 28,
+   "monster": "黑色恶蛆",
+   "radius": 0,
+   "count": 1,
+   "minutes": 60
+  },
+  {
+   "map": "H006",
+   "x": 100,
+   "y": 100,
+   "monster": "黑色恶蛆",
+   "radius": 100,
+   "count": 60,
+   "minutes": 5
+  },
+  {
+   "map": "H006",
+   "x": 100,
+   "y": 100,
+   "monster": "楔蛾",
+   "radius": 100,
+   "count": 60,
+   "minutes": 5
+  },
+  {
+   "map": "H006",
+   "x": 100,
+   "y": 100,
+   "monster": "黑色恶蛆",
+   "radius": 100,
+   "count": 60,
+   "minutes": 10
+  },
+  {
+   "map": "H006",
+   "x": 100,
+   "y": 100,
+   "monster": "楔蛾",
+   "radius": 100,
+   "count": 60,
+   "minutes": 10
+  },
+  {
+   "map": "H006",
+   "x": 100,
+   "y": 100,
+   "monster": "白野猪",
+   "radius": 100,
+   "count": 2,
+   "minutes": 60
+  },
+  {
+   "map": "H006",
+   "x": 100,
+   "y": 100,
+   "monster": "楔蛾",
+   "radius": 100,
+   "count": 2,
+   "minutes": 60
+  },
+  {
+   "map": "H006",
+   "x": 100,
+   "y": 100,
+   "monster": "蝎蛇",
+   "radius": 100,
+   "count": 10,
+   "minutes": 10
+  },
+  {
+   "map": "H006",
+   "x": 50,
+   "y": 50,
+   "monster": "邪恶毒蛇",
+   "radius": 50,
+   "count": 1,
+   "minutes": 20
+  },
+  {
+   "map": "H006",
+   "x": 50,
+   "y": 50,
+   "monster": "石墓尸王",
+   "radius": 50,
+   "count": 1,
+   "minutes": 30
+  },
+  {
+   "map": "H006",
+   "x": 50,
+   "y": 50,
+   "monster": "双头金刚",
+   "radius": 50,
+   "count": 1,
+   "minutes": 90
+  },
+  {
+   "map": "H006",
+   "x": 50,
+   "y": 50,
+   "monster": "双头血魔",
+   "radius": 50,
+   "count": 1,
+   "minutes": 90
+  },
+  {
+   "map": "H007",
+   "x": 100,
+   "y": 100,
+   "monster": "祖玛弓箭手",
+   "radius": 100,
+   "count": 60,
+   "minutes": 10
+  },
+  {
+   "map": "H007",
+   "x": 100,
+   "y": 100,
+   "monster": "祖玛雕像",
+   "radius": 100,
+   "count": 60,
+   "minutes": 10
+  },
+  {
+   "map": "H007",
+   "x": 100,
+   "y": 100,
+   "monster": "祖玛卫士",
+   "radius": 100,
+   "count": 60,
+   "minutes": 10
+  },
+  {
+   "map": "H007",
+   "x": 100,
+   "y": 100,
+   "monster": "楔蛾",
+   "radius": 100,
+   "count": 60,
+   "minutes": 10
+  },
+  {
+   "map": "H007",
+   "x": 100,
+   "y": 100,
+   "monster": "角蝇",
+   "radius": 100,
+   "count": 10,
+   "minutes": 10
+  },
+  {
+   "map": "H007",
+   "x": 100,
+   "y": 100,
+   "monster": "祖玛弓箭手",
+   "radius": 100,
+   "count": 10,
+   "minutes": 60
+  },
+  {
+   "map": "H007",
+   "x": 100,
+   "y": 100,
+   "monster": "祖玛雕像",
+   "radius": 100,
+   "count": 10,
+   "minutes": 60
+  },
+  {
+   "map": "H007",
+   "x": 100,
+   "y": 100,
+   "monster": "祖玛卫士",
+   "radius": 100,
+   "count": 10,
+   "minutes": 60
+  },
+  {
+   "map": "H007",
+   "x": 100,
+   "y": 100,
+   "monster": "楔蛾",
+   "radius": 100,
+   "count": 3,
+   "minutes": 20
+  },
+  {
+   "map": "H007",
+   "x": 100,
+   "y": 100,
+   "monster": "角蝇",
+   "radius": 100,
+   "count": 3,
+   "minutes": 20
+  },
+  {
+   "map": "H007",
+   "x": 100,
+   "y": 100,
+   "monster": "祖玛弓箭手",
+   "radius": 100,
+   "count": 3,
+   "minutes": 20
+  },
+  {
+   "map": "H007",
+   "x": 154,
+   "y": 172,
+   "monster": "祖玛卫士",
+   "radius": 8,
+   "count": 2,
+   "minutes": 30
+  },
+  {
+   "map": "H007",
+   "x": 154,
+   "y": 172,
+   "monster": "祖玛雕像",
+   "radius": 8,
+   "count": 8,
+   "minutes": 30
+  },
+  {
+   "map": "H007",
+   "x": 154,
+   "y": 172,
+   "monster": "楔蛾",
+   "radius": 8,
+   "count": 8,
+   "minutes": 30
+  },
+  {
+   "map": "H007",
+   "x": 154,
+   "y": 172,
+   "monster": "祖玛弓箭手",
+   "radius": 8,
+   "count": 8,
+   "minutes": 30
+  },
+  {
+   "map": "H007",
+   "x": 154,
+   "y": 172,
+   "monster": "角蝇",
+   "radius": 8,
+   "count": 2,
+   "minutes": 30
+  },
+  {
+   "map": "H007",
+   "x": 154,
+   "y": 172,
+   "monster": "祖玛雕像",
+   "radius": 8,
+   "count": 8,
+   "minutes": 30
+  },
+  {
+   "map": "H007",
+   "x": 100,
+   "y": 100,
+   "monster": "祖玛教主",
+   "radius": 100,
+   "count": 1,
+   "minutes": 90
+  },
+  {
+   "map": "H007",
+   "x": 100,
+   "y": 100,
+   "monster": "暗之双头金刚",
+   "radius": 100,
+   "count": 1,
+   "minutes": 90
+  },
+  {
+   "map": "H008",
+   "x": 50,
+   "y": 50,
+   "monster": "楔蛾",
+   "radius": 50,
+   "count": 60,
+   "minutes": 5
+  },
+  {
+   "map": "H008",
+   "x": 50,
+   "y": 50,
+   "monster": "角蝇",
+   "radius": 50,
+   "count": 10,
+   "minutes": 5
+  },
+  {
+   "map": "H008",
+   "x": 50,
+   "y": 50,
+   "monster": "祖玛弓箭手",
+   "radius": 50,
+   "count": 30,
+   "minutes": 7
+  },
+  {
+   "map": "H008",
+   "x": 50,
+   "y": 50,
+   "monster": "祖玛弓箭手",
+   "radius": 50,
+   "count": 30,
+   "minutes": 7
+  },
+  {
+   "map": "H008",
+   "x": 50,
+   "y": 50,
+   "monster": "祖玛雕像",
+   "radius": 50,
+   "count": 30,
+   "minutes": 9
+  },
+  {
+   "map": "H008",
+   "x": 50,
+   "y": 50,
+   "monster": "祖玛雕像",
+   "radius": 50,
+   "count": 30,
+   "minutes": 9
+  },
+  {
+   "map": "H008",
+   "x": 50,
+   "y": 50,
+   "monster": "祖玛卫士",
+   "radius": 50,
+   "count": 30,
+   "minutes": 11
+  },
+  {
+   "map": "H008",
+   "x": 50,
+   "y": 50,
+   "monster": "祖玛卫士",
+   "radius": 50,
+   "count": 30,
+   "minutes": 11
+  },
+  {
+   "map": "H008",
+   "x": 50,
+   "y": 50,
+   "monster": "楔蛾",
+   "radius": 50,
+   "count": 2,
+   "minutes": 20
+  },
+  {
+   "map": "H008",
+   "x": 50,
+   "y": 50,
+   "monster": "角蝇",
+   "radius": 50,
+   "count": 2,
+   "minutes": 20
+  },
+  {
+   "map": "H008",
+   "x": 50,
+   "y": 50,
+   "monster": "祖玛弓箭手",
+   "radius": 50,
+   "count": 2,
+   "minutes": 20
+  },
+  {
+   "map": "H008",
+   "x": 50,
+   "y": 50,
+   "monster": "祖玛雕像",
+   "radius": 50,
+   "count": 2,
+   "minutes": 60
+  },
+  {
+   "map": "H008",
+   "x": 50,
+   "y": 50,
+   "monster": "祖玛卫士",
+   "radius": 50,
+   "count": 2,
+   "minutes": 60
+  },
+  {
+   "map": "H008",
+   "x": 50,
+   "y": 50,
+   "monster": "楔蛾",
+   "radius": 10,
+   "count": 1,
+   "minutes": 180
+  },
+  {
+   "map": "H008",
+   "x": 50,
+   "y": 50,
+   "monster": "虹魔蝎卫",
+   "radius": 50,
+   "count": 2,
+   "minutes": 30
+  },
+  {
+   "map": "H008",
+   "x": 50,
+   "y": 50,
+   "monster": "虹魔教主",
+   "radius": 50,
+   "count": 1,
+   "minutes": 30
+  },
+  {
+   "map": "H008",
+   "x": 50,
+   "y": 50,
+   "monster": "暗之虹魔教主",
+   "radius": 50,
+   "count": 1,
+   "minutes": 90
+  },
+  {
+   "map": "H009",
+   "x": 150,
+   "y": 150,
+   "monster": "天狼蜘蛛",
+   "radius": 150,
+   "count": 50,
+   "minutes": 5
+  },
+  {
+   "map": "H009",
+   "x": 150,
+   "y": 150,
+   "monster": "钢牙蜘蛛",
+   "radius": 150,
+   "count": 50,
+   "minutes": 5
+  },
+  {
+   "map": "H009",
+   "x": 150,
+   "y": 150,
+   "monster": "花吻蜘蛛",
+   "radius": 150,
+   "count": 50,
+   "minutes": 5
+  },
+  {
+   "map": "H009",
+   "x": 150,
+   "y": 150,
+   "monster": "月魔蜘蛛",
+   "radius": 150,
+   "count": 50,
+   "minutes": 5
+  },
+  {
+   "map": "H009",
+   "x": 150,
+   "y": 150,
+   "monster": "暴牙蜘蛛",
+   "radius": 150,
+   "count": 50,
+   "minutes": 5
+  },
+  {
+   "map": "H009",
+   "x": 150,
+   "y": 150,
+   "monster": "黑锷蜘蛛",
+   "radius": 150,
+   "count": 50,
+   "minutes": 5
+  },
+  {
+   "map": "H009",
+   "x": 150,
+   "y": 150,
+   "monster": "天狼蜘蛛",
+   "radius": 150,
+   "count": 5,
+   "minutes": 60
+  },
+  {
+   "map": "H009",
+   "x": 184,
+   "y": 105,
+   "monster": "月魔蜘蛛",
+   "radius": 20,
+   "count": 10,
+   "minutes": 5
+  },
+  {
+   "map": "H009",
+   "x": 184,
+   "y": 105,
+   "monster": "天狼蜘蛛",
+   "radius": 20,
+   "count": 3,
+   "minutes": 5
+  },
+  {
+   "map": "H009",
+   "x": 184,
+   "y": 105,
+   "monster": "钢牙蜘蛛",
+   "radius": 20,
+   "count": 3,
+   "minutes": 5
+  },
+  {
+   "map": "H009",
+   "x": 184,
+   "y": 105,
+   "monster": "暴牙蜘蛛",
+   "radius": 20,
+   "count": 3,
+   "minutes": 5
+  },
+  {
+   "map": "H009",
+   "x": 184,
+   "y": 105,
+   "monster": "黑锷蜘蛛",
+   "radius": 20,
+   "count": 3,
+   "minutes": 5
+  },
+  {
+   "map": "H009",
+   "x": 184,
+   "y": 105,
+   "monster": "花吻蜘蛛",
+   "radius": 20,
+   "count": 3,
+   "minutes": 5
+  },
+  {
+   "map": "H009",
+   "x": 150,
+   "y": 150,
+   "monster": "双头金刚",
+   "radius": 150,
+   "count": 1,
+   "minutes": 120
+  },
+  {
+   "map": "H009",
+   "x": 150,
+   "y": 150,
+   "monster": "双头血魔",
+   "radius": 150,
+   "count": 1,
+   "minutes": 120
+  },
+  {
+   "map": "H009",
+   "x": 150,
+   "y": 150,
+   "monster": "暗之双头血魔",
+   "radius": 150,
+   "count": 1,
+   "minutes": 90
+  },
+  {
+   "map": "H010",
+   "x": 200,
+   "y": 200,
+   "monster": "牛头魔",
+   "radius": 200,
+   "count": 50,
+   "minutes": 10
+  },
+  {
+   "map": "H010",
+   "x": 200,
+   "y": 200,
+   "monster": "牛魔斗士",
+   "radius": 200,
+   "count": 50,
+   "minutes": 10
+  },
+  {
+   "map": "H010",
+   "x": 200,
+   "y": 200,
+   "monster": "牛魔战士",
+   "radius": 200,
+   "count": 50,
+   "minutes": 10
+  },
+  {
+   "map": "H010",
+   "x": 200,
+   "y": 200,
+   "monster": "牛魔侍卫",
+   "radius": 200,
+   "count": 50,
+   "minutes": 10
+  },
+  {
+   "map": "H010",
+   "x": 200,
+   "y": 200,
+   "monster": "牛魔法师",
+   "radius": 200,
+   "count": 50,
+   "minutes": 10
+  },
+  {
+   "map": "H010",
+   "x": 200,
+   "y": 200,
+   "monster": "牛头魔",
+   "radius": 200,
+   "count": 10,
+   "minutes": 10
+  },
+  {
+   "map": "H010",
+   "x": 200,
+   "y": 200,
+   "monster": "牛魔斗士",
+   "radius": 200,
+   "count": 2,
+   "minutes": 10
+  },
+  {
+   "map": "H010",
+   "x": 200,
+   "y": 200,
+   "monster": "牛魔战士",
+   "radius": 200,
+   "count": 2,
+   "minutes": 10
+  },
+  {
+   "map": "H010",
+   "x": 200,
+   "y": 200,
+   "monster": "牛魔侍卫",
+   "radius": 200,
+   "count": 2,
+   "minutes": 10
+  },
+  {
+   "map": "H010",
+   "x": 200,
+   "y": 200,
+   "monster": "牛魔法师",
+   "radius": 200,
+   "count": 2,
+   "minutes": 10
+  },
+  {
+   "map": "H010",
+   "x": 200,
+   "y": 200,
+   "monster": "赤月恶魔",
+   "radius": 200,
+   "count": 1,
+   "minutes": 120
+  },
+  {
+   "map": "H010",
+   "x": 200,
+   "y": 200,
+   "monster": "牛魔王",
+   "radius": 200,
+   "count": 1,
+   "minutes": 120
+  },
+  {
+   "map": "H010",
+   "x": 200,
+   "y": 200,
+   "monster": "暗之牛魔王",
+   "radius": 200,
+   "count": 1,
+   "minutes": 90
+  },
+  {
+   "map": "H010",
+   "x": 200,
+   "y": 200,
+   "monster": "暗之双头金刚",
+   "radius": 200,
+   "count": 1,
+   "minutes": 90
+  }
+ ],
+ "minimaps": [
+  {
+   "map": "H001",
+   "image": 68
+  },
+  {
+   "map": "H002",
+   "image": 33
+  },
+  {
+   "map": "H004",
+   "image": 31
+  },
+  {
+   "map": "H005",
+   "image": 164
+  },
+  {
+   "map": "H006",
+   "image": 57
+  },
+  {
+   "map": "H007",
+   "image": 47
+  },
+  {
+   "map": "H008",
+   "image": 134
+  },
+  {
+   "map": "H009",
+   "image": 95
+  },
+  {
+   "map": "H010",
+   "image": 184
+  }
+ ]
+}

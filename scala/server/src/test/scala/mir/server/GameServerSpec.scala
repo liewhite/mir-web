@@ -242,7 +242,7 @@ object GameServerSpec extends ZIOSpecDefault:
       val spot  = BossSpot(MonsterName("牛魔王"), Cell(52, 51), 1, Vector.empty, Some(Millis(1_764_050_400_000L))) // 2025-11-25 14:00 北京时间
       val alive = spot.copy(alive = Vector(BossAlive(Cell(53, 50), 100, 200)))
       def status(s: BossSpot, now: Long) =
-        BossReport.status(catalog, id => Option.when(id == MapId("D2079"))(Vector(s)), Millis(now)).linesIterator.find(_.startsWith("牛魔王 ")).get
+        BossReport.status(catalog, id => Option.when(id == MapId("D2079"))(Vector(s)), Millis(now)).linesIterator.find(_.startsWith("牛魔王 牛魔寺庙大厅")).get // 幻境十层也刷牛魔王（#1317）
       assertTrue(
         before.linesIterator.contains("牛魔王 牛魔寺庙大厅(D2079) (52,51)：没人进过这张图，有人进图就刷"),
         status(spot, 1_764_050_400_000L - 30 * 60_000L) == "牛魔王 牛魔寺庙大厅(D2079) (52,51)：死了，11-25 14:00 刷（还有 30 分钟）",
