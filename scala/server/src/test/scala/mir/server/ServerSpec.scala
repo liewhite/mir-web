@@ -319,6 +319,22 @@ object ServerSpec extends ZIOSpecDefault:
         )
       }
     },
+    test("部署试启动用的检查（#1288）：smoke 注册、建角色、进图；check 查出解不开的存档；连不上时 smoke 失败") {
+      val cfg = tempConfig()
+      for
+        smoke <- withServer(cfg)(http => mir.server.tools.Smoke.run(http.uri("").toString))
+        good  <- ZIO.attempt(cli(cfg, "check")())
+        _     <- ZIO.attempt {
+                   val db = mir.server.store.Db.open(cfg.dbFile)
+                   try db.run(mir.server.store.Db.update(_, "UPDATE characters SET data = '{\"broken\":1}'")) finally db.close()
+                 }
+        bad   <- ZIO.attempt(cli(cfg, "check")())
+        down  <- ZIO.attempt(mir.server.tools.Smoke.run("http://127.0.0.1:1"))
+      yield assertTrue(
+        smoke.exists(_.contains("进了地图")), good == 0, bad == 1,
+        down.left.exists(_.startsWith("页面："))
+      )
+    },
     test("迁移旧单机存档") {
       val cfg  = tempConfig()
       val save = Files.createTempFile("save", ".json")

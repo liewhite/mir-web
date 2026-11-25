@@ -7,7 +7,7 @@ Wants=network-online.target
 User=mir176
 Group=mir176
 EnvironmentFile=/etc/mir176.env
-ExecStart=/opt/mir176/jre/bin/java -Xms128m -Xmx768m -Dfile.encoding=UTF-8 -jar /opt/mir176/app/mir176.jar serve
+ExecStart=/opt/mir176/jre/bin/java -Xms128m -Xmx768m -Dfile.encoding=UTF-8 -jar /opt/mir176/current/mir176.jar serve
 # 停服时游戏线程把在线角色存档，给足时间
 TimeoutStopSec=30
 # JVM 收到 SIGTERM 正常退出时退出码是 143，不算失败

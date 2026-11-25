@@ -52,6 +52,12 @@ final class Characters(db: Db):
   def save(id: CharId, data: CharacterData): Unit =
     db.run(Db.update(_, "UPDATE characters SET data = ?, updated_at = ? WHERE id = ?", data.toJson, System.currentTimeMillis(), id.value)): Unit
 
+  /** 检查全部没删的存档都解得开（#1288 部署试启动用）：Right(角色数)，或 Left(解不开的「编号 名字：原因」)。 */
+  def checkAll(): Either[List[String], Int] =
+    val all = db.run(Db.query(_, "SELECT id, name, data FROM characters WHERE deleted_at IS NULL")(rs => (rs.getLong(1), rs.getString(2), rs.getString(3))))
+    val bad = all.flatMap((id, name, json) => json.fromJson[CharacterData].left.toOption.map(e => s"$id $name：$e"))
+    Either.cond(bad.isEmpty, all.size, bad)
+
   /** 全部存档里（含已删的）最大的物品编号；没有物品为 0。 */
   def maxItemUid(): Long =
     db.run(Db.query(_, "SELECT data FROM characters")(_.getString(1)))

@@ -7,7 +7,7 @@ import mir.server.auth.SessionTokens
 import mir.server.game.{GameServer, Headcount, Maps}
 import mir.server.http.{BoardApi, HttpServer}
 import mir.server.store.*
-import mir.server.tools.Migration
+import mir.server.tools.{Migration, Smoke}
 import zio.{Exit, Runtime, Scope, Unsafe, ZEnvironment, ZIO, ZLayer}
 import zio.http.Server
 
@@ -60,6 +60,8 @@ object Boot:
  *   migrate <账号> <save.json> [角色名]  把旧单机版存档导成这个账号下的一个角色
  *   announce [内容]                    给正在跑的服务发全服公告（#1243）；不给内容就读标准输入
  *   bosses                             问正在跑的服务各 boss 现在活着还是几点刷（#1277）
+ *   check                              打开 DATA_DIR 的库（会升级表结构），检查全部角色存档都解得开（#1288，部署试启动对副本库用）
+ *   smoke <网址>                       冒烟检查：注册一次性账号、建角色、进图（#1288，只对试启动的副本跑，见 tools.Smoke）
  */
 object Main:
   def main(args: Array[String]): Unit =
@@ -81,8 +83,10 @@ object Main:
       val text = if words.isEmpty then readAll() else words.mkString(" ")
       report(AdminCmd.announce(text).flatMap(admin(cfg, _)))
     case List("bosses") => report(admin(cfg, AdminCmd.Bosses()))
+    case List("check")  => withStore(cfg)(_.chars.checkAll().map(n => s"$n 个角色存档都解得开").left.map(bad => s"${bad.size} 个角色存档解不开：\n${bad.mkString("\n")}"))
+    case List("smoke", url) => report(Smoke.run(url))
     case _ =>
-      java.lang.System.err.println("用法：serve | account add|passwd <账号> | account list | migrate <账号> <save.json> [角色名] | announce [内容] | bosses")
+      java.lang.System.err.println("用法：serve | account add|passwd <账号> | account list | migrate <账号> <save.json> [角色名] | announce [内容] | bosses | check | smoke <网址>")
       2
 
   /** 发给正在跑的服务一条管理指令。 */
