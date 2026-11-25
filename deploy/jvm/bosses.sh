@@ -5,7 +5,7 @@
 #   deploy/jvm/bosses.sh log      最近 2 天的 boss 死亡、刷出记录（谁拿的归属、最后一下是谁、下次刷新时刻）
 set -euo pipefail
 case "${1:-}" in
-  "")  ssh -o ConnectTimeout=10 kaojiang /opt/mir176/bin/mir176ctl bosses ;;
-  log) ssh -o ConnectTimeout=10 kaojiang "sudo journalctl -u mir176 --since -2d --no-pager -o short-iso | grep -E 'boss (刷出|死亡)' || echo '最近 2 天没有 boss 记录'" ;;
+  "")  ssh -o ConnectTimeout=10 "${MIR_DEPLOY_HOST:-kaojiang}" /opt/mir176/bin/mir176ctl bosses ;;
+  log) ssh -o ConnectTimeout=10 "${MIR_DEPLOY_HOST:-kaojiang}" "sudo journalctl -u mir176 --since -2d --no-pager -o short-iso | grep -E 'boss (刷出|死亡)' || echo '最近 2 天没有 boss 记录'" ;;
   *)   echo "用法：$0 [log]"; exit 2 ;;
 esac

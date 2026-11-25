@@ -8,4 +8,4 @@
 # 成功时打印「已发给 N 个连接，游戏里在线 M 人：角色名…」，服务没在跑时报错退出。
 set -euo pipefail
 [[ $# -ge 1 && -n "$*" ]] || { echo "用法：$0 \"公告内容\""; exit 2; }
-printf '%s' "$*" | ssh -o ConnectTimeout=10 kaojiang /opt/mir176/bin/mir176ctl announce
+printf '%s' "$*" | ssh -o ConnectTimeout=10 "${MIR_DEPLOY_HOST:-kaojiang}" /opt/mir176/bin/mir176ctl announce

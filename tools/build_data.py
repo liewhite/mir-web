@@ -1,6 +1,6 @@
 """把 Mir176 的 1.76 数据表编译成游戏用的 game.json（只留用得到的字段）。
 
-用法：python3 build_data.py   输出 site/mir176/assets/data/game.json
+用法：python3 build_data.py   输出 public/assets/data/game.json
 """
 from __future__ import annotations
 

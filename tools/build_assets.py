@@ -1,7 +1,7 @@
 """从本机客户端素材生成网页资源（只在本机，不外传）。
 
 用法：uv run --no-project --with numpy --with pillow python build_assets.py [--only maps|libs|ground]
-输出：site/mir176/assets/{img,ground,map}
+输出：public/assets/{img,ground,map}
 """
 from __future__ import annotations
 

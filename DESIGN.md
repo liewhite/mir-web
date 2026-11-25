@@ -1,5 +1,7 @@
 # 传奇 1.76 单机网页版（issue #1137）设计与进度
 
+> 怎么准备素材、本机跑、部署到服务器见 [README.md](README.md)。本文记设计、架构和进度；文中 `#数字` 是作者自己看板上的任务号。
+
 ## 来源
 - 素材：`raw/m176/`（suneveryday/Mir176Client v0.1.5 Resources，SHA256 0da278c1…，WZL 格式，国服）；备用 `raw/th2001/`（2001 欧服光盘，原始 WIL）。不运行任何 exe。
 - 数据：`ref/Mir176/content/catalog.json`（monsters/items/drops/skills/spawns/merchants/routes/maps/guards/minimaps）、`level-experience.json`。
@@ -10,17 +12,17 @@
 
 ## 部署（用户 11-23 定）
 - 不放 muliao 页面（sandbox 无存储），做成独立 B/S：小服务端（静态+素材长缓存、登录、存档读写）。
-- 部署到 kaojiang 服务器（(服务器地址)，k3s + Traefik + cert-manager letsencrypt，admin@kaojiang，ssh 证书要用户批），域名 mir.leeliewhite.com（DNS 由 muliao 加）。
+- 部署到 kaojiang 服务器（k3s + Traefik + cert-manager letsencrypt，admin@kaojiang，ssh 证书要用户批），域名 mir.leeliewhite.com（DNS 由 muliao 加）。
 - 公网域名 → 必须登录，素材和存档都要登录后才能取（登录画面本身用的几张图和开门声除外）；11-24 起完全开放自助注册（用户定，不加邀请码，#1197），拿到网址的人都能注册。
 - kaojiang 服务器同时是 muliao 公网入口：不动 Traefik 本身，只加 Ingress；改网络前先问用户。
 
 ## 架构（领域划分）
-- `tools/`（Python，离线）：`wemade.py` 解析 WIL/WZL/MAP；`build_assets.py` 产出 `site/mir176/assets/`：
+- `tools/`（Python，离线）：`wemade.py` 解析 WIL/WZL/MAP；`build_assets.py` 产出 `public/assets/`：
   - `img/<lib>/<chunk>.png|json`：按帧号分块的图集，json 每帧 `[ax,ay,w,h,ox,oy]` 或 0。
   - `ground/<map>/<cx>_<cy>.jpg`：地面层（Tiles+SmTiles）预渲染大块。
   - `map/<map>.bin`：格子数据（可走、前景图号、图库、动画、门、光）。
   - `data/*.json`：从 catalog 编译的游戏数据。
-- `game/src`（TypeScript，esbuild 打包成 `site/mir176/app.js`）：
+- `game/src`（TypeScript，esbuild 打包成 `public/app.js`）：
   - `assets/`：图集按需加载、帧查询。
   - `world/`：纯逻辑模拟（实体、移动、战斗公式、AI、刷怪、掉落、技能、升级），不碰渲染，可单测。
   - `render/`：地图/角色/特效/飘字 绘制（Canvas2D）。
