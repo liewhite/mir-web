@@ -817,7 +817,7 @@ object WorldSpec extends ZIOSpecDefault:
       test("自动捡物只捡设置里勾了的种类（#1178），总开关关了什么都不捡") {
         val s = sim()
         val p = join(s.w, "甲", Cell(30, 30))
-        p.settings = p.settings.copy(autoPickup = true, pickupKinds = Set(PickupKind.Equip))
+        p.settings = p.settings.copy(autoPickup = true, pickupKinds = Set(PickupKind.Equip), pickupTier = PickupFloor.All)
         s.w.dropAt(Cell(32, 30), Loot.Item(s.w.newItem(ItemName("铁剑")).get))
         s.w.dropAt(Cell(28, 30), Loot.Item(s.w.newItem(ItemName("金创药(小量)")).get))
         s.w.dropAt(Cell(30, 33), Loot.Coins(Gold(77)))
@@ -831,6 +831,36 @@ object WorldSpec extends ZIOSpecDefault:
         s.run(5000)
         val gotGold = p.gold == g0 + Gold(77) && s.w.groundItems.map(_.loot).toList.collect { case Loot.Item(it) => it.name } == List(ItemName("金创药(小量)"))
         assertTrue(onlySword, masterOff, gotGold, s.consistent(p))
+      },
+      test("自动捡装备按档位：只捡该档及以上，药品不受影响；「全部」都捡（#1301）") {
+        val s = sim()
+        // 法师：铁剑、炼狱没有魔法，不算比身上强，只看档位
+        val p = join(s.w, "甲", Cell(30, 30), Job.Wizard)
+        p.settings = p.settings.copy(autoPickup = true, pickupKinds = PickupKind.values.toSet, pickupTier = PickupFloor.Zuma)
+        def drop(n: String, at: Cell) = s.w.dropAt(at, Loot.Item(s.w.newItem(ItemName(n)).get))
+        drop("铁剑", Cell(32, 30))
+        drop("炼狱", Cell(28, 30))
+        drop("裁决之杖", Cell(30, 32))
+        drop("屠龙", Cell(30, 28))
+        drop("金创药(小量)", Cell(31, 31))
+        s.run(8000)
+        // 药捡起来进快捷栏
+        def has(n: String) = (p.bag.iterator ++ p.belt.iterator).flatten.exists(_.name == ItemName(n))
+        val zuma = List(has("裁决之杖"), has("屠龙"), has("金创药(小量)"), !has("铁剑"), !has("炼狱"))
+        s.cmd(p, GameCmd.UpdateSettings(p.settings.copy(pickupTier = PickupFloor.All)))
+        s.run(8000)
+        val all = List(has("铁剑"), has("炼狱"), s.w.groundItems.isEmpty)
+        assertTrue(zuma == List.fill(5)(true), all == List.fill(3)(true), s.consistent(p))
+      },
+      test("比身上强的装备不管档位都自动捡（#1301，用户定）") {
+        val s = sim()
+        val p = join(s.w, "甲", Cell(30, 30)) // 战士，拿着新手木剑
+        p.settings = p.settings.copy(autoPickup = true, pickupKinds = PickupKind.values.toSet, pickupTier = PickupFloor.Redmoon)
+        s.w.dropAt(Cell(32, 30), Loot.Item(s.w.newItem(ItemName("铁剑")).get))
+        s.w.dropAt(Cell(28, 30), Loot.Item(s.w.newItem(ItemName("魔法长袍(男)")).get))
+        s.run(8000)
+        val names = p.bag.flatten.map(_.name.value).toSet
+        assertTrue(names("铁剑"), !names("魔法长袍(男)"), s.w.groundItems.size == 1, s.consistent(p))
       },
       test("自动捡物走到格子上只捡勾了的种类，同一格叠着的装备留在地上；手动捡取全捡（#1235）") {
         val s = sim()

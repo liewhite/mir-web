@@ -2,7 +2,7 @@ package mir.world
 
 import mir.core.*
 import mir.model.PickupKind
-import mir.rules.{ItemKind, Skill, SpellRules}
+import mir.rules.{GearTiers, ItemKind, Skill, SpellRules, Upgrade}
 import mir.terrain.{MeleeReach, Path, Reach}
 
 /**
@@ -77,13 +77,20 @@ object AutoPlay:
       worth(w, p, g.loot) && PlayerOps.mayPick(w, p, g) && p.cell.chebyshev(g.cell) <= radius && w.occupant(g.cell).forall(_.id == p.id)
     }.minByOption(g => p.cell.chebyshev(g.cell))
 
-  /** 自动捡物要不要这件：设置里勾了这一类，且包裹放得下。 */
+  /**
+   * 自动捡物要不要这件：设置里勾了这一类，且包裹放得下。装备还要过档位门槛（#1301），
+   * 但比身上同部位那件强的（地上名字粉紫的那些，Upgrade.gain）不管什么档都捡（用户 11-25 定）。
+   */
   private def worth(w: World, p: Player, loot: Loot): Boolean =
-    val wanted = p.settings.pickupKinds
+    val s = p.settings
     loot match
-      case Loot.Coins(_) => wanted(PickupKind.Gold)
+      case Loot.Coins(_) => s.pickupKinds(PickupKind.Gold)
       case Loot.Item(it) =>
-        w.catalog.item(it.name).exists(d => wanted(ItemKind.pickupKind(d)) && PlayerOps.fits(p, d).isRight)
+        w.catalog.item(it.name).exists { d =>
+          val kind = ItemKind.pickupKind(d)
+          def upgrade = Upgrade.gain(Upgrade.Wearer(p.job, p.sex, p.worn.toMap), d, it.bonus, w.catalog.item).isDefined
+          s.pickupKinds(kind) && (kind != PickupKind.Equip || GearTiers.passes(d.name, s.pickupTier) || upgrade) && PlayerOps.fits(p, d).isRight
+        }
 
   /** 自动召唤、自动魔法盾隔多久试一次（放不出来——没符、没蓝——也不刷提示，过会儿再试） */
   val AutoCastRetryMs = 3000

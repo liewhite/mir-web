@@ -3,6 +3,7 @@ package mir.model
 import mir.core.*
 import mir.data.ItemDef
 import zio.json.*
+import zio.json.ast.Json
 
 /**
  * 一件具体的物品。dura：当前持久（药品、卷轴为 1；符和毒是剩余次数×100）。
@@ -64,6 +65,12 @@ final case class CharSettings(
     autoPickup: Boolean = true,
     /** 自动捡哪几类（#1178；存档里没有这个字段时全捡） */
     pickupKinds: Set[PickupKind] = PickupKind.values.toSet,
+    /**
+     * 自动捡装备的最低档位（#1301，设置里的滑条；用户定默认赤月）：只捡这一档及以上的装备（档位见 mir.rules.GearTiers），
+     * 别的种类不受影响。也是「出现好装备」聊天提示的门槛（「全部」时按沃玛提示）。
+     * 存档里没有这个字段的是 #1301 之前的旧存档，读的时候一次性升级，见 CharSettings.legacy。
+     */
+    pickupTier: PickupFloor = PickupFloor.Redmoon,
     /** 血量低于这个百分比自动喝红（0 关闭） */
     autoHpPercent: Int = 40,
     /** 蓝量低于这个百分比自动喝蓝（0 关闭） */
@@ -87,7 +94,23 @@ final case class CharSettings(
 )
 
 object CharSettings:
-  given JsonCodec[CharSettings] = DeriveJsonCodec.gen
+  private val derived: JsonCodec[CharSettings] = DeriveJsonCodec.gen
+
+  /**
+   * #1301 之前的旧存档（没有 pickupTier 字段）读进来时的一次性升级（用户 11-25 定：更新后所有玩家默认打开自动捡装备、
+   * 档位拉到赤月，玩家自己能关）：打开自动捡总开关、勾上「装备」，档位取默认的赤月。存回去就带上字段，不会再升。
+   */
+  def legacy(s: CharSettings): CharSettings =
+    s.copy(autoPickup = true, pickupKinds = s.pickupKinds + PickupKind.Equip, pickupTier = PickupFloor.Redmoon)
+
+  private val TierField = "pickupTier"
+
+  given JsonCodec[CharSettings] = JsonCodec(
+    derived.encoder,
+    JsonDecoder[Json.Obj].mapOrFail { o =>
+      derived.decoder.fromJsonAST(o).map(s => if o.contains(TierField) then s else legacy(s))
+    }
+  )
 
 /**
  * 角色的社交偏好（#1220 起）：归服务端的 mir.social 管（跨地图），进存档但世界不碰它——
@@ -119,3 +142,27 @@ enum PickupKind(val label: String):
 
 object PickupKind:
   given JsonCodec[PickupKind] = EnumCodec.byName(values, _.toString)
+
+/**
+ * 装备档位（#1301）：玩家口中的「沃玛装 / 祖玛装 / 赤月装」，按出处从低到高（声明顺序就是高低）。
+ * 哪件归哪档见 mir.rules.GearTiers。名字进存档（CharSettings.pickupTier），改名要兼顾旧存档。
+ */
+enum GearTier(val label: String):
+  case Woma    extends GearTier("沃玛")
+  case Zuma    extends GearTier("祖玛")
+  case Redmoon extends GearTier("赤月")
+
+  def atLeast(floor: GearTier): Boolean = ordinal >= floor.ordinal
+
+/**
+ * 自动捡装备滑条的一挡（#1301）：最左「全部」，往右沃玛、祖玛、赤月（该档及以上）。
+ * 名字进存档（CharSettings.pickupTier），改名要兼顾旧存档。
+ */
+enum PickupFloor(val label: String, val tier: Option[GearTier]):
+  case All     extends PickupFloor("全部", None)
+  case Woma    extends PickupFloor(GearTier.Woma.label, Some(GearTier.Woma))
+  case Zuma    extends PickupFloor(GearTier.Zuma.label, Some(GearTier.Zuma))
+  case Redmoon extends PickupFloor(GearTier.Redmoon.label, Some(GearTier.Redmoon))
+
+object PickupFloor:
+  given JsonCodec[PickupFloor] = EnumCodec.byName(values, _.toString)

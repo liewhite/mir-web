@@ -174,6 +174,13 @@ object ProtocolSpec extends ZIOSpecDefault:
       val old = """{"autoPickup":true,"pickupValuableOnly":true,"autoHpPercent":55}""".fromJson[CharSettings]
       assertTrue(old == Right(CharSettings(autoHpPercent = 55)), old.exists(_.pickupKinds == PickupKind.values.toSet))
     },
+    test("#1301 前的旧设置（没有 pickupTier）一次性升级：打开自动捡、勾上装备、档位赤月；新存档原样读回") {
+      val old      = """{"autoPickup":false,"pickupKinds":["Gold","Potion"],"autoHpPercent":55}""".fromJson[CharSettings]
+      val upgraded = old.exists(s => s.autoPickup && s.pickupKinds == Set(PickupKind.Gold, PickupKind.Potion, PickupKind.Equip) &&
+        s.pickupTier == PickupFloor.Redmoon && s.autoHpPercent == 55)
+      val mine = CharSettings(autoPickup = false, pickupKinds = Set(PickupKind.Gold), pickupTier = PickupFloor.All)
+      assertTrue(upgraded, mine.toJson.fromJson[CharSettings] == Right(mine), mine.toJson.contains("\"pickupTier\":\"All\""))
+    },
     test("聊天框：「!!」开头是队伍聊天，「!」开头仍交给世界喊话（#1220）") {
       assertTrue(
         Speech.command("!!  集合") == SocialCmd.GroupSay("集合"),

@@ -21,7 +21,14 @@ enum SettingRow(val label: String):
   case GamePercent(text: String, get: CharSettings => Int, set: (CharSettings, Int) => CharSettings) extends SettingRow(text)
   /** 一行里几个小勾选（自动捡哪几类） */
   case GameChecks(text: String, boxes: List[SettingCheck]) extends SettingRow(text)
+  /** 自动捡装备的档位滑条（#1301）：「全部」加各档，只在开了自动捡、勾了「装备」时显示 */
+  case GameTier(text: String) extends SettingRow(text)
   case LocalToggle(text: String, get: ViewOptions => Boolean, set: (ViewOptions, Boolean) => ViewOptions) extends SettingRow(text)
+
+  /** 这一行现在显不显示（按角色设置）：档位滑条跟着「自动捡」和「装备」两个勾选，其余常显 */
+  def shown(s: CharSettings): Boolean = this match
+    case GameTier(_) => s.autoPickup && s.pickupKinds(PickupKind.Equip)
+    case _           => true
 
 /** 一个小勾选：叫什么、怎么读、怎么改。 */
 final case class SettingCheck(label: String, get: CharSettings => Boolean, set: (CharSettings, Boolean) => CharSettings)
@@ -37,6 +44,7 @@ object SettingRow:
       GameToggle("自动捡附近的物品（总开关）", _.autoPickup, (s, v) => s.copy(autoPickup = v)),
       GameChecks("捡：", PickupKind.values.toList.map(k =>
         SettingCheck(k.label, _.pickupKinds(k), (s, v) => s.copy(pickupKinds = if v then s.pickupKinds + k else s.pickupKinds - k)))),
+      GameTier("装备只捡："),
       GamePercent("血量低于多少自动喝红药（%，0 关闭）", _.autoHpPercent, (s, v) => s.copy(autoHpPercent = v)),
       GamePercent("蓝量低于多少自动喝蓝药（%，0 关闭）", _.autoMpPercent, (s, v) => s.copy(autoMpPercent = v)),
       GameToggle("点一下怪就一直打到死", _.stickyAttack, (s, v) => s.copy(stickyAttack = v)),

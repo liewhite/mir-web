@@ -1,5 +1,6 @@
 package mir.client.ui
 
+import mir.model.PickupFloor
 import mir.protocol.GameCmd
 
 /**
@@ -8,6 +9,9 @@ import mir.protocol.GameCmd
  */
 final class SettingsWindow(ui: ClassicUi) extends ToggleWindow:
   import ui.g
+
+  /** 档位滑条上相邻两挡隔多宽 */
+  private val TierGap = 60.0
 
   /** 当前分页（通用 / 战士 / 法师 / 道士） */
   private var tab: SettingTab = SettingTab.General
@@ -28,7 +32,8 @@ final class SettingsWindow(ui: ClassicUi) extends ToggleWindow:
     }
     val rowH = 19.0
     val mid  = (rowH - 14) / 2
-    SettingRow.tabs.collectFirst { case (t, rows) if t == tab => rows }.getOrElse(Nil).zipWithIndex.foreach { (row, i) =>
+    val rows = SettingRow.tabs.collectFirst { case (t, rows) if t == tab => rows }.getOrElse(Nil).filter(_.shown(m.view.settings))
+    rows.zipWithIndex.foreach { (row, i) =>
       val ly = o.y + 40 + i * rowH
       /** 画一个勾选框加文字，点整段切换；返回占了多宽。 */
       def checkAt(x: Double, label: String, on: Boolean, width: Double)(flip: => Unit): Double =
@@ -54,6 +59,28 @@ final class SettingsWindow(ui: ClassicUi) extends ToggleWindow:
           boxes.foldLeft(x0 + g.width(row.label) + 4) { (x, b) =>
             x + checkAt(x, b.label, b.get(s), 0)(ui.send(GameCmd.UpdateSettings(b.set(s, !b.get(s)))))
           }: Unit
+        case SettingRow.GameTier(_) =>
+          // 档位滑条（#1301）：一条轨道上几个挡，点哪挡滑块就到哪；选中的挡往右亮起来（该档及以上）
+          val s     = m.view.settings
+          val x0    = o.x + 52
+          val tx    = x0 + g.width(row.label) + 12
+          val cy    = ly + rowH / 2
+          val stops = PickupFloor.values.toList
+          val at    = stops.indexOf(s.pickupTier).max(0)
+          def sx(i: Int): Double = tx + i * TierGap
+          g.text(row.label, x0, ly + mid + 1)
+          // 轨道画在相邻两挡的文字之间（不压字）
+          (0 until stops.size - 1).foreach { i =>
+            val x1 = sx(i) + 9 + g.width(stops(i).label) + 3
+            g.rect(x1, cy - 1, sx(i + 1) - 7 - x1, 3, if i >= at then "#ffb040" else "#5a4a30")
+          }
+          stops.zipWithIndex.foreach { (floor, i) =>
+            val on = i >= at
+            g.circle(sx(i), cy, if i == at then 6 else 3, if i == at then "#ffe08a" else if on then "#ffb040" else "#5a4a30", Some("#000"))
+            g.text(floor.label, sx(i) + 9, ly + mid + 1, if on then "#ffe08a" else "#909090", bold = i == at)
+            ui.hit(Rect(sx(i) - 8, ly, TierGap, rowH - 1))(ui.send(GameCmd.UpdateSettings(s.copy(pickupTier = floor))))
+          }
+          g.text(if at == 0 then "（什么装备都捡）" else "及以上（比身上强的照捡）", sx(stops.size - 1) + TierGap - 12, ly + mid + 1, "#c0c0c0")
         case SettingRow.LocalToggle(_, get, set) =>
           val o2 = ui.options
           check(get(o2))(ui.env.saveOptions(set(o2, !get(o2))))

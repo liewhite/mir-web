@@ -6,7 +6,7 @@ import mir.core.*
 import mir.data.Catalog
 import mir.model.{ActKind, Affliction, Aura, BodyTint, Cover, FieldKind, Mood}
 import mir.protocol.*
-import mir.rules.{ItemKind, PkStanding}
+import mir.rules.{GearTiers, ItemKind, PkStanding}
 import org.scalajs.dom
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits.*
 
@@ -356,6 +356,7 @@ final class Renderer(
           val (name, color) = g.thing match
             case GroundThing.Coins(n) => (s"金币 ${n.value}", "#ffe08a")
             case GroundThing.Item(n, _) if s.upgrades.contains(g.id) => (n.value, UpgradeItemColor)
+            case GroundThing.Item(n, _) if GearTiers.of(n).isDefined => (n.value, TierItemColor)
             case GroundThing.Item(n, Some(_)) => (n.value, SpecialItemColor)
             case GroundThing.Item(n, None) =>
               val equip = catalog.item(n).map(ItemKind.of).exists(_.isInstanceOf[ItemKind.Equip])
@@ -417,6 +418,8 @@ object Renderer:
   val SpecialItemColor = "#3cf0ff"
   /** 比身上同部位那件强的装备（#1200）：粉紫色；既是极品又是提升时用它（更值得捡） */
   val UpgradeItemColor = "#ff7cf5"
+  /** 沃玛 / 祖玛 / 赤月装（#1301，mir.rules.GearTiers，不分职业）：橙色；比身上强的仍用粉紫 */
+  val TierItemColor = "#ff9a2e"
 
   /** 玩家名字颜色按 PK 身份（#1225，原版 btPKFlagNameColor $2F 灰、btPKLevel1NameColor $FB 黄、btPKLevel2NameColor $F9 红） */
   def pkColor(s: PkStanding): String = s match

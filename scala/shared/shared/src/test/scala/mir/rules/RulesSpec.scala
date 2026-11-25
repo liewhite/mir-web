@@ -11,6 +11,20 @@ object RulesSpec extends ZIOSpecDefault:
     Catalog.decode(TestFiles.gameJson).fold(e => throw new AssertionError(e), identity)
 
   def spec = suite("规则")(
+    suite("装备档位（#1301）")(
+      test("名单里的名字都是数据表里的装备；档位门槛、提示门槛") {
+        val unknown = GearTiers.all.keys.filterNot(n => catalog.item(n).exists(d => ItemKind.pickupKind(d) == PickupKind.Equip))
+        val s       = CharSettings(pickupTier = PickupFloor.All)
+        assertTrue(
+          unknown.isEmpty,
+          GearTiers.of(ItemName("血饮")).contains(GearTier.Zuma), GearTiers.of(ItemName("逍遥扇")).contains(GearTier.Redmoon),
+          GearTiers.passes(ItemName("铁剑"), PickupFloor.All), !GearTiers.passes(ItemName("铁剑"), PickupFloor.Woma),
+          GearTiers.passes(ItemName("屠龙"), PickupFloor.Zuma), !GearTiers.passes(ItemName("炼狱"), PickupFloor.Zuma),
+          GearTiers.worthAnnouncing(ItemName("炼狱"), s).contains(GearTier.Woma), GearTiers.worthAnnouncing(ItemName("铁剑"), s).isEmpty,
+          GearTiers.worthAnnouncing(ItemName("裁决之杖"), s.copy(pickupTier = PickupFloor.Redmoon)).isEmpty
+        )
+      }
+    ),
     suite("方向与格子")(
       test("方向编号同原版：0 上顺时针，相反方向、取模") {
         assertTrue(

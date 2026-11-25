@@ -618,6 +618,9 @@ object ClientSpec extends ZIOSpecDefault:
         case SettingRow.GamePercent(_, get, set) => get(set(s0, 55)) == 55
         case SettingRow.GameChecks(_, boxes)     => boxes.forall(b => get1(b, s0))
         case SettingRow.LocalToggle(_, get, set) => get(set(o0, !get(o0))) != get(o0)
+        // 档位滑条（#1301）：开着自动捡、勾了装备才显示，关了总开关或去掉装备就藏起来
+        case row @ SettingRow.GameTier(_) =>
+          row.shown(s0) && !row.shown(s0.copy(autoPickup = false)) && !row.shown(s0.copy(pickupKinds = Set(PickupKind.Gold)))
       }
       assertTrue(
         flipped.forall(identity),
@@ -659,6 +662,23 @@ object ClientSpec extends ZIOSpecDefault:
         run(Freshness.Current, playing) == (0, true), run(Freshness.Reload, playing) == (0, false),
         run(Freshness.Stale, playing) == (0, true), run(Freshness.Stuck, playing) == (0, true)
       )
+    },
+    test("地上出现达到档位的装备在聊天栏提示一次（#1301）：不分职业，「全部」按沃玛，进图后重新算") {
+      var notes = Vector.empty[String]
+      val c = GameClient(catalog, ClientEnv(() => 0.0, _ => Future.never, (_, _, _) => ()))
+      c.ui = new UiEvents:
+        export UiEvents.Ignore.{notice as _, *}
+        def notice(text: String, tone: Tone): Unit = notes :+= text
+      def got(m: ServerMsg) = c.receive(LinkEvent.Received(m))
+      def drop(id: Int, n: String) = got(ServerMsg.GroundAppear(GroundView(GroundId(id), Cell(12, 34), GroundThing.Item(ItemName(n)))))
+      got(ServerMsg.EnterMap(ActorId(1), MapId("0"), Cell(10, 10), Dir.Down, Millis(0)))
+      got(ServerMsg.Settings(CharSettings(pickupTier = PickupFloor.All)))
+      drop(1, "铁剑"); drop(2, "炼狱"); drop(2, "炼狱")
+      got(ServerMsg.Settings(CharSettings(pickupTier = PickupFloor.Zuma)))
+      drop(3, "炼狱"); drop(4, "裁决之杖")
+      got(ServerMsg.EnterMap(ActorId(1), MapId("0"), Cell(10, 10), Dir.Down, Millis(0)))
+      drop(4, "裁决之杖")
+      assertTrue(notes == Vector("[掉落] 炼狱（沃玛）在 (12,34)", "[掉落] 裁决之杖（祖玛）在 (12,34)", "[掉落] 裁决之杖（祖玛）在 (12,34)"))
     },
     test("能接着玩的旧页面（#1289）：重连回原处不刷新，下一次进图（换图、回城、复活）先告诉服务端再刷新，只刷一次") {
       var refreshed = Vector.empty[String]

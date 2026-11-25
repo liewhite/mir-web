@@ -5,8 +5,8 @@ import mir.client.net.{LinkEvent, ServerClock, Transport}
 import mir.client.render.*
 import mir.core.*
 import mir.data.Catalog
-import mir.model.{ActKind, ItemBonus}
-import mir.rules.Upgrade
+import mir.model.{ActKind, GearTier, ItemBonus}
+import mir.rules.{GearTiers, Upgrade}
 import mir.protocol.*
 import mir.view.ViewState
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits.*
@@ -48,6 +48,8 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
   private var playing = Option.empty[CharId]
   /** 页面旧了、等机会刷新到哪一步了（#1289） */
   private var update: PendingUpdate = PendingUpdate.Idle
+  /** 这张图上已在聊天栏提示过的好装备（#1301，同一件只提示一次；地上物品编号每张图各自排，进图清空） */
+  private var announced = Set.empty[GroundId]
 
   def connect(t: Transport): Unit = transport = Some(t)
 
@@ -105,6 +107,7 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
         motion = SelfMotion()
         fx = fx.cleared
         locked = None
+        announced = Set.empty
         if !map.exists(_.id == mapId) then
           map = None
           env.loadMap(mapId).foreach { md =>
@@ -117,6 +120,7 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
       case ServerMsg.MoveDenied(_, _)       => motion = motion.denied(serverNow)
       case ServerMsg.Disappear(id)          => if locked.contains(id) then locked = None
       case ServerMsg.Effect(e)              => fx = fx.effect(e)
+      case ServerMsg.GroundAppear(g)        => spotted(g)
       case ServerMsg.Sound(id, at)          => env.sound(id, at, view.self.map(_.cell))
       case ServerMsg.Damage(t, n, _)        => fx = fx.float(Floater(t, s"-$n", if view.me.contains(t) then FloatTone.HurtMe else FloatTone.HurtOther, local))
       case ServerMsg.Miss(t)                => fx = fx.float(Floater(t, "MISS", FloatTone.Miss, local))
@@ -163,6 +167,18 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
       case _                                => ()
     // 死了就不再本地先走
     if before.self.exists(!_.dead) && view.self.exists(_.dead) then motion = SelfMotion()
+
+  /**
+   * 视野里出现了达到设置档位的装备（不分职业、不分谁打的，#1301）：聊天栏提示一句，同一件只提示一次。
+   * 门槛是自动捡的档位滑条（不管开没开自动捡），「全部」时按沃玛。
+   */
+  private def spotted(g: GroundView): Unit = g.thing match
+    case GroundThing.Item(n, _) if !announced(g.id) =>
+      GearTiers.worthAnnouncing(n, view.settings).foreach { tier =>
+        announced += g.id
+        ui.notice(GameClient.dropHint(n, tier, g.cell), Tone.Item)
+      }
+    case _ => ()
 
   /** 等到切画面就刷新：刷成服务端哪个提交 */
   private def refreshAtCut: Option[String] = update match
@@ -310,3 +326,6 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
 
 object GameClient:
   val RecentKeep = 20
+
+  /** 地上出现好装备的聊天栏提示（#1301），如「[掉落] 裁决之杖（祖玛）在 (123,45)」 */
+  def dropHint(name: ItemName, tier: GearTier, at: Cell): String = s"[掉落] ${name.value}（${tier.label}）在 (${at.x},${at.y})"
