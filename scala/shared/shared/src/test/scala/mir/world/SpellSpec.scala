@@ -433,7 +433,7 @@ object SpellSpec extends ZIOSpecDefault:
         )
       }
     ),
-    test("道术加成宝宝（#1209、#1258）：道术上限每点 +1.8%，不封顶，乘血、攻、防、魔防；技能等级只乘血和攻") {
+    test("骷髅（#1209、#1258、#1334）：道术每点血攻 +1.8%、防魔防 +0.9%，不封顶；攻击底数 ×0.75；技能等级只乘血和攻") {
       val md = catalog.monster(SpellRules.SkeletonPet).get
       def body(sc: Int) = SpellRules.summonedBody(md, 3, sc)
       def x(v: Int, k: Double) = math.floor(v * k + 0.5).toInt
@@ -441,41 +441,45 @@ object SpellSpec extends ZIOSpecDefault:
       val lv3 = g.levelBoost(3)
       assertTrue(
         lv3 == 2.05,
-        g.scBoost(0) == 1.0,
-        g.scBoost(20) == 1.36,
-        g.scBoost(30) == 1.54,
-        g.scBoost(50) == 1.9,
-        g.scBoost(-5) == 1.0,
-        g.scPctText == "1.8",
-        g.baseText.isEmpty,
-        body(0) == PetBody(x(md.hp, lv3), Span(x(md.dc.lo, lv3), x(md.dc.hi, lv3)), md.ac, md.mac),
+        g.attack.scBoost(0) == 1.0,
+        g.attack.scBoost(20) == 1.36,
+        g.attack.scBoost(50) == 1.9,
+        g.attack.scBoost(-5) == 1.0,
+        g.guard.scBoost(20) == 1.18,
+        g.hp.scPctText == "1.8",
+        g.guard.scPctText == "0.9",
+        g.hp.baseText.isEmpty,
+        g.attack.baseText.contains("0.75"),
+        body(0) == PetBody(x(md.hp, lv3), Span(x(md.dc.lo, 0.75 * lv3), x(md.dc.hi, 0.75 * lv3)), md.ac, md.mac),
         body(20).hp == x(md.hp, lv3 * 1.36),
-        body(20).dc == Span(x(md.dc.lo, lv3 * 1.36), x(md.dc.hi, lv3 * 1.36)),
-        body(20).ac == Span(x(md.ac.lo, 1.36), x(md.ac.hi, 1.36)),
-        body(20).mac == Span(x(md.mac.lo, 1.36), x(md.mac.hi, 1.36)),
+        body(20).dc == Span(x(md.dc.lo, 0.75 * (lv3 * 1.36)), x(md.dc.hi, 0.75 * (lv3 * 1.36))),
+        body(20).ac == Span(x(md.ac.lo, 1.18), x(md.ac.hi, 1.18)),
+        body(20).mac == Span(x(md.mac.lo, 1.18), x(md.mac.hi, 1.18)),
         body(60).hp > body(40).hp // 不封顶
       )
     },
-    test("神兽削弱（#1285、#1245）：攻、防、魔防底数 ×0.85，技能每级 +30%，道术每点血 +1.6%、攻防 +1.2%；血不打折，两种形态同一份") {
+    test("神兽（#1285、#1245、#1334）：技能每级 +30%；道术每点血 +1.6%、攻 +1.2%、防魔防 +0.6%；攻底数 ×0.65、防魔防 ×0.85，两种形态同一份") {
       val g = SpellRules.growthOf(SpellRules.ShinsuPet)
       val big = catalog.monster(SpellRules.ShinsuWarrior).get
       def x(v: Int, k: Double) = math.floor(v * k + 0.5).toInt
       val b = SpellRules.summonedBody(big, 3, 50)
-      val hpSc = 1.8 // 1 + 50×1.6%
-      val sc   = 1.6 // 1 + 50×1.2%
-      val lv   = 1.9 // 1 + 3×30%
+      val hpSc  = 1.8 // 1 + 50×1.6%
+      val atkSc = 1.6 // 1 + 50×1.2%
+      val defSc = 1.3 // 1 + 50×0.6%
+      val lv    = 1.9 // 1 + 3×30%
       assertTrue(
         SpellRules.growthOf(SpellRules.ShinsuWarrior) == g,
-        g.hpScBoost(50) == hpSc,
-        g.scBoost(50) == sc,
+        g.hp.scBoost(50) == hpSc,
+        g.attack.scBoost(50) == atkSc,
+        g.guard.scBoost(50) == defSc,
         g.levelBoost(3) == lv,
-        g.hpScPctText == "1.6",
-        g.scPctText == "1.2",
-        g.baseText.contains("0.85"),
+        g.guard.scPctText == "0.6",
+        g.attack.baseText.contains("0.65"),
         b.hp == x(big.hp, lv * hpSc),
-        b.dc == Span(x(big.dc.lo, 0.85 * (lv * sc)), x(big.dc.hi, 0.85 * (lv * sc))),
-        b.ac == Span(x(big.ac.lo, 0.85 * sc), x(big.ac.hi, 0.85 * sc)),
-        b.mac == Span(x(big.mac.lo, 0.85 * sc), x(big.mac.hi, 0.85 * sc))
+        b.dc == Span(x(big.dc.lo, 0.65 * (lv * atkSc)), x(big.dc.hi, 0.65 * (lv * atkSc))),
+        b.ac == Span(x(big.ac.lo, 0.85 * defSc), x(big.ac.hi, 0.85 * defSc)),
+        b.mac == Span(x(big.mac.lo, 0.85 * defSc), x(big.mac.hi, 0.85 * defSc)),
+        b.ac.hi == 40 // 赤月档道士（道术上限约 50）的大神兽防御 49 → 40
       )
     },
     test("召唤时按主人道术上限定下宝宝身板，之后道术变了也不变（#1209）") {

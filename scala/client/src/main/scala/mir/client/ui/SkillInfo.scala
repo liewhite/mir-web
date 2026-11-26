@@ -4,7 +4,7 @@ import mir.core.{MonsterName, SkillId}
 import mir.data.{Catalog, SkillDef}
 import mir.model.{LearnedSkill, PoisonKind}
 import mir.protocol.SelfStats
-import mir.rules.{Odds, Rates, Rng, Skill, SkillUse, SpellRules, SummonGrowth, SwordRules}
+import mir.rules.{Odds, Rates, Rng, Skill, SkillUse, SpellRules, StatGrowth, SummonGrowth, SwordRules}
 
 import scala.collection.mutable
 
@@ -148,18 +148,13 @@ object SkillInfo:
 
     /** 身板怎么从基础值算出来；技能等级的血、攻击加成在各级对照里（手机上说明框放不了太多行，不重复写）。 */
     private def petRule(g: SummonGrowth): List[Line] =
-      List(
-        note("道术加成（召唤时定下，之后换装不变）："),
-      ) ++ (
-        if g.hpScPermille == g.scPermille then List(
-          note(s"　每点道术上限 +${g.scPctText}%，不封顶"),
-          note(s"　你现在 ${sc.hi}：血、攻击、防御、魔防 ×${g.scBoost(sc.hi)}")
-        )
-        else List(
-          note(s"　每点道术上限：血 +${g.hpScPctText}%，攻击、防御、魔防 +${g.scPctText}%，不封顶"),
-          note(s"　你现在 ${sc.hi}：血 ×${g.hpScBoost(sc.hi)}，攻击、防御、魔防 ×${g.scBoost(sc.hi)}")
-        )
-      ) ++ g.baseText.map(k => note(s"本服攻击、防御、魔防先 ×$k")).toList
+      note(s"道术加成（召唤时定下，换装不变，不封顶；你道术上限 ${sc.hi}）：") ::
+        List("血" -> g.hp, "攻击" -> g.attack, "防御、魔防" -> g.guard).map((name, s) => petStat(name, s))
+
+    /** 一项属性一行：「攻击：本服 ×0.65，每点道术 +1.2%，你现在 ×1.6」 */
+    private def petStat(name: String, s: StatGrowth): Line =
+      val cut = s.baseText.fold("")(k => s"本服 ×$k，")
+      note(s"　$name：${cut}每点道术 +${s.scPctText}%，你现在 ×${s.scBoost(sc.hi)}")
 
     def headline(skill: Skill): Option[Int => String] = skill match
       case Skill.FireBall | Skill.GreatFireBall | Skill.HellFire | Skill.FireBang | Skill.IceStorm => Some(l => s"威力 ${mcDmg(l)}")

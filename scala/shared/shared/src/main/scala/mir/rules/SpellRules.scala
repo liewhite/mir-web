@@ -22,27 +22,27 @@ final case class Summoning(level: Int, scMax: Int):
   def body(d: MonsterDef): PetBody = SpellRules.summonedBody(d, level, scMax)
 
 /**
- * 召唤宝宝的成长（千分数，免得算出 1.5400000001 这种尾数）：
- * basePermille 数据表攻击、防御、魔防打几折（血不打），levelPermille 每级技能加血、攻多少；
- * 每点道术上限的加成（不封顶）分两份：hpScPermille 加血，scPermille 加攻击、防御、魔防。
+ * 宝宝一项属性（血、攻击、防御魔防）的成长（千分数，免得算出 1.5400000001 这种尾数）：
+ * basePermille 数据表底数打几折，scPermille 每点主人道术上限加多少（不封顶）。
  */
-final case class SummonGrowth(basePermille: Int, levelPermille: Int, hpScPermille: Int, scPermille: Int):
-  def base: Double                   = basePermille / 1000.0
-  def levelBoost(level: Int): Double = (1000 + level * levelPermille) / 1000.0
-  /** 道术对攻击、防御、魔防的倍数 */
-  def scBoost(scMax: Int): Double    = (1000 + math.max(scMax, 0) * scPermille) / 1000.0
-  /** 道术对血的倍数 */
-  def hpScBoost(scMax: Int): Double  = (1000 + math.max(scMax, 0) * hpScPermille) / 1000.0
+final case class StatGrowth(basePermille: Int, scPermille: Int):
+  def base: Double                = basePermille / 1000.0
+  def scBoost(scMax: Int): Double = (1000 + math.max(scMax, 0) * scPermille) / 1000.0
   /** 技能说明用：每点道术加的百分数（「1.8」） */
-  def scPctText: String   = SummonGrowth.pct(scPermille)
-  def hpScPctText: String = SummonGrowth.pct(hpScPermille)
+  def scPctText: String = StatGrowth.pct(scPermille)
   /** 技能说明用：底数折扣（「0.85」），不打折为 None */
-  def baseText: Option[String] = Option.when(basePermille != 1000)(SummonGrowth.ratio(basePermille))
+  def baseText: Option[String] = Option.when(basePermille != 1000)(StatGrowth.ratio(basePermille))
 
-object SummonGrowth:
+object StatGrowth:
   private def plain(d: BigDecimal): String = d.bigDecimal.stripTrailingZeros.toPlainString
   def pct(permille: Int): String   = plain(BigDecimal(permille) / 10)
   def ratio(permille: Int): String = plain(BigDecimal(permille) / 1000)
+
+/**
+ * 召唤宝宝的成长：levelPermille 每级技能加血、攻多少；血、攻击、防御魔防（guard）各一份底数折扣和道术加成。
+ */
+final case class SummonGrowth(levelPermille: Int, hp: StatGrowth, attack: StatGrowth, guard: StatGrowth):
+  def levelBoost(level: Int): Double = (1000 + level * levelPermille) / 1000.0
 
 /**
  * 技能的数值公式：威力、持续秒数、成功率、范围。出处 ref/Mir176 MagicManager.cs（配置取 GameSvrConf 默认值），
@@ -301,27 +301,33 @@ object SpellRules:
 
   /**
    * 召唤骷髅（原版每级 +35%）；道术加成是本服加的（#1209），#1258 用户 11-25 定每点道术上限 +1.8%、不封顶。
-   * 神兽另有一份（Rates.shinsuGrowth，#1285 削弱）。
+   * 用户 11-26 在 #1334 定「数量不变，攻击、防御魔防都砍一点，仍随道术涨」：攻击底数打 75 折，
+   * 防御魔防每点道术 +1.8% → +0.9%（血不变）。神兽另有一份（Rates.shinsuGrowth）。
    */
-  val StandardGrowth = SummonGrowth(basePermille = 1000, levelPermille = 350, hpScPermille = 18, scPermille = 18)
+  val StandardGrowth = SummonGrowth(
+    levelPermille = 350,
+    hp = StatGrowth(basePermille = 1000, scPermille = 18),
+    attack = StatGrowth(basePermille = 750, scPermille = 18),
+    guard = StatGrowth(basePermille = 1000, scPermille = 9)
+  )
 
   /** 召唤出来的这种宝宝按哪份成长算（神兽两种形态同一份）。 */
   def growthOf(pet: MonsterName): SummonGrowth =
     if summonedAs(pet).contains(ShinsuPet) then Rates.shinsuGrowth else StandardGrowth
 
   /**
-   * 召唤出来的宝宝：数据表攻击、防御、魔防先 × 底数折扣；技能等级加成乘血量和攻击，道术加成乘血量（血那份）和攻击、防御、魔防。
+   * 召唤出来的宝宝：血、攻击、防御魔防各按自己那份成长 × 底数折扣 × 道术加成；技能等级加成只乘血量和攻击。
    * 几个倍数先乘在一起再四舍五入一次。
    */
   def summonedBody(base: MonsterDef, level: Int, scMax: Int): PetBody =
-    val g  = growthOf(base.name)
-    val lv = g.levelBoost(level)
-    val sc = g.scBoost(scMax)
+    val g     = growthOf(base.name)
+    val lv    = g.levelBoost(level)
+    val guard = g.guard.base * g.guard.scBoost(scMax)
     PetBody(
-      scaled(base.hp, lv * g.hpScBoost(scMax)),
-      scaled(base.dc, g.base * (lv * sc)),
-      scaled(base.ac, g.base * sc),
-      scaled(base.mac, g.base * sc)
+      scaled(base.hp, g.hp.base * (lv * g.hp.scBoost(scMax))),
+      scaled(base.dc, g.attack.base * (lv * g.attack.scBoost(scMax))),
+      scaled(base.ac, guard),
+      scaled(base.mac, guard)
     )
 
   private def scaled(v: Int, k: Double): Int    = math.floor(v * k + 0.5).toInt

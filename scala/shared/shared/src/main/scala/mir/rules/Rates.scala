@@ -65,11 +65,19 @@ object Rates:
   /** 法师攻击魔法（火球、雷电、冰咆哮、火墙等）算出的伤害再乘的倍数，四舍五入；不动魔法面板和魔法盾（用户 11-25 在 #1285 定） */
   val mageSpell: Double = 1.3
   /**
-   * 神兽（两种形态）的成长（用户 11-25 在 #1285 要削弱初始攻防魔防和成长）：数据表攻击、防御、魔防打 85 折，
-   * 技能每级 +30%（骷髅 35%），道术上限每点加血 +1.6%、加攻击防御魔防 +1.2%（骷髅都是 1.8%；
-   * 攻防那份用户 11-26 在 #1245 要求再降，从 1.6% 降到 1.2%）。
+   * 神兽（两种形态）的成长（用户 11-25 在 #1285 要削弱初始攻防魔防和成长）：技能每级 +30%（骷髅 35%），
+   * 道术上限每点加血 +1.6%（骷髅 1.8%）。
+   * - 攻击：数据表打 85 折、每点道术 +1.2%（#1285；11-26 #1245 从 1.6% 降到 1.2%）；
+   *   11-26 #1334 用户定「数量不变，攻击、防御魔防都砍一点，仍随道术涨」：底数改打 65 折。
+   * - 防御、魔防：打 85 折；每点道术 +1.2% → +0.6%（#1334，同上）。赤月档道士的大神兽防 49 → 40，
+   *   光芒套的宝宝在祖玛仍几乎不掉血，打赤月、魔龙的怪会掉血。
    */
-  val shinsuGrowth: SummonGrowth = SummonGrowth(basePermille = 850, levelPermille = 300, hpScPermille = 16, scPermille = 12)
+  val shinsuGrowth: SummonGrowth = SummonGrowth(
+    levelPermille = 300,
+    hp = StatGrowth(basePermille = 1000, scPermille = 16),
+    attack = StatGrowth(basePermille = 650, scPermille = 12),
+    guard = StatGrowth(basePermille = 850, scPermille = 6)
+  )
   /** 技能每级要的熟练度除以这个数（向上取整、至少 1；用户 11-24 在 #1179 定） */
   val skillTrain: Int = 10
 
