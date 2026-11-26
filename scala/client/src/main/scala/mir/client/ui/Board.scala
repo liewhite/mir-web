@@ -310,6 +310,12 @@ final class Board(ui: ClassicUi):
     g.circle(base.x, base.y, js.radius, if js.active then "rgba(0,0,0,.4)" else "rgba(0,0,0,.35)", Some("rgba(216,162,74,.85)"))
     g.circle(knob.x, knob.y, 22 * s, if js.active then "rgba(216,162,74,.8)" else "rgba(216,162,74,.55)", Some("#d8a24a"))
     if !js.active then g.text("摇杆", base.x - g.width("摇杆") / 2, base.y - 6, "#fff", bold = true)
+    // 电脑端在底盘上下左右标 W/S/A/D，提示键盘也能走（用户 11-26 #1344；键盘走路见 #1189）；触屏不标
+    if !ui.touch then
+      val off = js.radius * 0.72
+      List(("W", 0.0, -off), ("S", 0.0, off), ("A", -off, 0.0), ("D", off, 0.0)).foreach { (k, dx, dy) =>
+        g.text(k, base.x + dx - g.width(k) / 2, base.y + dy - 6, "#ffe08a", bold = true)
+      }
 
   private def drawAttack(c: Pt): Unit =
     val ar = AttackR * ui.ctlScale
