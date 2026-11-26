@@ -15,7 +15,7 @@ object GameDataSpec extends ZIOSpecDefault:
       assertTrue(
         d.maps.size == 265 + 16 + 10, // 1.76 数据表 + 1.80 魔龙补充表（#1313）+ 幻境（#1317）
         d.routes.size == 1301 + 173 + 19,
-        d.spawns.size == 2378 + 100 + 220, // 魔龙 100（高级怪只留血域和龙源血路的，#1245）；幻境含十层两只魔龙教主（#1329）
+        d.spawns.size == 2378 + 100 + 226, // 魔龙 100（高级怪只留血域和龙源血路的，#1245）；幻境含十层两只魔龙教主（#1329）和 6 种魔龙怪（#1330）
         d.guards.size == 49,
         d.merchants.size == 69 + 8,
         d.minimaps.size == 117 + 14 + 9,
@@ -107,7 +107,7 @@ object GameDataSpec extends ZIOSpecDefault:
         zumaMaze.map(_.to).contains(MapId("D5062"))
       )
     },
-    test("1.80 魔龙（#1313）：传送菜单「魔龙」一组到魔龙谷为止；从魔龙城走得到魔龙血域；教主是 boss；高级怪只在血域和龙源血路（#1245）") {
+    test("1.80 魔龙（#1313）：传送菜单「魔龙」一组到魔龙谷为止；从魔龙城走得到魔龙血域；教主是 boss；高级怪只在血域、龙源血路（#1245）和幻境十层（#1330）") {
       val d      = catalog.data
       val molong = Set("6", "B357", "GA1", "61", "62", "611", "621", "612", "613", "622", "63", "632", "631", "64", "65", "66")
       val menu   = d.teleports.filter(t => molong(t.map.value)).map(t => (t.group, t.map.value))
@@ -123,7 +123,7 @@ object GameDataSpec extends ZIOSpecDefault:
         menu.toSet == (Set("6", "61", "62", "611", "621", "612", "613", "622", "63", "632", "631", "64").map(("魔龙", _)) + (("城市", "6"))),
         fromCity == molong,
         boss.toSet == Set("66", "H010"), // 幻境十层也刷（#1329）
-        highMaps == Set("66", "65"),
+        highMaps == Set("66", "65", "H010"),
         mir.rules.Rates.bosses(MonsterName("魔龙教主")),
         d.monsters.filter(_.name.value.startsWith("魔龙")).forall(m => catalog.actions(m).isDefined)
       )

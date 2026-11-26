@@ -1268,18 +1268,21 @@ object WorldSpec extends ZIOSpecDefault:
           after.nextRefill == spot.nextRefill
         )
       },
-      test("幻境十层刷牛魔小怪和赤月恶魔、牛魔王、暗之牛魔王、暗之双头金刚、魔龙教主、暗之魔龙教主，打得死（#1317、#1329）") {
+      test("幻境十层刷牛魔小怪、魔龙怪和赤月恶魔、牛魔王、暗之牛魔王、暗之双头金刚、魔龙教主、暗之魔龙教主，打得死（#1317、#1329、#1330）") {
         val map   = catalog.map(MapId("H010")).get
         val w     = world(map)
         val p     = join(w, "甲", Cell(155, 157))
         w.tick(Millis(50))
         val names = w.monsters.map(_.defn.name.value).toSet
+        val count = w.monsters.groupMapReduce(_.defn.name.value)(_ => 1)(_ + _)
         val boss  = w.monsters.find(_.defn.name == MonsterName("暗之牛魔王")).get
         val dark  = w.monsters.find(_.defn.name == MonsterName("暗之魔龙教主")).get
         w.vitals.damage(boss, boss.hp, Some(p.id))
         assertTrue(
           Set("牛魔战士", "牛魔法师", "赤月恶魔", "牛魔王", "暗之牛魔王", "暗之双头金刚", "魔龙教主", "暗之魔龙教主").subsetOf(names),
           dark.maxHp == 32000,
+          List("魔龙巨蛾", "魔龙力士", "魔龙战将").forall(count.get(_).contains(3)),
+          List("魔龙刀兵", "魔龙破甲兵", "魔龙射手").forall(count.get(_).contains(30)),
           !names.exists(_.startsWith("宝箱")),
           boss.dead
         )

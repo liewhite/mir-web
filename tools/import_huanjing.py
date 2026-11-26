@@ -10,7 +10,8 @@
   怪换成攻略里那层的怪（旧图本来就刷的照旧，别的按顺序轮换）；旧图的 boss 和不在名单里的怪都换掉。
   小 boss（攻略写的）和每层另加的 2 个 boss 刷在整张图随机位置。数值、爆率都用数据表里同名怪的。
 - 不做双倍经验/爆率（用户 11-26）。入口在传送菜单（build_data.py ENTRIES），一层出口回盟重。
-- 十层另刷 1.80 的魔龙教主和本服加的暗之魔龙教主（用户 11-26，#1329），暗之魔龙教主定义在 DARK_LORD。
+- 十层另刷 1.80 的魔龙教主和本服加的暗之魔龙教主（用户 11-26，#1329），暗之魔龙教主定义在 DARK_LORD；
+  还另刷少量高级魔龙怪和一些普通魔龙怪（用户 11-26，#1330），见 EXTRA。
 
 用法：uv run --no-project --with numpy python import_huanjing.py
 """
@@ -57,6 +58,13 @@ LAYERS = [
      [("赤月恶魔", 1, 120), ("牛魔王", 1, 120), ("暗之牛魔王", 1, 90), ("暗之双头金刚", 1, 90),
       ("魔龙教主", 1, 120), ("暗之魔龙教主", 1, 120)]),  # 用户 11-26 加（#1329）
 ]
+# 每层另加的怪（不算 boss，也刷整张图随机位置）：(怪, 只数, 分钟)
+# 十层（用户 11-26「刷少量魔龙高级怪，刷一些魔龙普通怪」，#1330）：高级怪同龙源血路每种 3 只、间隔照 GeeM2；
+# 普通怪每种 30 只、10 分钟（十层牛魔小怪 268 只，魔龙普通怪约占三分之一，不挤掉牛魔怪）。
+EXTRA = {
+    "H010": [("魔龙巨蛾", 3, 120), ("魔龙力士", 3, 240), ("魔龙战将", 3, 240),
+             ("魔龙刀兵", 30, 10), ("魔龙破甲兵", 30, 10), ("魔龙射手", 30, 10)],
+}
 # 地图标记：照那份 MapInfo（不能回城），断线重连回盟重
 FLAGS = "NORECALL NORECONNECT(3)"
 # (图, x, y) -> (去的图, x, y)；dreamHeroK/Mir200 MapInfo 原样，另加：一层出口回盟重（旧图那扇门的位置），
@@ -90,7 +98,8 @@ def main() -> None:
     maps, spawns, minimaps = [], [], []
     old_minimap = {m["map"]: m["image"] for m in cat["minimaps"]}
     for h, title, old, common, bosses in LAYERS:
-        if missing := [n for n in common + [b[0] for b in bosses] if n not in known]:
+        scattered = bosses + EXTRA.get(h, [])
+        if missing := [n for n in common + [b[0] for b in scattered] if n not in known]:
             raise SystemExit(f"{h} 的怪数据表里没有：{missing}")
         w, ht = titles[old]["width"], titles[old]["height"]
         maps.append({"id": h, "asset": old, "title": title, "flags": FLAGS, "width": w, "height": ht})
@@ -103,7 +112,7 @@ def main() -> None:
                 name = common[turn % len(common)]
                 turn += 1
             spawns.append(s | {"map": h, "monster": name})
-        for name, count, minutes in bosses:  # 整张图随机位置
+        for name, count, minutes in scattered:  # 整张图随机位置
             spawns.append({"map": h, "x": w // 2, "y": ht // 2, "monster": name,
                            "radius": max(w, ht) // 2, "count": count, "minutes": minutes})
 

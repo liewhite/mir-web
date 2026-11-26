@@ -2217,6 +2217,60 @@
    "radius": 200,
    "count": 1,
    "minutes": 120
+  },
+  {
+   "map": "H010",
+   "x": 200,
+   "y": 200,
+   "monster": "魔龙巨蛾",
+   "radius": 200,
+   "count": 3,
+   "minutes": 120
+  },
+  {
+   "map": "H010",
+   "x": 200,
+   "y": 200,
+   "monster": "魔龙力士",
+   "radius": 200,
+   "count": 3,
+   "minutes": 240
+  },
+  {
+   "map": "H010",
+   "x": 200,
+   "y": 200,
+   "monster": "魔龙战将",
+   "radius": 200,
+   "count": 3,
+   "minutes": 240
+  },
+  {
+   "map": "H010",
+   "x": 200,
+   "y": 200,
+   "monster": "魔龙刀兵",
+   "radius": 200,
+   "count": 30,
+   "minutes": 10
+  },
+  {
+   "map": "H010",
+   "x": 200,
+   "y": 200,
+   "monster": "魔龙破甲兵",
+   "radius": 200,
+   "count": 30,
+   "minutes": 10
+  },
+  {
+   "map": "H010",
+   "x": 200,
+   "y": 200,
+   "monster": "魔龙射手",
+   "radius": 200,
+   "count": 30,
+   "minutes": 10
   }
  ],
  "minimaps": [
