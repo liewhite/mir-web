@@ -68,6 +68,13 @@ final class Renderer(
 
   def cellAt(p: Px): Cell = Cell(math.floor((p.x + camX) / UnitX).toInt, math.floor((p.y + camY) / UnitY).toInt)
 
+  /**
+   * 逻辑像素 p 离自己所在格（镜头跟着自己，就是画面上自己那格）横竖各几格。只看屏幕位置，走动中镜头滑到一半也不变，
+   * 所以按住鼠标不动就一直朝同一个方向走（原版操作 #1353）。
+   */
+  def cellsFromSelf(p: Px): (Int, Int) =
+    (math.floor((p.x - width / 2) / UnitX + 0.5).toInt, math.floor((p.y - height * centerY) / UnitY + 0.5).toInt)
+
   /** 逻辑像素下点中的角色（不算 exclude，即自己）：先按身体图像素、再按正中 40×70、最后按 slop 放宽，见 Picking。 */
   def actorAt(p: Px, slop: Double, exclude: ActorId): Option[ActorId] =
     Picking.pick(hits, p.x, p.y, slop, exclude)(silhouettes.solid)
@@ -350,7 +357,7 @@ final class Renderer(
           ctx.beginPath()
           ctx.ellipse(x, y + UnitY / 2, 22, 10, 0, 0, math.Pi * 2)
           ctx.stroke()
-        nameOf(a, targeted, s.options).foreach((name, color) => text(name, x, y - 66, color))
+        nameOf(a, targeted || s.hovered.contains(a.id), s.options).foreach((name, color) => text(name, x, y - 66, color))
         if s.options.showHpBars && !a.look.isInstanceOf[Look.Npc] then
           val ratio = if a.maxHp.value <= 0 then 0.0 else math.max(0.0, math.min(1.0, a.hp.value.toDouble / a.maxHp.value))
           ctx.fillStyle = "rgba(0,0,0,.6)"

@@ -22,6 +22,23 @@ enum Intent:
   /** 朝这个方向的矿壁一直挖（#1286，原版 g_boAutoDig：挖到做别的事为止） */
   case Dig(dir: Dir)
 
+/** 原版操作（#1353）下鼠标指着的地方：地图格，和按图像点中的对象（没有为 None）。 */
+final case class Pointing(cell: Cell, actor: Option[ActorId])
+
+/** 技能往哪放。 */
+enum Aim:
+  /** 触屏操作：锁定的，没有就最近的怪（见 SkillAim） */
+  case Auto
+  /** 原版操作：鼠标指着的对象、锁定的、指着的格子（原版 ClMain.pas UseMagic） */
+  case Mouse(at: Pointing)
+
+/** 原版操作左键按在地图上的结果：按着拖动要不要接着朝鼠标走。 */
+enum LeftClick:
+  /** 点中了东西（怪、NPC、物品、矿壁、自己脚下），做完了 */
+  case Done
+  /** 点在空地上：按着就朝鼠标走 */
+  case Walk
+
 /**
  * 输入意图 → 游戏指令（照 TS 版 game/controller.ts，自动喝药、自动捡物、还手、烈火已挪到服务端 AutoPlay）。
  * 手机操作（用户 #1140）：摇杆走跑；点怪只锁定，攻击键/技能打锁定的目标；点 NPC 走过去对话；点地上物品走过去捡。
@@ -77,27 +94,98 @@ final class Controller(client: GameClient):
       case None        => client.ui.notice("附近没有怪", Tone.Bad)
 
   /** 放 F1–F8 上的技能。 */
-  def castKey(key: Int): Unit =
-    client.view.skills.find(_.key.contains(key)).foreach(s => castSkill(s.id))
+  def castKey(key: Int, aim: Aim = Aim.Auto): Unit =
+    client.view.skills.find(_.key.contains(key)).foreach(s => castSkill(s.id, aim))
 
   /**
-   * 放技能。打敌人的：打锁定的怪，没有就打最近的（并锁定它），再没有就对着自己脚下（召唤、魔法盾）；
-   * 给自己人的：锁定的自己人就放给它，否则放给自己，不改锁定。
+   * 放技能，目标按 aim 取（打敌人时取到的怪顺手锁定，原版魔法锁定）。
+   * 触屏：打敌人的打锁定的怪，没有就打最近的，再没有就对着自己脚下（召唤、魔法盾）；给自己人的放给锁定的自己人，否则自己。
+   * 原版操作：见 mouseAim。
    */
-  def castSkill(id: SkillId): Unit =
-    val target = Skill.of(id).fold(SkillAim.Enemy)(_.aim) match
-      case SkillAim.Enemy =>
-        val t = autoTarget()
-        t.foreach(t => client.locked = Some(t))
-        t
-      case SkillAim.Friend => lockedInReach(client.isFriend).map(_.id)
-    val cell = target.flatMap(client.actor).orElse(client.self).map(_.cell)
+  def castSkill(id: SkillId, aim: Aim = Aim.Auto): Unit =
+    val kind = Skill.of(id).fold(SkillAim.Enemy)(_.aim)
+    val (target, cell) = aim match
+      case Aim.Auto      => autoAim(kind)
+      case Aim.Mouse(at) => mouseAim(kind, at)
+    target.filter(client.actor(_).exists(client.canAttack)).foreach(t => client.locked = Some(t))
     cell.foreach(client.cast(id, target, _))
     // 持续施法（#1308）由服务端接着放：别再走过去近身打（普通攻击会把它停掉）
     if target.isDefined && sustains(id) then
       intent match
         case Intent.Fight(_) => intent = Intent.Idle
         case _               => ()
+
+  /** 触屏的目标：(对象, 发给服务端的格子)，没有对象时格子是自己脚下。 */
+  private def autoAim(kind: SkillAim): (Option[ActorId], Option[Cell]) =
+    val target = kind match
+      case SkillAim.Enemy | SkillAim.Ground => autoTarget()
+      case SkillAim.Friend                  => lockedInReach(client.isFriend).map(_.id)
+    (target, target.flatMap(client.actor).orElse(client.self).map(_.cell))
+
+  /**
+   * 原版操作的目标（照 ClMain.pas UseMagic：鼠标指着的对象，开了魔法锁定就沿用锁定的，都没有就是鼠标所在格）：
+   * 打敌人的：指着的打得到的对象、锁定且够得着的、都没有就打向指着的格子（不自己找最近的怪）；
+   * 给自己人的：指着的自己人、锁定的自己人，都没有服务端放给自己；
+   * 放在格子上的（火墙、困魔咒）：指着的对象脚下，否则指着的格子，不看锁定。
+   */
+  private def mouseAim(kind: SkillAim, at: Pointing): (Option[ActorId], Option[Cell]) =
+    val pointed = at.actor.flatMap(client.actor).filterNot(_.dead)
+    kind match
+      case SkillAim.Enemy =>
+        val t = pointed.filter(client.canAttack).orElse(lockedInReach(client.canAttack))
+        (t.map(_.id), Some(t.fold(at.cell)(_.cell)))
+      case SkillAim.Friend =>
+        val t = pointed.filter(client.isFriend).orElse(lockedInReach(client.isFriend))
+        (t.map(_.id), Some(t.fold(at.cell)(_.cell)))
+      case SkillAim.Ground => (None, Some(pointed.fold(at.cell)(_.cell)))
+
+  // ---------------- 原版鼠标操作（#1353，照 ClMain.pas _DXDrawMouseDown） ----------------
+
+  /**
+   * 左键按在地图上。点中对象：NPC 走过去对话；怪（含红名等敌人）锁定并走过去打；别的玩家、宝宝、守卫按着 Shift（force）才打，
+   * 否则只锁定（看信息、组队交易、给它放治愈）。点在自己脚下捡东西；点地上的物品走过去捡；
+   * 拿着鹤嘴锄点身边的矿壁就一直挖；其余是空地，由调用方按着朝鼠标走（steer）。
+   */
+  def leftClick(at: Pointing, force: Boolean): LeftClick =
+    (at.actor.flatMap(client.actor).filterNot(_.dead), client.self) match
+      case (_, None) => LeftClick.Done
+      case (Some(a), _) =>
+        a.look match
+          case Look.Npc(_) => intent = Intent.Talk(a.id)
+          case _ =>
+            client.locked = Some(a.id)
+            if client.canAttack(a) && (force || client.isEnemy(a)) then intent = Intent.Fight(a.id)
+        LeftClick.Done
+      case (None, Some(me)) if at.cell == me.cell =>
+        pickUpHere()
+        LeftClick.Done
+      case (None, Some(me)) =>
+        val dir = Controller.towards(me.cell, at.cell)
+        client.view.ground.values.find(_.cell == at.cell) match
+          case Some(g) =>
+            tapGround(g)
+            LeftClick.Done
+          case None if me.cell.chebyshev(at.cell) == 1 && client.rocksAround.contains(dir) =>
+            intent = Intent.Dig(dir)
+            LeftClick.Done
+          case None => LeftClick.Walk
+
+  /**
+   * 按着鼠标朝它走（跑）：dx、dy 是鼠标离自己几格。指着自己脚下就停；离自己不到 2 格跑不起来，只走（原版同样）。
+   */
+  def steer(dx: Int, dy: Int, run: Boolean): Unit =
+    if dx == 0 && dy == 0 then stickReleased()
+    else
+      val to = Cell(dx, dy)
+      stick(Controller.towards(Cell(0, 0), to), run && Cell(0, 0).chebyshev(to) >= 2)
+
+  /** Ctrl+右键点别的玩家：看他身上的装备（原版 CM_QUERYUSERSTATE，#1263）。点的不是玩家返回 false。 */
+  def inspect(at: Pointing): Boolean =
+    at.actor.flatMap(client.actor).filter(a => !a.dead && client.self.exists(_.id != a.id)) match
+      case Some(a) if a.look.isInstanceOf[Look.Human] =>
+        client.send(GameCmd.Inspect(a.id))
+        true
+      case _ => false
 
   /** 走到某一格（全景地图）：按地形算好整条路；走不到的地方走到离它最近处，一步都走不了就不动。 */
   def goTo(cell: Cell): Unit =
@@ -197,6 +285,17 @@ final class Controller(client: GameClient):
       case _                                                          => intent = Intent.Idle
 
 object Controller:
+  /**
+   * 从 from 朝 to 走哪个方向（照原版 ClFunc.pas GetNextDirection）：竖着差 3 格以上、横着只差 1 格算正上下，
+   * 横着差 3 格以上、竖着差 1 格以内算正左右（原版这条只认目标在同一行或上面 1 行，这里上下对称）；同一格为下。
+   */
+  def towards(from: Cell, to: Cell): Dir =
+    val dx = to.x - from.x
+    val dy = to.y - from.y
+    val fx = if math.abs(dy) > 2 && math.abs(dx) <= 1 then 0 else Integer.signum(dx)
+    val fy = if math.abs(dx) > 2 && math.abs(dy) <= 1 then 0 else Integer.signum(dy)
+    Dir.values.find(d => d.dx == fx && d.dy == fy).getOrElse(Dir.Down)
+
   /** 离 NPC 几格就能对话（服务端允许 Pace.NpcRange 格，走近一点更像原版） */
   val TalkRange: Int = math.min(3, Pace.NpcRange)
   val PathNodes   = 3000

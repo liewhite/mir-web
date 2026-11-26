@@ -301,6 +301,75 @@ object ClientSpec extends ZIOSpecDefault:
         onSelf.exists(c => c.target.isEmpty && c.cell == Cell(10, 10))
       )
     },
+    test("原版鼠标操作（#1353）：左键点怪走过去打死；点别的玩家只锁定、按住 Shift 才打；点空地按着朝鼠标走；电脑默认、触屏没有") {
+      import mir.client.input.ControlMode
+      import mir.client.render.ViewOptions
+      val r = Rig()
+      r.join(Cell(10, 10))
+      val d     = CharacterData.newbie(catalog, "乙", Job.Taoist, Sex.Male, UidSource.counter(5000))
+      val other = r.world.join(d.copy(place = Place(r.mapDef.id, Cell(10, 13))))
+      val chick = WorldAccess.spawn(r.world, catalog.monster(MonsterName("鸡")).get, Cell(14, 10)).get
+      r.run(3000) // 过了进图保护（Pk.ArrivalGraceMs）
+      val onPlayer = r.ctl.leftClick(Pointing(Cell(10, 13), Some(other)), force = false)
+      val playerOnlyLocked = r.client.locked.contains(other) && r.ctl.intent == mir.client.game.Intent.Idle
+      r.ctl.leftClick(Pointing(Cell(10, 13), Some(other)), force = true)
+      val forced = r.ctl.intent == mir.client.game.Intent.Fight(other)
+      val onChick = r.ctl.leftClick(Pointing(Cell(14, 10), Some(chick.id)), force = false)
+      val fights  = r.ctl.intent == mir.client.game.Intent.Fight(chick.id) && r.client.locked.contains(chick.id)
+      r.run(15000)
+      val killed = r.world.actor(chick.id).forall(_.isDead)
+      val start  = r.serverCell
+      val ground = r.ctl.leftClick(Pointing(start.step(Dir.Left, 3), None), force = false)
+      r.ctl.steer(-3, 0, run = false)
+      r.run(1500)
+      r.ctl.stickReleased()
+      r.run(1000)
+      val walkedWest = r.serverCell.x < start.x && r.serverCell.y == start.y
+      assertTrue(
+        onPlayer == LeftClick.Done, playerOnlyLocked, forced,
+        onChick == LeftClick.Done, fights, killed,
+        ground == LeftClick.Walk, walkedWest,
+        ControlMode.of(touch = false, ViewOptions()) == ControlMode.Classic,
+        ControlMode.of(touch = true, ViewOptions()) == ControlMode.Touch,
+        ControlMode.of(touch = false, ViewOptions(classicControls = false)) == ControlMode.Touch
+      )
+    },
+    test("原版走向照 GetNextDirection：离得远时差一格算正方向，同一格算下") {
+      def t(dx: Int, dy: Int) = Controller.towards(Cell(0, 0), Cell(dx, dy))
+      assertTrue(
+        t(1, 5) == Dir.Down, t(-1, -5) == Dir.Up, t(5, 1) == Dir.Right, t(-5, -1) == Dir.Left,
+        t(3, 3) == Dir.DownRight, t(2, -1) == Dir.UpRight, t(0, 0) == Dir.Down
+      )
+    },
+    test("原版鼠标操作放技能（#1353）：指着怪打它并锁定；指着空地打锁定的，没锁就打向那格；火墙落在指着的格子、不管锁定") {
+      val r = Rig()
+      r.join(Cell(10, 10))
+      val a = WorldAccess.spawn(r.world, catalog.monster(MonsterName("鸡")).get, Cell(13, 10)).get
+      val b = WorldAccess.spawn(r.world, catalog.monster(MonsterName("鸡")).get, Cell(10, 14)).get
+      r.deliver()
+      def lastCast = r.sent.collect { case c: GameCmd.Cast => c }.last
+      val thunder  = mir.rules.Skill.Thunder.id
+      val fireWall = mir.rules.Skill.FireWall.id
+      r.ctl.castSkill(thunder, Aim.Mouse(Pointing(Cell(15, 15), None)))
+      val nothing = lastCast
+      r.ctl.castSkill(thunder, Aim.Mouse(Pointing(Cell(10, 14), Some(b.id))))
+      val pointed = lastCast
+      val lockedB = r.client.locked.contains(b.id)
+      r.ctl.castSkill(thunder, Aim.Mouse(Pointing(Cell(12, 8), None)))
+      val keepsLock = lastCast
+      r.ctl.castSkill(fireWall, Aim.Mouse(Pointing(Cell(12, 8), None)))
+      val wall = lastCast
+      r.ctl.castSkill(fireWall, Aim.Mouse(Pointing(Cell(13, 10), Some(a.id))))
+      val wallOnA = lastCast
+      assertTrue(
+        nothing.target.isEmpty && nothing.cell == Cell(15, 15),
+        pointed.target.contains(b.id) && pointed.cell == Cell(10, 14), lockedB,
+        keepsLock.target.contains(b.id),
+        wall.target.isEmpty && wall.cell == Cell(12, 8),
+        wallOnA.target.isEmpty && wallOnA.cell == Cell(13, 10),
+        r.client.locked.contains(b.id)
+      )
+    },
     test("PK（#1225）：锁定别的玩家按攻击键就走过去打他，自己名字变灰；没锁定时攻击键只找怪") {
       val r = Rig()
       r.join(Cell(10, 10))
@@ -674,10 +743,13 @@ object ClientSpec extends ZIOSpecDefault:
         case SettingRow.GameToggle(_, get, set)  => set(s0, !get(s0)) != s0 && get(set(s0, !get(s0))) != get(s0)
         case SettingRow.GamePercent(_, get, set) => get(set(s0, 55)) == 55
         case SettingRow.GameChecks(_, boxes)     => boxes.forall(b => get1(b, s0))
-        case SettingRow.LocalToggle(_, get, set) => get(set(o0, !get(o0))) != get(o0)
+        // 只管鼠标的行（原版鼠标操作 #1353）触屏上不显示
+        case row @ SettingRow.LocalToggle(_, get, set, desktopOnly) =>
+          get(set(o0, !get(o0))) != get(o0) && row.shown(s0, touch = false) && row.shown(s0, touch = true) != desktopOnly
         // 档位滑条（#1301）：开着自动捡、勾了装备才显示，关了总开关或去掉装备就藏起来
         case row @ SettingRow.GameTier(_) =>
-          row.shown(s0) && !row.shown(s0.copy(autoPickup = false)) && !row.shown(s0.copy(pickupKinds = Set(PickupKind.Gold)))
+          row.shown(s0, touch = false) && !row.shown(s0.copy(autoPickup = false), touch = false) &&
+            !row.shown(s0.copy(pickupKinds = Set(PickupKind.Gold)), touch = false)
       }
       assertTrue(
         flipped.forall(identity),

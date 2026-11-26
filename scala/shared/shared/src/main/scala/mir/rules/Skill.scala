@@ -18,10 +18,15 @@ enum SkillUse:
 
 /** 技能对谁放：客户端据此决定把哪个锁定对象当目标发出（服务端按各技能处理器再判）。 */
 enum SkillAim:
-  /** 打敌人：锁定的敌人，没锁就最近的怪 */
+  /** 打敌人：锁定的敌人，没锁就最近的怪（原版操作 #1353：鼠标指着的敌人，其次锁定的，都没有就打向指着的格子） */
   case Enemy
   /** 给自己人：锁定的自己人（玩家、宝宝），没锁就是自己（原版 MagicTarget 取点中的任意对象） */
   case Friend
+  /**
+   * 放在一个格子上（火墙、困魔咒）：原版操作（#1353）放在鼠标指着的对象脚下或指着的格子，不管锁定；
+   * 触屏没有鼠标，和 Enemy 一样放在锁定的或最近的怪脚下
+   */
+  case Ground
 
 /**
  * 做好了的技能（名字代替数据表里的编号）。每个技能的数值（威力、耗蓝、熟练度）仍在数据表 SkillDef，
@@ -43,13 +48,13 @@ enum Skill(val code: Int, val use: SkillUse, val aim: SkillAim = SkillAim.Enemy)
   case SoulFireBall   extends Skill(13, SkillUse.Spell)  // 灵魂火符
   case SoulShield     extends Skill(14, SkillUse.Spell, SkillAim.Friend)  // 幽灵盾
   case HolyArmor      extends Skill(15, SkillUse.Spell, SkillAim.Friend)  // 神圣战甲术
-  case HolyCurtain    extends Skill(16, SkillUse.Spell)  // 困魔咒
+  case HolyCurtain    extends Skill(16, SkillUse.Spell, SkillAim.Ground)  // 困魔咒
   case SummonSkeleton extends Skill(17, SkillUse.Spell)  // 召唤骷髅
   case Invisible      extends Skill(18, SkillUse.Spell)  // 隐身术
   case GroupInvisible extends Skill(19, SkillUse.Spell)  // 集体隐身术
   case Tame           extends Skill(20, SkillUse.Spell)  // 诱惑之光
   case SpaceMove      extends Skill(21, SkillUse.Spell)  // 瞬息移动
-  case FireWall       extends Skill(22, SkillUse.Spell)  // 火墙
+  case FireWall       extends Skill(22, SkillUse.Spell, SkillAim.Ground)  // 火墙
   case FireBang       extends Skill(23, SkillUse.Spell)  // 爆裂火焰
   case ThunderStorm   extends Skill(24, SkillUse.Spell)  // 地狱雷光
   case WideHit        extends Skill(25, SkillUse.Toggle) // 半月弯刀

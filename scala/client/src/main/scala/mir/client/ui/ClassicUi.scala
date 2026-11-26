@@ -1,7 +1,7 @@
 package mir.client.ui
 
 import mir.client.game.{Controller, GameClient, UiEvents}
-import mir.client.input.{Joystick, Overlay, Press, Pt}
+import mir.client.input.{ControlMode, Joystick, Overlay, Press, Pt}
 import mir.client.render.ViewOptions
 import mir.core.*
 import mir.data.{Catalog, ItemDef}
@@ -123,6 +123,11 @@ final class ClassicUi(
 
   def options: ViewOptions = client.options
 
+  /** 地图上怎么操作：电脑默认原版鼠标操作，设置里能换回摇杆（#1353）；触屏只有摇杆 */
+  def controls: ControlMode = ControlMode.of(touch, options)
+
+  def covers(p: Pt): Boolean = hits.covers(p.x, p.y)
+
   /** 这一帧的我；还没进游戏或没收到属性时为空。 */
   def me: Option[Me] =
     for
@@ -146,7 +151,7 @@ final class ClassicUi(
     screen match
       case Screen.Game => ()
       case _ =>
-        message("欢迎来到玛法大陆。左边摇杆走路（推远了跑；地上东西多时按住左下角血球拖也行），电脑上 WASD 跑、按住 Shift 走；点怪锁定，右边「攻击」打它；点物品看说明和操作。回车或点聊天框说话。", Tone.Good)
+        message(ClassicUi.welcome(controls), Tone.Good)
     screen = Screen.Game
     dead = client.view.self.exists(_.dead)
     closeAll()
@@ -482,6 +487,13 @@ final class ClassicUi(
     act.isDefined
 
 object ClassicUi:
+  /** 进游戏时聊天栏的操作提示 */
+  def welcome(mode: ControlMode): String = mode match
+    case ControlMode.Touch =>
+      "欢迎来到玛法大陆。左边摇杆走路（推远了跑；地上东西多时按住左下角血球拖也行），电脑上 WASD 跑、按住 Shift 走；点怪锁定，右边「攻击」打它；点物品看说明和操作。回车或点聊天框说话。"
+    case ControlMode.Classic =>
+      "欢迎来到玛法大陆。左键按住地面走路、右键按住跑；左键点怪打它（打别的玩家要按住 Shift）；F1-F8 技能放向鼠标指着的怪或地面（鼠标没指着怪就打锁定的）；空格捡东西，回车说话。设置里可以换回摇杆操作。"
+
   /** 聊天框留多少行 */
   val ChatKeep      = 200
   /** 原版 M2Server 的 sLineNoticePreFix */

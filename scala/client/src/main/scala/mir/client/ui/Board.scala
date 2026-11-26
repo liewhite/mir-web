@@ -1,6 +1,6 @@
 package mir.client.ui
 
-import mir.client.input.{Joystick, Pt}
+import mir.client.input.{ControlMode, Joystick, Pt}
 import mir.core.*
 import mir.model.{Affliction, BodyTint, ItemInstance, ItemPlace, Job}
 import mir.protocol.{GameCmd, GroupView, Look, SocialCmd}
@@ -9,7 +9,7 @@ import mir.rules.{Rates, Skill, SpellRules}
 
 /**
  * 常驻的 HUD：原版 800×251 底栏（照 FState.pas DBottom，TS 版 ui/classic/layout.ts），
- * 叠在底栏上方的触屏操作件（摇杆、攻击键、F1–F8 技能环、锁定怪物信息，TS 版 controls.ts），左上角「传送」键。
+ * 叠在底栏上方的触屏操作件（摇杆、攻击键、F1–F8 技能环，TS 版 controls.ts；原版鼠标操作 #1353 不画）、锁定对象信息卡，左上角「传送」键。
  */
 final class Board(ui: ClassicUi):
   import Board.*
@@ -37,10 +37,13 @@ final class Board(ui: ClassicUi):
     val top = ui.H - Height - 16
     val s   = ui.ctlScale
     drawTarget(m, ui.safe.top + 6)
-    drawStick(Pt(ui.safe.left + Joystick.Radius * s + 30, top - Joystick.Radius * s))
-    val attack = Pt(ui.W - ui.safe.right - AttackR * s - 30, top - AttackR * s)
-    drawAttack(attack)
-    drawSkills(m, attack)
+    ui.controls match
+      case ControlMode.Touch =>
+        drawStick(Pt(ui.safe.left + Joystick.Radius * s + 30, top - Joystick.Radius * s))
+        val attack = Pt(ui.W - ui.safe.right - AttackR * s - 30, top - AttackR * s)
+        drawAttack(attack)
+        drawSkills(m, attack)
+      case ControlMode.Classic => ()
     drawTopKeys()
 
   // ---------------- 底栏 ----------------
@@ -53,8 +56,8 @@ final class Board(ui: ClassicUi):
     ui.area(Rect(bx, by + 40, Width, Height - 40))
     ui.area(Rect(bx, by, 190, 40))
     ui.area(Rect(bx + 610, by, 190, 40))
-    // 左下角血/魔球一块（到聊天框左边）按下就是摇杆：满地物品和怪时左半屏一按就命中它们、摇杆起不来（用户 #1278）
-    ui.hits.stick(orbStickRect)
+    // 左下角血/魔球一块（到聊天框左边）按下就是摇杆：满地物品和怪时左半屏一按就命中它们、摇杆起不来（用户 #1278）；原版鼠标操作没有摇杆
+    if ui.controls == ControlMode.Touch then ui.hits.stick(orbStickRect)
     // 下半部分不透明（原版 Draw(..., FALSE)），上半部分透明叠在地图上
     g.rect(bx + 208, by + 120, 387, 124, "#000")
     g.img(Gfx.Main, 1, bx, by)

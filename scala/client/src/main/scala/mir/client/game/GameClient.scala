@@ -47,6 +47,8 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
   var map: Option[MapData] = None
   /** 锁定的目标（点怪锁定，攻击键、技能打它） */
   var locked: Option[ActorId] = None
+  /** 鼠标指着的对象（原版操作 #1353，每帧由 Input 按鼠标位置重算；触屏操作永远为空） */
+  var hovered: Option[ActorId] = None
   var options: ViewOptions    = ViewOptions()
   /** 选好的角色：断线重连后自动再进 */
   private var playing = Option.empty[CharId]
@@ -334,7 +336,7 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
       val now = clock.now(local)
       fx = fx.prune(now, local)
       Scene(
-        md, me, actors, view.ground.values, view.fields.values, fx, locked,
+        md, me, actors, view.ground.values, view.fields.values, fx, locked, hovered,
         meInvisible = view.status.invisibleUntil.exists(_ > now),
         server = now, local = local, options = options, upgrades = groundUpgrades
       )

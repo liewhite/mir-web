@@ -1,5 +1,7 @@
 package mir.client.ui
 
+import mir.client.input.ControlMode
+
 /**
  * 界面操作：底栏按钮和键盘共用（键位表 UiAction.Keys 是数据，改键或加键只改表）。
  * F1–F8 技能、空格捡取由 input/Controller 管，不在这里。
@@ -51,5 +53,9 @@ object UiAction:
       all(Whisper, "/") ++
       all(CloseAll, "Escape")).toMap
 
-  /** 设置窗底部的键位说明 */
-  val Help = "WASD 跑(按住Shift走)  F1-F8 技能  1-6 快捷栏  空格 捡取  回车 说话  / 私聊  T 传送  M 全景地图  P 组队  F 好友  Esc 关闭"
+  /** 设置窗底部的键位说明，两行（一行放不下，会压到「确定」键）；开头按操作方式 */
+  def help(mode: ControlMode): List[String] =
+    val move = mode match
+      case ControlMode.Touch   => "WASD 跑(按住Shift走)  F1-F8 技能"
+      case ControlMode.Classic => "左键走 右键跑  Shift+左键 强攻  F1-F8 技能(指向鼠标)"
+    List(s"$move  1-6 快捷栏  空格 捡取  回车 说话", "/ 私聊  T 传送  M 全景地图  P 组队  F 好友  Esc 关闭")

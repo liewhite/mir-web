@@ -25,12 +25,15 @@ enum SettingRow(val label: String):
   case GameChecks(text: String, boxes: List[SettingCheck]) extends SettingRow(text)
   /** 自动捡装备的档位滑条（#1301）：「全部」加各档，只在开了自动捡、勾了「装备」时显示 */
   case GameTier(text: String) extends SettingRow(text)
-  case LocalToggle(text: String, get: ViewOptions => Boolean, set: (ViewOptions, Boolean) => ViewOptions) extends SettingRow(text)
+  /** desktopOnly：只对鼠标有意义，触屏设备不显示 */
+  case LocalToggle(text: String, get: ViewOptions => Boolean, set: (ViewOptions, Boolean) => ViewOptions, desktopOnly: Boolean = false)
+      extends SettingRow(text)
 
-  /** 这一行现在显不显示（按角色设置）：档位滑条跟着「自动捡」和「装备」两个勾选，其余常显 */
-  def shown(s: CharSettings): Boolean = this match
-    case GameTier(_) => s.autoPickup && s.pickupKinds(PickupKind.Equip)
-    case _           => true
+  /** 这一行现在显不显示：档位滑条跟着「自动捡」和「装备」两个勾选，只管鼠标的行触屏不显示，其余常显 */
+  def shown(s: CharSettings, touch: Boolean): Boolean = this match
+    case GameTier(_)                 => s.autoPickup && s.pickupKinds(PickupKind.Equip)
+    case LocalToggle(_, _, _, true)  => !touch
+    case _                           => true
 
 /** 一个小勾选：叫什么、怎么读、怎么改。 */
 final case class SettingCheck(label: String, get: CharSettings => Boolean, set: (CharSettings, Boolean) => CharSettings)
@@ -43,6 +46,9 @@ object SettingRow:
   /** 设置窗的分页：通用、画面声音各一页，职业自动技能各一页 */
   val tabs: List[(SettingTab, List[SettingRow])] = List(
     SettingTab.General -> List(
+      LocalToggle(
+        "原版鼠标操作（左键走、右键跑、点怪打，F1-F8 技能放向鼠标；关掉换回摇杆、攻击键、技能环）",
+        _.classicControls, (o, v) => o.copy(classicControls = v), desktopOnly = true),
       GameToggle("自动捡附近的物品（总开关）", _.autoPickup, (s, v) => s.copy(autoPickup = v)),
       GameChecks("捡：", PickupKind.values.toList.map(k =>
         SettingCheck(k.label, _.pickupKinds(k), (s, v) => s.copy(pickupKinds = if v then s.pickupKinds + k else s.pickupKinds - k)))),

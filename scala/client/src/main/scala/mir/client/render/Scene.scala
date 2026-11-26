@@ -12,7 +12,9 @@ final case class ViewOptions(
     /** 地上比身上强的装备名字换色（#1200） */
     upgradeHint: Boolean = true,
     soundOn: Boolean = true,
-    musicOn: Boolean = false
+    musicOn: Boolean = false,
+    /** 电脑上用原版鼠标操作（#1353，默认开）；关掉用摇杆、攻击键、技能环。触屏设备不看它（见 ControlMode） */
+    classicControls: Boolean = true
 )
 
 object ViewOptions:
@@ -32,6 +34,8 @@ final case class Scene(
     fx: Transients,
     /** 锁定的目标：脚下画红圈 */
     target: Option[ActorId],
+    /** 鼠标指着的对象（原版操作 #1353）：关了「怪物显示名字」也显示它的名字 */
+    hovered: Option[ActorId],
     /** 自己隐身（画成半透明） */
     meInvisible: Boolean,
     server: Millis,

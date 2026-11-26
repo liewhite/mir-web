@@ -109,7 +109,7 @@ object Main:
     client.ui = ui
 
     applyOptions(loadOptions())
-    Input(canvas, renderer, client, ctl, ui, joystick, () => view.uiScale, () => dom.window.innerWidth / view.uiScale)
+    val input = Input(canvas, renderer, client, ctl, ui, joystick, () => view.uiScale, () => dom.window.innerWidth / view.uiScale)
     // 声音解锁：iOS 只认触摸松开/点击这类手势，所以几种都挂；捕获阶段先于游戏的处理，这一下的攻击声就能放出来（#1180）
     val unlock: js.Function1[dom.Event, Unit] = _ => audio.unlock()
     for ev <- List("pointerdown", "pointerup", "touchend", "click", "keydown") do
@@ -140,6 +140,7 @@ object Main:
     // 一帧出错只上报、接着画下一帧（不接住的话异常抛出去就不再约下一帧，画面定住）
     lazy val frame: js.Function1[Double, Unit] = t =>
       try
+        input.frame()
         ctl.update()
         client.scene(t).foreach(renderer.draw)
         if client.map.isEmpty then

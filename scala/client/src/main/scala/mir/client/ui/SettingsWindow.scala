@@ -5,7 +5,7 @@ import mir.protocol.GameCmd
 
 /**
  * 便利设置（原版靠外挂的功能内置成开关，画在原版对话框底图 204 上）：玩法类发 UpdateSettings 存角色上，
- * 画面声音类存本机（SettingRow）。分「通用」和战士、法师、道士自动技能几页（SettingTab）。底部列出键位（UiAction.Help）。
+ * 画面声音类存本机（SettingRow）。分「通用」和战士、法师、道士自动技能几页（SettingTab）。底部列出键位（UiAction.help）。
  */
 final class SettingsWindow(ui: ClassicUi) extends ToggleWindow:
   import ui.g
@@ -32,7 +32,7 @@ final class SettingsWindow(ui: ClassicUi) extends ToggleWindow:
     }
     val rowH = 19.0
     val mid  = (rowH - 14) / 2
-    val rows = SettingRow.tabs.collectFirst { case (t, rows) if t == tab => rows }.getOrElse(Nil).filter(_.shown(m.view.settings))
+    val rows = SettingRow.tabs.collectFirst { case (t, rows) if t == tab => rows }.getOrElse(Nil).filter(_.shown(m.view.settings, ui.touch))
     rows.zipWithIndex.foreach { (row, i) =>
       val ly = o.y + 40 + i * rowH
       /** 画一个勾选框加文字，点整段切换；返回占了多宽。 */
@@ -81,7 +81,7 @@ final class SettingsWindow(ui: ClassicUi) extends ToggleWindow:
             ui.hit(Rect(sx(i) - 8, ly, TierGap, rowH - 1))(ui.send(GameCmd.UpdateSettings(s.copy(pickupTier = floor))))
           }
           g.text(if at == 0 then "（什么装备都捡）" else "及以上（比身上强的照捡）", sx(stops.size - 1) + TierGap - 12, ly + mid + 1, "#c0c0c0")
-        case SettingRow.LocalToggle(_, get, set) =>
+        case SettingRow.LocalToggle(_, get, set, _) =>
           val o2 = ui.options
           check(get(o2))(ui.env.saveOptions(set(o2, !get(o2))))
         case SettingRow.GamePercent(_, get, set) =>
@@ -95,6 +95,6 @@ final class SettingsWindow(ui: ClassicUi) extends ToggleWindow:
           ui.hit(Rect(vx - 4, ly, 20, rowH - 1))(ui.send(GameCmd.UpdateSettings(set(s, SettingRow.stepPercent(v, up = false)))))
           ui.hit(Rect(vx + 58, ly, 20, rowH - 1))(ui.send(GameCmd.UpdateSettings(set(s, SettingRow.stepPercent(v, up = true)))))
     }
-    g.text(UiAction.Help, o.x + 30, o.y + sh - 40, "#c0c0c0")
+    UiAction.help(ui.controls).zipWithIndex.foreach((line, i) => g.text(line, o.x + 30, o.y + sh - 56 + 16 * i, "#c0c0c0"))
     ui.button(Button(Rect(o.x + 514, o.y + 287, 80, 34), () => close(), img = Some(361)))
     ui.button(Button(Rect(o.x + 584, o.y + 6, 16, 23), () => close(), img = Some(64)))
