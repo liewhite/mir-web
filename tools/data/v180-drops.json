@@ -2284,6 +2284,422 @@
     "denominator": 20000,
     "amount": 1
    }
+  ],
+  "暗之赤月恶魔": [
+   {
+    "item": "金币",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 30000
+   },
+   {
+    "item": "强效金创药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效金创药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效金创药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效金创药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效金创药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效金创药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效金创药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效金创药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效魔法药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效魔法药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效魔法药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效魔法药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效魔法药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效魔法药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效魔法药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效魔法药",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 10,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "强效太阳水",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "祝福油",
+    "numerator": 10,
+    "denominator": 20,
+    "amount": 1
+   },
+   {
+    "item": "雷霆战甲(男)",
+    "numerator": 10,
+    "denominator": 5000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆战甲(女)",
+    "numerator": 10,
+    "denominator": 5000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆项链",
+    "numerator": 10,
+    "denominator": 5000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆护腕",
+    "numerator": 10,
+    "denominator": 5000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆战戒",
+    "numerator": 10,
+    "denominator": 5000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆腰带",
+    "numerator": 10,
+    "denominator": 5000,
+    "amount": 1
+   },
+   {
+    "item": "雷霆战靴",
+    "numerator": 10,
+    "denominator": 5000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰魔衣(男)",
+    "numerator": 10,
+    "denominator": 5000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰魔衣(女)",
+    "numerator": 10,
+    "denominator": 5000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰项链",
+    "numerator": 10,
+    "denominator": 5000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰护腕",
+    "numerator": 10,
+    "denominator": 5000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰魔戒",
+    "numerator": 10,
+    "denominator": 5000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰腰带",
+    "numerator": 10,
+    "denominator": 5000,
+    "amount": 1
+   },
+   {
+    "item": "烈焰魔靴",
+    "numerator": 10,
+    "denominator": 5000,
+    "amount": 1
+   },
+   {
+    "item": "光芒道袍(男)",
+    "numerator": 10,
+    "denominator": 5000,
+    "amount": 1
+   },
+   {
+    "item": "光芒道袍(女)",
+    "numerator": 10,
+    "denominator": 5000,
+    "amount": 1
+   },
+   {
+    "item": "光芒项链",
+    "numerator": 10,
+    "denominator": 5000,
+    "amount": 1
+   },
+   {
+    "item": "光芒护腕",
+    "numerator": 10,
+    "denominator": 5000,
+    "amount": 1
+   },
+   {
+    "item": "光芒道戒",
+    "numerator": 10,
+    "denominator": 5000,
+    "amount": 1
+   },
+   {
+    "item": "光芒腰带",
+    "numerator": 10,
+    "denominator": 5000,
+    "amount": 1
+   },
+   {
+    "item": "光芒道靴",
+    "numerator": 10,
+    "denominator": 5000,
+    "amount": 1
+   },
+   {
+    "item": "开天",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "镇天",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "玄天",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "凤天魔甲",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "凰天魔衣",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "战神项链",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "战神手镯",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "战神戒指",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "圣魔项链",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "圣魔手镯",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "圣魔戒指",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "真魂项链",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "真魂手镯",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   },
+   {
+    "item": "真魂戒指",
+    "numerator": 10,
+    "denominator": 20000,
+    "amount": 1
+   }
   ]
  },
  "drops_append": {

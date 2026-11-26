@@ -11,6 +11,7 @@
   小 boss（攻略写的）和每层另加的 2 个 boss 刷在整张图随机位置。数值、爆率都用数据表里同名怪的。
 - 不做双倍经验/爆率（用户 11-26）。入口在传送菜单（build_data.py ENTRIES），一层出口回盟重。
 - 十层另刷 1.80 的魔龙教主和本服加的暗之魔龙教主（用户 11-26，#1329），暗之魔龙教主定义在 DARK_LORD；
+  另刷本服加的暗之赤月恶魔（用户 11-26，#1331），定义在 DARK_MOON；
   还另刷少量高级魔龙怪和一些普通魔龙怪（用户 11-26，#1330），见 EXTRA。
 
 用法：uv run --no-project --with numpy python import_huanjing.py
@@ -34,6 +35,20 @@ def _dark_lord() -> dict:
 
 DARK_LORD = _dark_lord()
 
+
+def _dark_moon() -> dict:
+    """暗之赤月恶魔（用户 11-26 定，#1331）：血 20000、攻击上下限是魔龙教主的 80%（250~350 → 200~280），
+    其余（外观、原地不动打周围一圈、防御、经验）同 1.76 数据表的赤月恶魔；爆率同魔龙教主（import_v180_drops.py）。"""
+    moon = next(m for m in json.loads(CATALOG.read_text())["monsters"] if m["Name"] == "赤月恶魔")
+    lord = next(m for m in MOLONG_MONSTERS if m["Name"] == "魔龙教主")
+    return {k: v for k, v in moon.items() if k != "Idx"} | {"Name": "暗之赤月恶魔", "HP": 20000,
+                   "DC": round(lord["DC"] * 0.8), "DCMAX": round(lord["DCMAX"] * 0.8)}
+
+
+DARK_MOON = _dark_moon()
+# 本服加的、数据表里没有的怪，爆率都同魔龙教主
+DARK_BOSSES = [DARK_LORD, DARK_MOON]
+
 # 编号、标题、用的旧图、这层的普通怪、这层的小 boss/boss（攻略写的 + 每层另加的 2 个），每项 (怪, 只数, 分钟)
 LAYERS = [
     ("H001", "幻境一层", "E602", ["蜈蚣", "恶灵僵尸", "恶灵尸王", "钳虫", "跳跳蜂", "黑色恶蛆"],
@@ -56,7 +71,8 @@ LAYERS = [
      [("双头金刚", 1, 120), ("双头血魔", 1, 120), ("暗之双头血魔", 1, 90)]),
     ("H010", "幻境十层", "D2073", ["牛头魔", "牛魔斗士", "牛魔战士", "牛魔侍卫", "牛魔法师"],
      [("赤月恶魔", 1, 120), ("牛魔王", 1, 120), ("暗之牛魔王", 1, 90), ("暗之双头金刚", 1, 90),
-      ("魔龙教主", 1, 120), ("暗之魔龙教主", 1, 120)]),  # 用户 11-26 加（#1329）
+      ("魔龙教主", 1, 120), ("暗之魔龙教主", 1, 120),  # 用户 11-26 加（#1329）
+      ("暗之赤月恶魔", 1, 120)]),  # 用户 11-26 加（#1331）
 ]
 # 每层另加的怪（不算 boss，也刷整张图随机位置）：(怪, 只数, 分钟)
 # 十层（用户 11-26「刷少量魔龙高级怪，刷一些魔龙普通怪」，#1330）：高级怪同龙源血路每种 3 只、间隔照 GeeM2；
@@ -87,7 +103,7 @@ LOOKS = {("H006", 83, 25): "zombie-pit"}
 
 def main() -> None:
     cat = json.loads(CATALOG.read_text())
-    known = {m["Name"] for m in cat["monsters"] + MOLONG_MONSTERS + [DARK_LORD]}
+    known = {m["Name"] for m in cat["monsters"] + MOLONG_MONSTERS + DARK_BOSSES}
     titles = {m["id"]: m for m in cat["maps"]}
     files = {h: MapFile.load(map_file(old)) for h, _, old, _, _ in LAYERS} | {"3": MapFile.load(map_file("3"))}
 
@@ -127,11 +143,11 @@ def main() -> None:
 
     out = {
         "_说明": "幻境一层～十层（#1317），由 tools/import_huanjing.py 生成，格式同 ref/Mir176 catalog.json，见 tools/catalog.py",
-        "maps": maps, "routes": routes, "spawns": spawns, "minimaps": minimaps, "monsters": [DARK_LORD],
+        "maps": maps, "routes": routes, "spawns": spawns, "minimaps": minimaps, "monsters": DARK_BOSSES,
     }
     EXTRA_DIR.mkdir(exist_ok=True)
     (EXTRA_DIR / "huanjing.json").write_text(json.dumps(out, ensure_ascii=False, indent=1) + "\n")
-    print(f"地图 {len(maps)}、门 {len(routes)}、刷怪点 {len(spawns)}、小地图 {len(minimaps)}、怪 1")
+    print(f"地图 {len(maps)}、门 {len(routes)}、刷怪点 {len(spawns)}、小地图 {len(minimaps)}、怪 {len(DARK_BOSSES)}")
 
 
 if __name__ == "__main__":
