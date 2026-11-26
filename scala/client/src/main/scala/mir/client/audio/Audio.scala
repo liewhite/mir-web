@@ -21,6 +21,8 @@ import scala.scalajs.js
  *    恢复失败或恢复后仍不在 running，下一次手势换一个新 context（已解码的音效可以继续用）。
  *  - 音效第一次用要下载解码：常用的（人物动作、受击、魔法）进游戏就预加载；
  *    没加载好的那次请求记下来，加载完 ≤ ReplayWindowMs 内补播。
+ *  - 浏览器没有 Web Audio 或建 context 失败（#1366，如 iOS 14.4 及以下只有 webkitAudioContext，差异见 WebAudio）：
+ *    音效静音、游戏照常启动；建失败的下一次手势再试。背景音乐走 <audio> 元素，不受影响。
  */
 final class Audio(assets: Assets, available: Set[Int]):
   import Audio.*
@@ -31,8 +33,9 @@ final class Audio(assets: Assets, available: Set[Int]):
     case Ready(buf: dom.AudioBuffer)
     case Missing
 
-  private var ctx          = new dom.AudioContext()
-  private var needsRebuild = false
+  /** 没有就是这会儿放不了音效（不支持，或建失败等下一次手势重建）。 */
+  private var ctx          = WebAudio.create()
+  private var needsRebuild = ctx.isEmpty && WebAudio.supported
   private val clips        = mutable.HashMap.empty[Int, Clip]
   private val recent       = mutable.HashMap.empty[Int, Double]
   private var bgm          = Option.empty[dom.HTMLAudioElement]
@@ -43,32 +46,33 @@ final class Audio(assets: Assets, available: Set[Int]):
 
   /** 用户手势里调：恢复（必要时重建）音频，iOS 上顺便放一段静音把输出打开。 */
   def unlock(): Unit =
-    if needsRebuild || ctx.state == "closed" then
-      val old = ctx
-      if old.state != "closed" then old.close().toFuture.recover(_ => ()): Unit
-      ctx = new dom.AudioContext()
-      needsRebuild = false
+    if needsRebuild || ctx.exists(_.state == "closed") then
+      ctx.filter(_.state != "closed").foreach(WebAudio.close(_).recover(_ => ()): Unit)
+      ctx = WebAudio.create()
+      needsRebuild = ctx.isEmpty
     resume()
-    if ctx.state != "running" then primeSilence(ctx)
+    ctx.filter(_.state != "running").foreach(primeSilence)
     if musicOn then bgm.filter(_.paused).foreach(playBgm)
 
   /** 页面回到前台（visibilitychange/pageshow/focus）时调：不在手势里，能恢复就恢复，不成等下一次手势。 */
   def wake(): Unit =
-    if !needsRebuild && ctx.state != "closed" then resume()
+    if !needsRebuild then resume()
     if musicOn then bgm.filter(_.paused).foreach(playBgm)
 
   private def resume(): Unit =
-    val c = ctx
-    if c.state != "running" && c.state != "closed" then
-      c.resume().toFuture
-        .map(_ => if (c eq ctx) && c.state != "running" then needsRebuild = true)
-        .recover(_ => if c eq ctx then needsRebuild = true): Unit
+    for c <- ctx if c.state != "running" && c.state != "closed" do
+      def current = ctx.exists(_ eq c)
+      WebAudio.resume(c)
+        .map(_ => if current && c.state != "running" then needsRebuild = true)
+        .recover(_ => if current then needsRebuild = true): Unit
 
   private def primeSilence(c: dom.AudioContext): Unit =
-    val src = c.createBufferSource()
-    src.buffer = c.createBuffer(1, 1, 22050)
-    src.connect(c.destination)
-    src.start()
+    try
+      val src = c.createBufferSource()
+      src.buffer = c.createBuffer(1, 1, 22050)
+      src.connect(c.destination)
+      src.start()
+    catch case _: js.JavaScriptException => () // 打不开就等下一次手势
 
   /** 播一个音效；at 是声源格子（没有就是自己身上的声音），离 listener 超过 12 格听不见。 */
   def play(id: Int, at: Option[Cell], listener: Option[Cell]): Unit =
@@ -79,7 +83,7 @@ final class Audio(assets: Assets, available: Set[Int]):
         Option.when(d <= 12)(0.8 * (1 - d / 14.0))
       case _ => Some(0.8)
     for
-      v <- vol if soundOn && available.contains(id) && t - recent.getOrElse(id, 0.0) >= 60 // 同一声音太密就跳过
+      v <- vol if soundOn && ctx.isDefined && available.contains(id) && t - recent.getOrElse(id, 0.0) >= 60 // 同一声音太密就跳过
     do
       recent(id) = t
       clips.get(id) match
@@ -90,7 +94,7 @@ final class Audio(assets: Assets, available: Set[Int]):
 
   /** 预加载一批音效（并发 PreloadParallel 个），不影响已在加载的。 */
   def preload(ids: Iterable[Int]): Future[Unit] =
-    val queue = mutable.Queue.from(ids.filter(id => available.contains(id) && !clips.contains(id)))
+    val queue = mutable.Queue.from(ids.filter(id => ctx.isDefined && available.contains(id) && !clips.contains(id)))
     def worker(): Future[Unit] =
       if queue.isEmpty then Future.unit
       else
@@ -99,28 +103,31 @@ final class Audio(assets: Assets, available: Set[Int]):
     Future.sequence(List.fill(PreloadParallel)(worker())).map(_ => ())
 
   private def fetch(id: Int, pending: Option[(Double, Double)]): Future[Unit] =
-    clips(id) = Clip.Loading(pending)
-    decode(id).map { result =>
-      val waiting = clips.get(id).collect { case Clip.Loading(p) => p }.flatten
-      clips(id) = result.fold(Clip.Missing)(Clip.Ready(_))
-      for
-        buf    <- result
-        (t, v) <- waiting if soundOn && now() - t <= ReplayWindowMs
-      do start(buf, v)
-    }
+    ctx match
+      case None => Future.unit // 这会儿没有 context：不记 Missing，有了 context 后下次再加载
+      case Some(c) =>
+        clips(id) = Clip.Loading(pending)
+        decode(c, id).map { result =>
+          val waiting = clips.get(id).collect { case Clip.Loading(p) => p }.flatten
+          clips(id) = result.fold(Clip.Missing)(Clip.Ready(_))
+          for
+            buf    <- result
+            (t, v) <- waiting if soundOn && now() - t <= ReplayWindowMs
+          do start(buf, v)
+        }
 
   private def start(buf: dom.AudioBuffer, vol: Double): Unit =
-    val c   = ctx
-    val src = c.createBufferSource()
-    src.buffer = buf
-    val g = c.createGain()
-    g.gain.value = vol
-    src.connect(g)
-    g.connect(c.destination)
-    src.start()
+    for c <- ctx do
+      val src = c.createBufferSource()
+      src.buffer = buf
+      val g = c.createGain()
+      g.gain.value = vol
+      src.connect(g)
+      g.connect(c.destination)
+      src.start()
 
-  private def decode(id: Int): Future[Option[dom.AudioBuffer]] =
-    assets.bytes(s"sound/$id.m4a").flatMap(data => ctx.decodeAudioData(data).toFuture).map(Some(_)).recover(_ => None)
+  private def decode(c: dom.AudioContext, id: Int): Future[Option[dom.AudioBuffer]] =
+    assets.bytes(s"sound/$id.m4a").flatMap(WebAudio.decode(c, _)).map(Some(_)).recover(_ => None)
 
   /** 背景音乐自动播放被拦时会拒绝，忽略，下一次手势再试。 */
   private def playBgm(b: dom.HTMLAudioElement): Unit =
