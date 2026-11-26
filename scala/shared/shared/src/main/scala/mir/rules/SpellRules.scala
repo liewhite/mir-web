@@ -301,14 +301,13 @@ object SpellRules:
 
   /**
    * 召唤骷髅（原版每级 +35%）；道术加成是本服加的（#1209），#1258 用户 11-25 定每点道术上限 +1.8%、不封顶。
-   * 用户 11-26 在 #1334 定「数量不变，攻击、防御魔防都砍一点，仍随道术涨」：攻击底数打 75 折，
-   * 防御魔防每点道术 +1.8% → +0.9%（血不变）。神兽另有一份（Rates.shinsuGrowth）。
+   * 血、攻击、防御魔防都不打折、每点 +1.8%（#1334 削神兽时用户 11-26 定「骷髅不要削弱」）。神兽另有一份（Rates.shinsuGrowth）。
    */
   val StandardGrowth = SummonGrowth(
     levelPermille = 350,
     hp = StatGrowth(basePermille = 1000, scPermille = 18),
-    attack = StatGrowth(basePermille = 750, scPermille = 18),
-    guard = StatGrowth(basePermille = 1000, scPermille = 9)
+    attack = StatGrowth(basePermille = 1000, scPermille = 18),
+    guard = StatGrowth(basePermille = 1000, scPermille = 18)
   )
 
   /** 召唤出来的这种宝宝按哪份成长算（神兽两种形态同一份）。 */

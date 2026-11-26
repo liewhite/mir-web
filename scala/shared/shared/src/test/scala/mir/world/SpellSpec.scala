@@ -433,7 +433,7 @@ object SpellSpec extends ZIOSpecDefault:
         )
       }
     ),
-    test("骷髅（#1209、#1258、#1334）：道术每点血攻 +1.8%、防魔防 +0.9%，不封顶；攻击底数 ×0.75；技能等级只乘血和攻") {
+    test("骷髅（#1209、#1258；#1334 用户定不削）：道术上限每点 +1.8%，不封顶，乘血、攻、防、魔防；技能等级只乘血和攻") {
       val md = catalog.monster(SpellRules.SkeletonPet).get
       def body(sc: Int) = SpellRules.summonedBody(md, 3, sc)
       def x(v: Int, k: Double) = math.floor(v * k + 0.5).toInt
@@ -441,20 +441,13 @@ object SpellSpec extends ZIOSpecDefault:
       val lv3 = g.levelBoost(3)
       assertTrue(
         lv3 == 2.05,
-        g.attack.scBoost(0) == 1.0,
-        g.attack.scBoost(20) == 1.36,
-        g.attack.scBoost(50) == 1.9,
-        g.attack.scBoost(-5) == 1.0,
-        g.guard.scBoost(20) == 1.18,
-        g.hp.scPctText == "1.8",
-        g.guard.scPctText == "0.9",
-        g.hp.baseText.isEmpty,
-        g.attack.baseText.contains("0.75"),
-        body(0) == PetBody(x(md.hp, lv3), Span(x(md.dc.lo, 0.75 * lv3), x(md.dc.hi, 0.75 * lv3)), md.ac, md.mac),
+        List(g.hp, g.attack, g.guard).forall(s => s.scBoost(0) == 1.0 && s.scBoost(20) == 1.36 && s.scBoost(50) == 1.9 && s.scBoost(-5) == 1.0),
+        List(g.hp, g.attack, g.guard).forall(s => s.scPctText == "1.8" && s.baseText.isEmpty),
+        body(0) == PetBody(x(md.hp, lv3), Span(x(md.dc.lo, lv3), x(md.dc.hi, lv3)), md.ac, md.mac),
         body(20).hp == x(md.hp, lv3 * 1.36),
-        body(20).dc == Span(x(md.dc.lo, 0.75 * (lv3 * 1.36)), x(md.dc.hi, 0.75 * (lv3 * 1.36))),
-        body(20).ac == Span(x(md.ac.lo, 1.18), x(md.ac.hi, 1.18)),
-        body(20).mac == Span(x(md.mac.lo, 1.18), x(md.mac.hi, 1.18)),
+        body(20).dc == Span(x(md.dc.lo, lv3 * 1.36), x(md.dc.hi, lv3 * 1.36)),
+        body(20).ac == Span(x(md.ac.lo, 1.36), x(md.ac.hi, 1.36)),
+        body(20).mac == Span(x(md.mac.lo, 1.36), x(md.mac.hi, 1.36)),
         body(60).hp > body(40).hp // 不封顶
       )
     },
