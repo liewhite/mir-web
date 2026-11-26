@@ -62,20 +62,28 @@ ROUTE_FIXES = {
     # 祖玛阁第一格的这扇门数据表直通祖玛六层大厅（等于跳过迷宫），原版通往迷宫另一格
     ("D5061", 66, 16): ("D5062", 85, 12),
 }
+# 门那格补画的样子（地图里没画门的，取值见 scala mir.data.GateLook；幻境的在 import_huanjing.py LOOKS）：(图, x, y) -> 样子
+ROUTE_LOOKS = {
+    # 石墓七层去桃源之门：原版要尸王钻出留下的坑才能进（NEEDHOLE），地上没画，补画坑、门常开（#1352）
+    ("D717", 80, 28): "zombie-pit",
+}
 
 
 def fixed_routes(cat: dict) -> list[dict]:
-    """数据表的传送点，套上 ROUTE_FIXES；每条修正都得对上数据表里的一扇门，对不上（数据表变了）就报错。"""
-    out, used = [], set()
+    """数据表的传送点，套上 ROUTE_FIXES 和 ROUTE_LOOKS；每条都得对上数据表里的一扇门，对不上（数据表变了）就报错。"""
+    out = []
     for r in cat["routes"]:
         key = (r["from"], r["x"], r["y"])
         if key in ROUTE_FIXES:
-            used.add(key)
             to, tx, ty = ROUTE_FIXES[key]
             r = r | {"to": to, "tx": tx, "ty": ty}
+        if key in ROUTE_LOOKS:
+            r = r | {"look": ROUTE_LOOKS[key]}
         out.append(r)
-    if missing := set(ROUTE_FIXES) - used:
-        raise SystemExit(f"ROUTE_FIXES 对不上数据表的门：{sorted(missing)}")
+    gates = {(r["from"], r["x"], r["y"]) for r in cat["routes"]}
+    for name, table in (("ROUTE_FIXES", ROUTE_FIXES), ("ROUTE_LOOKS", ROUTE_LOOKS)):
+        if missing := set(table) - gates:
+            raise SystemExit(f"{name} 对不上数据表的门：{sorted(missing)}")
     return out
 
 
