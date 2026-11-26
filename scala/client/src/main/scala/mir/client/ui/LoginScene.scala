@@ -1,6 +1,7 @@
 package mir.client.ui
 
 import mir.client.assets.{Assets, SpriteStore}
+import mir.client.game.LoginForm
 import mir.client.input.Pt
 import mir.client.net.AccountApi
 import org.scalajs.dom
@@ -27,7 +28,9 @@ final class LoginScene(canvas: dom.HTMLCanvasElement, assets: Assets):
   private val password = $[dom.HTMLInputElement]("#password")
   /** 右上角「更新日志」「留言板」链接（#1280，不登录也能看） */
   private val pageLinks = $[dom.HTMLElement]("#page-links")
-  private val done     = Promise[Unit]()
+  private val done     = Promise[LoginForm]()
+  /** 登录框出现的时刻（#1345 加载日志用） */
+  private var shownAt      = 0.0
   private var phase: Phase = Phase.Form(busy = false)
   private var pressed      = Option.empty[Btn]
   /** 框下的提示和它消失的时刻 */
@@ -38,7 +41,8 @@ final class LoginScene(canvas: dom.HTMLCanvasElement, assets: Assets):
 
   private def now: Double = dom.window.performance.now()
 
-  def run(): Future[Unit] =
+  def run(): Future[LoginForm] =
+    shownAt = now
     form.classList.remove("hidden")
     Option(pageLinks).foreach(_.classList.remove("hidden"))
     form.onsubmit = e =>
@@ -93,22 +97,23 @@ final class LoginScene(canvas: dom.HTMLCanvasElement, assets: Assets):
     else if !register || dom.window.confirm(s"用账号「$a」注册新用户？\n密码请记牢，忘了只能找管理员改。") then
       prepareDoorSound()
       phase = Phase.Form(busy = true)
+      val sent = LoginForm(shownAt, now, register)
       say(if register then "注册中…" else "登录中…")
       (if register then AccountApi.register(a, p) else AccountApi.login(a, p)).foreach {
-        case Right(()) => open()
+        case Right(()) => open(sent)
         case Left(why) =>
           phase = Phase.Form(busy = false)
           say(why)
       }
 
   /** 登录成功：收起输入框，开门。 */
-  private def open(): Unit =
+  private def open(sent: LoginForm): Unit =
     note = None
     form.classList.add("hidden")
     Option(pageLinks).foreach(_.classList.add("hidden"))
     account.blur()
     password.blur()
-    phase = Phase.Opening(now)
+    phase = Phase.Opening(now, sent)
     // 放不出来（浏览器不让）就算了
     doorSound.flatMap(_.play().toOption).foreach(_.toFuture.recover(_ => ()): Unit)
 
@@ -118,14 +123,14 @@ final class LoginScene(canvas: dom.HTMLCanvasElement, assets: Assets):
     a.load()
     doorSound = Some(a)
 
-  private def finish(): Unit =
+  private def finish(sent: LoginForm): Unit =
     listeners.foreach(_())
     listeners = Nil
     form.onsubmit = null
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.fillStyle = "#000"
     ctx.fillRect(0, 0, canvas.width, canvas.height)
-    done.trySuccess(()): Unit
+    done.trySuccess(sent): Unit
 
   private def say(text: String): Unit = note = Some(text -> (now + NoteMs))
 
@@ -155,7 +160,7 @@ final class LoginScene(canvas: dom.HTMLCanvasElement, assets: Assets):
     ctx.setTransform(dpr * l.scene, 0, 0, dpr * l.scene, dpr * l.sceneX, dpr * l.sceneY)
     g.img("chrsel", Background, 0, 0)
     phase match
-      case Phase.Opening(since) =>
+      case Phase.Opening(since, sent) =>
         val k = math.min(((t - since) / FrameMs).toInt, DoorFrames - 1)
         g.img("chrsel", DoorFirst + k, DoorX, DoorY)
         // 开到底后淡出（原版 g_boDoFadeOut），淡完进选人
@@ -164,7 +169,7 @@ final class LoginScene(canvas: dom.HTMLCanvasElement, assets: Assets):
           ctx.setTransform(1, 0, 0, 1, 0, 0)
           ctx.fillStyle = s"rgba(0,0,0,${math.min(1.0, fade)})"
           ctx.fillRect(0, 0, cw, ch)
-        if fade >= 1 then finish()
+        if fade >= 1 then finish(sent)
       case Phase.Form(_) =>
         // 登录框（屏幕正中，手机上不跟着背景缩得太小）
         ctx.setTransform(dpr * l.box, 0, 0, dpr * l.box, dpr * l.boxX, dpr * l.boxY)
@@ -193,8 +198,8 @@ object LoginScene:
   private enum Phase:
     /** 填表（busy：登录/注册请求还没回来） */
     case Form(busy: Boolean)
-    /** 石门在开，since 是开始的时刻 */
-    case Opening(since: Double)
+    /** 石门在开，since 是开始的时刻；sent 是成功的那次提交（开完交给加载计时） */
+    case Opening(since: Double, sent: LoginForm)
 
   /** 登录框上的按钮：图号（prguse，按下时画）和在框内的位置（FState.pas 830 行起）。 */
   enum Btn(val img: Int, val at: Pt):

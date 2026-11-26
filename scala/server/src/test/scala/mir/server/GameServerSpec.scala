@@ -50,16 +50,22 @@ object GameServerSpec extends ZIOSpecDefault:
     def say(l: Link, cmd: ClientCmd): Unit = { game.post(LinkEvent.Received(l, cmd)); game.step() }
 
   def spec = suite("游戏主循环")(
-    test("页面报来的设备和加载耗时写成一行日志（#1327）；进游戏时不影响上线") {
-      val connected = LoadLog.line("bob", None, Device.Phone, LoadStage.Connected(12_345L, 3_400L))
-      val playable  = LoadLog.line("bob", Some("阿狸"), Device.Desktop, LoadStage.Playable(5_100L, 40_260L))
+    test("页面报来的设备和加载耗时写成一行日志（#1327；#1345 人输入、选人和下载分开）；进游戏时不影响上线") {
+      val fresh    = LoadLog.line("bob", None, Device.Phone, LoadStage.Connected(LoginPath.Typed(3_210L, 25_000L, 1_460L, register = true), 3_400L))
+      val relogin  = LoadLog.line("bob", None, Device.Phone, LoadStage.Connected(LoginPath.Typed(900L, 8_000L, 1_000L, register = false), 3_400L))
+      val back     = LoadLog.line("bob", None, Device.Phone, LoadStage.Connected(LoginPath.Remembered(200L), 800L))
+      val playable = LoadLog.line("bob", Some("阿狸"), Device.Desktop, LoadStage.Playable(Some(20_000L), 5_100L, 40_260L))
+      val resumed  = LoadLog.line("bob", Some("阿狸"), Device.Desktop, LoadStage.Playable(None, 900L, 2_000L))
       val f = Fixture()
       val a = f.connect(1)
-      f.say(a, SessionCmd.Loaded(Device.Phone, LoadStage.Connected(100L, 200L)))
+      f.say(a, SessionCmd.Loaded(Device.Phone, LoadStage.Connected(LoginPath.Remembered(100L), 200L)))
       f.say(a, SessionCmd.EnterGame(f.char.id))
       assertTrue(
-        connected == "bob：手机，连上服务器；打开页面到登录好 12.3 秒，读游戏数据 3.4 秒",
-        playable == "阿狸（bob）：电脑，进图可玩；点进游戏到可玩 5.1 秒，打开页面到可玩 40.3 秒",
+        fresh == "bob：手机，连上服务器；新号注册，打开页面到出登录框 3.2 秒（下载），输账号密码 25.0 秒，提交到开门完 1.5 秒；读游戏数据 3.4 秒",
+        relogin == "bob：手机，连上服务器；没 cookie 登录，打开页面到出登录框 0.9 秒（下载），输账号密码 8.0 秒，提交到开门完 1.0 秒；读游戏数据 3.4 秒",
+        back == "bob：手机，连上服务器；带 cookie 回来，打开页面到确认登录 0.2 秒；读游戏数据 0.8 秒",
+        playable == "阿狸（bob）：电脑，进图可玩；选人画面停留 20.0 秒，点进游戏到可玩 5.1 秒，打开页面到可玩 40.3 秒",
+        resumed == "阿狸（bob）：电脑，进图可玩；没经过选人（刷新后接着玩），点进游戏到可玩 0.9 秒，打开页面到可玩 2.0 秒",
         a.got.exists(_.isInstanceOf[ServerMsg.EnterMap]),
         !a.got.exists(_.isInstanceOf[ServerMsg.Refused])
       )

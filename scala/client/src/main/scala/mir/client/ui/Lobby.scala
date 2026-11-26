@@ -1,6 +1,7 @@
 package mir.client.ui
 
 import mir.client.assets.Assets
+import mir.client.game.LoginForm
 import mir.client.net.AccountApi
 import mir.protocol.SessionCmd
 import org.scalajs.dom
@@ -31,16 +32,18 @@ final class Lobby(send: SessionCmd => Unit):
 object Lobby:
   private def $[T <: dom.Element](sel: String): T = dom.document.querySelector(sel).asInstanceOf[T]
 
-  /** 没登录就进登录画面（加载页先收起），登录或注册成功、石门开完才返回。 */
-  def ensureLogin(): Future[Unit] =
+  /** 没登录就进登录画面（加载页先收起），登录或注册成功、石门开完才返回登录框的经过；带 cookie 回来的返回空。 */
+  def ensureLogin(): Future[Option[LoginForm]] =
     AccountApi.loggedIn().flatMap { ok =>
-      if ok then Future.unit
+      if ok then Future.successful(None)
       else
         $[dom.HTMLElement]("#loading").classList.add("hidden")
         for
           assets <- Assets.load()
-          _      <- LoginScene($[dom.HTMLCanvasElement]("#game"), assets).run()
-        yield $[dom.HTMLElement]("#loading").classList.remove("hidden")
+          sent   <- LoginScene($[dom.HTMLCanvasElement]("#game"), assets).run()
+        yield
+          $[dom.HTMLElement]("#loading").classList.remove("hidden")
+          Some(sent)
     }
 
   /** 加载页上的状态文字（进游戏前的各步、出错原因）。 */

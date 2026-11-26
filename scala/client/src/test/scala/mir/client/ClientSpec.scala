@@ -720,13 +720,18 @@ object ClientSpec extends ZIOSpecDefault:
         run(Freshness.Stale, playing) == (0, true), run(Freshness.Stuck, playing) == (0, true)
       )
     },
-    test("加载耗时每页各报一次（#1327）：连上时报登录、读数据，第一次进图可玩时报进图、整页；断线重连、换图不再报") {
+    test("加载耗时每页各报一次（#1327）：连上时报登录、读数据，第一次进图可玩时报选人停留、进图、整页；断线重连、换图不再报（#1345 人输入和下载分开）") {
       var now = 1000.0
-      val c = GameClient(catalog, ClientEnv(() => now, _ => Future.never, (_, _, _) => (), load = Some(LoadTimer(Device.Phone, 800.0, 1000.0))))
+      val form = LoginForm(shownAt = 300.0, submittedAt = 600.0, register = true)
+      val c = GameClient(catalog, ClientEnv(() => now, _ => Future.never, (_, _, _) => (), load = Some(LoadTimer(Device.Phone, Some(form), 800.0, 1000.0))))
       c.map = Some(map0)
       def got(m: ServerMsg) = c.receive(LinkEvent.Received(m))
       def loaded = c.recent.collect { case SessionCmd.Loaded(d, s) => (d, s) }
       got(ServerMsg.LoggedIn("me", "x", "w", "d"))
+      now = 2000.0
+      got(ServerMsg.CharList(Nil))
+      now = 5000.0
+      got(ServerMsg.CharList(Nil)) // 建完角色再列一次，不重算停留
       now = 9000.0
       c.enterGame(CharId(7))
       now = 12500.0
@@ -734,8 +739,27 @@ object ClientSpec extends ZIOSpecDefault:
       got(ServerMsg.LoggedIn("me", "x", "w", "d"))
       got(ServerMsg.EnterMap(ActorId(1), MapId("0"), Cell(10, 10), Dir.Down, Millis(0)))
       assertTrue(
-        loaded == Vector(Device.Phone -> LoadStage.Connected(800L, 200L), Device.Phone -> LoadStage.Playable(3500L, 12500L)),
+        loaded == Vector(
+          Device.Phone -> LoadStage.Connected(LoginPath.Typed(300L, 300L, 200L, register = true), 200L),
+          Device.Phone -> LoadStage.Playable(Some(7000L), 3500L, 12500L)
+        ),
         c.recent.indexWhere(_.isInstanceOf[SessionCmd.Loaded]) < c.recent.indexWhere(_.isInstanceOf[SessionCmd.EnterGame])
+      )
+    },
+    test("带 cookie 回来、刷新后直接接着玩：报「带 cookie」和「没经过选人」（#1345）") {
+      var now = 500.0
+      val c = GameClient(catalog, ClientEnv(() => now, _ => Future.never, (_, _, _) => (), load = Some(LoadTimer(Device.Desktop, None, 150.0, 500.0))))
+      c.map = Some(map0)
+      c.resume(CharId(7))
+      def got(m: ServerMsg) = c.receive(LinkEvent.Received(m))
+      got(ServerMsg.LoggedIn("me", "x", "w", "d"))
+      now = 1500.0
+      got(ServerMsg.EnterMap(ActorId(1), MapId("0"), Cell(10, 10), Dir.Down, Millis(0)))
+      assertTrue(
+        c.recent.collect { case SessionCmd.Loaded(_, s) => s } == Vector(
+          LoadStage.Connected(LoginPath.Remembered(150L), 350L),
+          LoadStage.Playable(None, 1000L, 1500L)
+        )
       )
     },
     test("地上出现达到档位的装备在聊天栏提示一次（#1301）：不分职业，「全部」按沃玛，进图后重新算") {

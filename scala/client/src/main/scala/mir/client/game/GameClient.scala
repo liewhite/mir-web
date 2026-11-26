@@ -186,7 +186,9 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
             update = PendingUpdate.Idle
             ui.notice("游戏已更新，请手动刷新页面", Tone.Bad)
             proceed()
-      case ServerMsg.CharList(chars)        => ui.charList(chars)
+      case ServerMsg.CharList(chars)        =>
+        env.load.foreach(_.listed(local))
+        ui.charList(chars)
       case ServerMsg.Pong(sent, server)     => clock.pong(sent.toDouble, server, local)
       case ServerMsg.Act(id, _, _, _) if locked.contains(id) && view.actors.get(id).exists(_.dead) => locked = None
       case _                                => ()

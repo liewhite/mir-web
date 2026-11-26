@@ -72,13 +72,29 @@ object Device:
 
 /** 加载到了哪一步、各段花了多少毫秒（客户端本地时钟，从打开页面算起）。 */
 enum LoadStage:
-  /** 连上服务器：打开页面到登录好（含输密码；已登录过的近乎 0）、登录好到读完游戏数据和素材索引 */
-  case Connected(loginMs: Long, dataMs: Long)
-  /** 第一次进图可玩：点进游戏到地图和周围画面下完、打开页面到可玩（含输密码、选人） */
-  case Playable(enterMs: Long, pageMs: Long)
+  /** 连上服务器：怎么登录的（#1345 把人输入的时间和下载分开）、登录好到读完游戏数据和素材索引 */
+  case Connected(login: LoginPath, dataMs: Long)
+  /**
+   * 第一次进图可玩：pickMs 在选人画面停留（含建角色起名；刷新后直接接着玩、没经过选人的为空，#1345）、
+   * enterMs 点进游戏到地图和周围画面下完、pageMs 打开页面到可玩（含输密码、选人）
+   */
+  case Playable(pickMs: Option[Long], enterMs: Long, pageMs: Long)
 
 object LoadStage:
   given JsonCodec[LoadStage] = DeriveJsonCodec.gen
+
+/** 这一页是怎么登录的（#1345，时长都是毫秒）。 */
+enum LoginPath:
+  /** 带着有效 cookie 回来，没出登录框：打开页面到确认已登录 */
+  case Remembered(checkMs: Long)
+  /**
+   * 出了登录框（新人第一次打开、cookie 过期、退出过）：formMs 打开页面到登录框出现（下载脚本和登录画面，不含人操作）、
+   * typingMs 登录框出现到点下成功的那次提交（人在输账号密码）、openMs 提交到服务器回话且石门开完；register 是注册新号
+   */
+  case Typed(formMs: Long, typingMs: Long, openMs: Long, register: Boolean)
+
+object LoginPath:
+  given JsonCodec[LoginPath] = DeriveJsonCodec.gen
 
 /** 游戏指令：进了游戏后对世界的操作。 */
 enum GameCmd:
