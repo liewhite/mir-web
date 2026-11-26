@@ -345,9 +345,12 @@ final class GameServer(
   /** 社交查人：在线的按名字找，全部角色查数据库（加好友）。 */
   private val directory = Directory(seen, chars.canonicalName)
 
-  /** 按名字（不分大小写，原版 GetPlayObject）找在线角色，看活着没有。 */
+  /**
+   * 按名字（不分大小写，原版 GetPlayObject）找在线角色，看活着没有。
+   * #1343 前建的角色可能只差大小写（线上有 yoyo / Yoyo），都在线时优先大小写完全一样的那个，免得私聊、组队找错人。
+   */
   private def seen(name: String): Option[Seen] =
-    online.values.find(_.name.equalsIgnoreCase(name)).map { o =>
+    online.values.find(_.name == name).orElse(online.values.find(_.name.equalsIgnoreCase(name))).map { o =>
       Seen(o.name, maps.get(o.map).toOption.flatMap(_.player(o.actor)).exists(!_.isDead))
     }
 
