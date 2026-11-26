@@ -35,7 +35,10 @@ object SwordRules:
   val SmartWideHitMin = 2
 
   /** 半月弯刀：身边另外 7 格每格的威力 = 这一刀威力 ×(等级+1)/4 + 1。 */
-  def widePower(power: Int, level: Int): Int = round(power * (level + 1) / 4.0) + 1
+  def widePower(power: Int, level: Int): Int = round(power * wideShare(level)) + 1
+
+  /** 半月弯刀旁边那几下占这一刀威力的比例：0~3 级 25%/50%/75%/100%。 */
+  def wideShare(level: Int): Double = (level + 1) / 4.0
 
   /** 烈火剑法那一刀的威力：×(1 + (4 + 等级×4)/10)（HitDouble）。 */
   def firePower(power: Int, level: Int): Int = power + round(power / 100.0 * (4 + level * 4) * 10)

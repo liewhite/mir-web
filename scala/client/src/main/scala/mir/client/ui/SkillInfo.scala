@@ -109,6 +109,7 @@ object SkillInfo:
       note("满血的目标放了不涨熟练度")
     )
     private def melee(f: Int => Int)   = range(f(s.dc.lo), f(s.dc.hi))
+    private def widePct(l: Int)        = pct(SwordRules.wideShare(l))
 
     /** 诱惑一次各结果的概率：先按 tameChance 收服，没收服再走原版流程（流程里的收服算没反应）。 */
     private def tameOdds(l: Int): Option[Map[String, Double]] =
@@ -179,7 +180,7 @@ object SkillInfo:
       case Skill.SpiritSword  => Some(l => s"准确 +${SwordRules.spiritSwordHit(l)}")
       case Skill.PowerHit  => Some(l => s"每 ${SwordRules.powerHitEvery(l)} 刀一次，威力 +${SwordRules.powerHitPower(0, l)}")
       case Skill.Rush => Some(l => s"冲 ${SpellRules.rushSteps(l)} 格，撞 ${span(r => SpellRules.rushImpact(l, 0)(using r))}")
-      case Skill.WideHit => Some(l => s"旁边 ${melee(SwordRules.widePower(_, l))}")
+      case Skill.WideHit => Some(l => s"旁边每个 ${widePct(l)}（${melee(SwordRules.widePower(_, l))}）")
       case Skill.FireSword => Some(l => s"威力 ×${SwordRules.firePower(100, l) / 100.0}，你是 ${melee(SwordRules.firePower(_, l))}")
       case Skill.LongHit => Some(l => s"隔一格 ${pct(SwordRules.longPower(100, l) / 100.0)}")
 
@@ -357,9 +358,12 @@ object SkillInfo:
       case Skill.WideHit =>
         List(
           say(s"开着时每刀耗魔法 ${SwordRules.WideHitMp}，魔法不够就是普通一刀"),
-          say("正前方照常打"),
-          say(s"身边另外 7 格的敌人：这一刀 ×${l + 1}/4 + 1"),
-          say(s"你是 ${melee(SwordRules.widePower(_, l))}，再减防御")
+          say("正前方（锁定的目标）照常一刀"),
+          say("身边另外 7 格的敌人每个挨一下"),
+          say(s"威力是这一刀的 ${widePct(l)} 再 +1（每升一级多 ${pct(SwordRules.wideShare(1) - SwordRules.wideShare(0))}）"),
+          say(s"你现在旁边每个挨 ${melee(SwordRules.widePower(_, l))}，再减防御"),
+          note("一刀只掷一次攻击力，旁边的照这个数打折"),
+          note("每个敌人各扣各的防御，也可能各自躲开")
         )
       case Skill.FireSword =>
         List(
