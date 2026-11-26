@@ -50,6 +50,9 @@ object ClientSpec extends ZIOSpecDefault:
     blocked.foreach(c => dv.setUint8(8 + c.y * w + c.x, 1))
     buf
 
+  /** 已下好的 0 号图：进 0 号图时不等下载，马上进入画面 */
+  private def map0: MapData = MapData.parse(MapId("0"), "0", mapBin(40, 40, Set.empty)).fold(e => throw new AssertionError(e), identity)
+
   private val testMap = MapDef(MapId("T"), "T", "测试", Set.empty, 40, 40)
 
   /** 世界 + 客户端，同步推进：每 50 毫秒 tick 一次，消息立刻交给客户端。 */
@@ -720,6 +723,7 @@ object ClientSpec extends ZIOSpecDefault:
     test("地上出现达到档位的装备在聊天栏提示一次（#1301）：不分职业，「全部」按沃玛，进图后重新算") {
       var notes = Vector.empty[String]
       val c = GameClient(catalog, ClientEnv(() => 0.0, _ => Future.never, (_, _, _) => ()))
+      c.map = Some(map0)
       c.ui = new UiEvents:
         export UiEvents.Ignore.{notice as _, *}
         def notice(text: String, tone: Tone): Unit = notes :+= text
@@ -733,6 +737,36 @@ object ClientSpec extends ZIOSpecDefault:
       got(ServerMsg.EnterMap(ActorId(1), MapId("0"), Cell(10, 10), Dir.Down, Millis(0)))
       drop(4, "裁决之杖")
       assertTrue(notes == Vector("[掉落] 炼狱（沃玛）在 (12,34)", "[掉落] 裁决之杖（祖玛）在 (12,34)", "[掉落] 裁决之杖（祖玛）在 (12,34)"))
+    },
+    test("boss 进入视野在聊天栏红字提示一次（#1323）：写方向和坐标，宝宝、普通怪、死的不提示，进图后重新算，地图没下完不提示") {
+      var notes = Vector.empty[(String, Tone)]
+      val c = GameClient(catalog, ClientEnv(() => 0.0, _ => Future.never, (_, _, _) => ()))
+      c.map = Some(map0)
+      c.ui = new UiEvents:
+        export UiEvents.Ignore.{notice as _, *}
+        def notice(text: String, tone: Tone): Unit = notes :+= (text -> tone)
+      def got(m: ServerMsg) = c.receive(LinkEvent.Received(m))
+      def actor(id: Int, look: Look, at: Cell, dead: Boolean = false) =
+        got(ServerMsg.Appear(ActorView(ActorId(id), look, at, Dir.Down, Hp(1), Hp(1), ActionView(ActKind.Stand, Millis(0), 0), dead)))
+      def mon(n: String, pet: Option[PetView] = None) = Look.Monster(MonsterName(n), Cover.Open, pet)
+      val pv = PetView(ActorId(1), Span(0, 0), Span(0, 0), Span(0, 0))
+      def enter() = got(ServerMsg.EnterMap(ActorId(1), MapId("0"), Cell(10, 10), Dir.Down, Millis(0)))
+      enter()
+      actor(1, Look.Human("我", Job.Warrior, Sex.Male, 0, None, None), Cell(10, 10))
+      actor(2, mon("沃玛教主"), Cell(20, 0)); actor(2, mon("沃玛教主"), Cell(20, 0))
+      actor(3, mon("沃玛卫士"), Cell(11, 11)); actor(4, mon("祖玛教主", Some(pv)), Cell(11, 11)); actor(5, mon("牛魔王"), Cell(1, 1), dead = true)
+      enter(); actor(2, mon("沃玛教主"), Cell(10, 30))
+      // 新图还没下完（界面还在选人）时来的 boss 不提示，进入画面时再补
+      got(ServerMsg.EnterMap(ActorId(1), MapId("1"), Cell(10, 10), Dir.Down, Millis(0))); actor(6, mon("祖玛教主"), Cell(10, 10))
+      assertTrue(
+        notes == Vector("[BOSS] 沃玛教主出现在你东北方 (20,0)" -> Tone.Bad, "[BOSS] 沃玛教主出现在你南边 (10,30)" -> Tone.Bad),
+        GameClient.bearing(Cell(10, 10), Cell(30, 12)) == "东边",
+        GameClient.bearing(Cell(10, 10), Cell(10, 10)) == "身边",
+        GameClient.bearing(Cell(10, 10), Cell(0, 0)) == "西北方",
+        mir.client.ui.MiniMark.of(mon("沃玛教主")) == mir.client.ui.MiniMark.Boss,
+        mir.client.ui.MiniMark.of(mon("沃玛教主", Some(pv))) == mir.client.ui.MiniMark.Pet,
+        mir.client.ui.MiniMark.of(mon("沃玛卫士")) == mir.client.ui.MiniMark.Monster
+      )
     },
     test("能接着玩的旧页面（#1289）：重连回原处不刷新，下一次进图（换图、回城、复活）先告诉服务端再刷新，只刷一次") {
       var refreshed = Vector.empty[String]

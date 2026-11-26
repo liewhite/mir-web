@@ -6,7 +6,7 @@ import mir.client.render.*
 import mir.core.*
 import mir.data.Catalog
 import mir.model.{GearTier, ItemBonus}
-import mir.rules.{GearTiers, Pace, Rules, Skill, SkillUse, Upgrade}
+import mir.rules.{GearTiers, Pace, Rates, Rules, Skill, SkillUse, Upgrade}
 import mir.protocol.*
 import mir.view.ViewState
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits.*
@@ -52,6 +52,15 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
   private var update: PendingUpdate = PendingUpdate.Idle
   /** 这张图上已在聊天栏提示过的好装备（#1301，同一件只提示一次；地上物品编号每张图各自排，进图清空） */
   private var announced = Set.empty[GroundId]
+  /** 这张图里已经提示过的 boss（按对象编号，#1323）；进图清空，重刷的 boss 编号不同会再提示 */
+  private var bossesSeen = Set.empty[ActorId]
+  /** 进图时自己的位置：自己的全貌可能比周围的怪后到，提示 boss 方向时先用它 */
+  private var entryCell: Option[Cell] = None
+  /**
+   * 这张图已经进入画面（地图下完、ui.entered 调过）。之前界面还在选人，聊天栏提示会落到选人画面上看不见，
+   * 所以好装备和 boss 的提示等进入画面时把已收到的一起过一遍（#1323）。
+   */
+  private var arrived = false
 
   def connect(t: Transport): Unit = transport = Some(t)
 
@@ -102,7 +111,8 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
           send(SessionCmd.Reloading)
           env.refresh(commit)
         }
-      case ServerMsg.EnterMap(_, mapId, _, _, now) =>
+      case ServerMsg.EnterMap(_, mapId, cell, _, now) =>
+        entryCell = Some(cell)
         update match
           case PendingUpdate.AwaitRejoin(commit) => update = PendingUpdate.AtNextCut(commit)
           case _                                 => ()
@@ -112,19 +122,22 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
         fx = fx.cleared
         locked = None
         announced = Set.empty
+        bossesSeen = Set.empty
+        arrived = false
         if !map.exists(_.id == mapId) then
           map = None
           env.loadMap(mapId).foreach { md =>
             if view.map.contains(mapId) then
               map = Some(md)
-              ui.entered(mapId)
+              arrive(mapId)
           }
-        else ui.entered(mapId)
+        else arrive(mapId)
       case ServerMsg.MoveOk                 => motion = motion.ok
       case ServerMsg.MoveDenied(_, _)       => motion = motion.denied(serverNow)
       case ServerMsg.Disappear(id)          => if locked.contains(id) then locked = None
       case ServerMsg.Effect(e)              => fx = fx.effect(e)
       case ServerMsg.GroundAppear(g)        => spotted(g)
+      case ServerMsg.Appear(a)              => sighted(a)
       case ServerMsg.Sound(id, at)          => env.sound(id, at, view.self.map(_.cell))
       case ServerMsg.Damage(t, n, _)        => fx = fx.float(Floater(t, s"-$n", if view.me.contains(t) then FloatTone.HurtMe else FloatTone.HurtOther, local))
       case ServerMsg.Miss(t)                => fx = fx.float(Floater(t, "MISS", FloatTone.Miss, local))
@@ -172,16 +185,30 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
     // 死了就不再本地先走
     if before.self.exists(!_.dead) && view.self.exists(_.dead) then motion = SelfMotion()
 
+  /** 进入画面：界面切到游戏，再补发进图到现在收到的好装备和 boss 提示。 */
+  private def arrive(mapId: MapId): Unit =
+    ui.entered(mapId)
+    arrived = true
+    view.ground.values.foreach(spotted)
+    view.actors.values.foreach(sighted)
+
   /**
    * 视野里出现了达到设置档位的装备（不分职业、不分谁打的，#1301）：聊天栏提示一句，同一件只提示一次。
    * 门槛是自动捡的档位滑条（不管开没开自动捡），「全部」时按沃玛。
    */
   private def spotted(g: GroundView): Unit = g.thing match
-    case GroundThing.Item(n, _) if !announced(g.id) =>
+    case GroundThing.Item(n, _) if arrived && !announced(g.id) =>
       GearTiers.worthAnnouncing(n, view.settings).foreach { tier =>
         announced += g.id
         ui.notice(GameClient.dropHint(n, tier, g.cell), Tone.Item)
       }
+    case _ => ()
+
+  /** 活的 boss 进入视野时在聊天栏红字提示一次（用户 11-26 在 #1323 提）；boss 名单用爆率那份 Rates.bosses。 */
+  private def sighted(a: ActorView): Unit = a.look match
+    case m: Look.Monster if arrived && !a.dead && m.pet.isEmpty && Rates.bosses(m.kind) && !bossesSeen(a.id) =>
+      bossesSeen += a.id
+      ui.notice(GameClient.bossHint(catalog.displayName(m.kind), view.self.map(_.cell).orElse(entryCell), a.cell), Tone.Bad)
     case _ => ()
 
   /** 等到切画面就刷新：刷成服务端哪个提交 */
@@ -357,3 +384,21 @@ object GameClient:
 
   /** 地上出现好装备的聊天栏提示（#1301），如「[掉落] 裁决之杖（祖玛）在 (123,45)」 */
   def dropHint(name: ItemName, tier: GearTier, at: Cell): String = s"[掉落] ${name.value}（${tier.label}）在 (${at.x},${at.y})"
+
+  /** boss 进入视野的提示（#1323），如「[BOSS] 沃玛教主出现在你东北方 (123,45)」；不知道自己在哪就不写方向 */
+  def bossHint(name: MonsterName, me: Option[Cell], at: Cell): String =
+    val where = me.fold("")(c => s"在你${bearing(c, at)}")
+    s"[BOSS] ${name.value}出现$where (${at.x},${at.y})"
+
+  /** 从 from 看 to 在哪个方向（地图 y 向下为南）：八个方向各占 45°，重合时是「身边」。 */
+  def bearing(from: Cell, to: Cell): String =
+    val dx = to.x - from.x
+    val dy = to.y - from.y
+    val ns = if dy < 0 then "北" else "南"
+    val ew = if dx > 0 then "东" else "西"
+    val (ax, ay) = (math.abs(dx).toDouble, math.abs(dy).toDouble)
+    val Tan22 = 0.4142 // 斜向与正向的分界 tan 22.5°
+    if dx == 0 && dy == 0 then "身边"
+    else if ay <= ax * Tan22 then s"${ew}边"
+    else if ax <= ay * Tan22 then s"${ns}边"
+    else s"$ew${ns}方"
