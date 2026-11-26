@@ -979,6 +979,29 @@ object WorldSpec extends ZIOSpecDefault:
         val all = List(has("铁剑"), has("炼狱"), s.w.groundItems.isEmpty)
         assertTrue(zuma == List.fill(5)(true), all == List.fill(3)(true), s.consistent(p))
       },
+      test("祝福油：给手上的武器加幸运并计入人物幸运；手上没武器不消耗（#1320）") {
+        val s   = sim()
+        val p   = join(s.w, "甲", Cell(30, 30))
+        val oil = s.w.newItem(ItemName("祝福油")).get
+        p.bag(0) = Some(oil)
+        val before = p.stats.luck
+        s.cmd(p, GameCmd.UseItem(oil.uid))
+        val b      = mir.rules.BlessOil.blessing(p.worn(EquipSlot.Weapon))
+        val used   = !p.bag.flatten.exists(_.uid == oil.uid)
+        val after  = p.stats.luck
+        val oil2   = s.w.newItem(ItemName("祝福油")).get
+        p.bag(0) = Some(oil2)
+        p.worn.remove(EquipSlot.Weapon)
+        s.w.vitals.recalc(p)
+        val refused = s.cmd(p, GameCmd.UseItem(oil2.uid)).exists { case ServerMsg.Refused(_) => true; case _ => false }
+        assertTrue(
+          used,
+          b.luck + b.curse == 1, // 0 点的武器：必加 1 点幸运，或 1/25 机会被诅咒 1 点
+          refused,
+          p.bag.flatten.exists(_.uid == oil2.uid),
+          after == before + b.luck - b.curse
+        )
+      },
       test("比身上强的装备不管档位都自动捡（#1301，用户定）") {
         val s = sim()
         val p = join(s.w, "甲", Cell(30, 30)) // 战士，换上木剑（新人自带铁剑，#1310）

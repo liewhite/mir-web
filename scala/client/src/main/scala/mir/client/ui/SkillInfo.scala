@@ -88,14 +88,16 @@ object SkillInfo:
     private val sc = s.sc
     private val L  = me.level
     private val R  = SpellRules.CastRange
+    /** 说明只列威力区间：幸运只让打出上限的机会变大、不改区间，按 0 算（否则取下限时会被幸运改成上限） */
+    private val rangeLuck = 0
 
-    private def mcDmg(l: Int)          = span(r => SpellRules.mcDamage(d, l, mc)(using r))
-    private def mcVsUndead(l: Int)     = span(r => SpellRules.vsUndead(SpellRules.mcDamage(d, l, mc)(using r)))
-    private def scDmg(l: Int)          = span(r => SpellRules.scDamage(d, l, sc)(using r))
-    private def heal(l: Int)           = span(r => SpellRules.heal(d, l, sc)(using r))
+    private def mcDmg(l: Int)          = span(r => SpellRules.mcDamage(d, l, mc, rangeLuck)(using r))
+    private def mcVsUndead(l: Int)     = span(r => SpellRules.vsUndead(SpellRules.mcDamage(d, l, mc, rangeLuck)(using r)))
+    private def scDmg(l: Int)          = span(r => SpellRules.scDamage(d, l, sc, rangeLuck)(using r))
+    private def heal(l: Int)           = span(r => SpellRules.heal(d, l, sc, rangeLuck)(using r))
     private def poisonSecs(l: Int, k: PoisonKind)  = span(r => SpellRules.poisonDose(d, l, sc, k)(using r).secs)
     private def poisonPower(l: Int, k: PoisonKind) = span(r => SpellRules.poisonDose(d, l, sc, k)(using r).power)
-    private def stormOthers(l: Int)    = span(r => SpellRules.thunderStorm(SpellRules.mcDamage(d, l, mc)(using r), false))
+    private def stormOthers(l: Int)    = span(r => SpellRules.thunderStorm(SpellRules.mcDamage(d, l, mc, rangeLuck)(using r), false))
     private val armor                  = "，再减目标魔防"
     /** 「选中的自己人周围 w×w 格」这类范围 */
     private def around(radius: Int)    = s"选中的自己人（没选就是自己）周围 ${radius * 2 + 1}×${radius * 2 + 1} 格"
@@ -171,7 +173,7 @@ object SkillInfo:
       case Skill.Healing | Skill.GroupHealing => Some(l => s"回血共 ${heal(l)}")
       case Skill.SoulFireBall => Some(l => s"威力 ${scDmg(l)}")
       case Skill.Poisoning  => Some(l => s"绿毒 ${poisonSecs(l, PoisonKind.Green)} 秒，红毒 ${poisonSecs(l, PoisonKind.Red)} 秒")
-      case Skill.SoulShield | Skill.HolyArmor => Some(l => s"${span(r => SpellRules.defenceUpSecs(d, l, sc)(using r))} 秒")
+      case Skill.SoulShield | Skill.HolyArmor => Some(l => s"${span(r => SpellRules.defenceUpSecs(d, l, sc, rangeLuck)(using r))} 秒")
       case Skill.HolyCurtain => Some(l => s"定住 ${span(r => SpellRules.holyCurtainSecs(d, l, sc)(using r))} 秒")
       case Skill.SummonSkeleton => Some(l => s"血、攻击 ×${SpellRules.growthOf(SpellRules.SkeletonPet).levelBoost(l)}")
       case Skill.SummonShinsu   => Some(l => s"血、攻击 ×${SpellRules.growthOf(SpellRules.ShinsuPet).levelBoost(l)}")
@@ -287,7 +289,7 @@ object SkillInfo:
           say("用 1 张护身符"),
           say(around(SpellRules.DefenceRadius)),
           say(s"每个自己人${what}上限 +（等级÷7+1），你是 +${SpellRules.defenceUpAmount(L)}"),
-          say(s"持续 ${span(r => SpellRules.defenceUpSecs(d, l, sc)(using r))} 秒")
+          say(s"持续 ${span(r => SpellRules.defenceUpSecs(d, l, sc, rangeLuck)(using r))} 秒")
         )
       case Skill.HolyCurtain =>
         val w = SpellRules.GroupRadius * 2 + 1

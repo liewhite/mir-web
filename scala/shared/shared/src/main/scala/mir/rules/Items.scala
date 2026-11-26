@@ -21,6 +21,8 @@ enum ScrollEffect:
   case Random
   /** 回城卷 */
   case Town
+  /** 祝福油：给手上的武器加幸运（BlessOil） */
+  case Bless
   case Other
 
 /** 物品的用途，按 StdMode 分类。 */
@@ -53,6 +55,7 @@ object ItemKind:
         case 1 => ScrollEffect.Escape
         case 2 => ScrollEffect.Random
         case 3 => ScrollEffect.Town
+        case 4 => ScrollEffect.Bless
         case _ => ScrollEffect.Other
       )
     case 4       => Book(Job.values.find(_.code == d.shape), d.dura)
@@ -161,9 +164,9 @@ object ItemEffects:
    */
   def of(d: ItemDef, bonus: Option[ItemBonus]): ItemEffects = bonus match
     case None => of(d)
-    case Some(ItemBonus.Weapon(dc, mc, sc, hit, speed, _)) =>
+    case Some(ItemBonus.Weapon(dc, mc, sc, hit, speed, _, luck, curse)) =>
       val e = of(d.copy(dc = up(d.dc, dc), mc = up(d.mc, mc), sc = up(d.sc, sc), ac = up(d.ac, hit)))
-      e.copy(attackSpeed = e.attackSpeed + speed)
+      e.copy(attackSpeed = e.attackSpeed + speed, luck = e.luck + luck, curse = e.curse + curse)
     case Some(ItemBonus.Gear(ac, mac, dc, mc, sc)) =>
       of(d.copy(ac = up(d.ac, ac), mac = up(d.mac, mac), dc = up(d.dc, dc), mc = up(d.mc, mc), sc = up(d.sc, sc)))
 

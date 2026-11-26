@@ -176,12 +176,19 @@ object Rules:
    */
   def luckOdds(luck: Int): Option[Int] = Option.when(luck != 0)(10 - math.min(9, math.abs(luck)))
 
-  /** 普通攻击的威力：攻击区间里随机，再按幸运/诅咒改成上限/下限（BaseObject.GetAttackPower）。 */
-  def meleePower(dc: Span, luck: Int)(using rng: Rng): Int =
-    val power = attackPower(dc.lo, dc.hi - dc.lo)
+  /**
+   * 带幸运的威力（BaseObject.GetAttackPower）：base + Random(spread + 1)，再按幸运/诅咒改成最大值 base + spread / 最小值 base。
+   * 普通攻击、法师攻击魔法、灵魂火符、治愈术、幽灵盾/神圣战甲术的持续时间都走它（原版 Magic.pas 同样调 GetAttackPower，#1320）。
+   */
+  def luckyPower(base: Int, spread: Int, luck: Int)(using rng: Rng): Int =
+    val s     = math.max(0, spread)
+    val power = base + rng.random(s + 1)
     luckOdds(luck).filter(n => rng.random(n) == 0) match
-      case Some(_) => if luck > 0 then dc.hi else dc.lo
+      case Some(_) => if luck > 0 then base + s else base
       case None    => power
+
+  /** 普通攻击的威力：攻击区间里随机，幸运/诅咒触发时打出上限/下限。 */
+  def meleePower(dc: Span, luck: Int)(using Rng): Int = luckyPower(dc.lo, dc.hi - dc.lo, luck)
 
   /** 命中判定：攻方准确 < Random(守方敏捷) 时打空（BaseObject._Attack）。 */
   def hits(attackerHit: Int, defenderAgility: Int)(using rng: Rng): Boolean =

@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.{ItemDef, MerchantService}
 import mir.model.*
 import mir.protocol.{Anchor, GameCmd, InspectView, ServerMsg, ChatKind, Tone}
-import mir.rules.{Charges, ItemKind, ItemSounds, Pace, PotionRules, Pricing, Purchase, Requirement, Rng, ScrollEffect, Skill, WeaponRefine}
+import mir.rules.{Charges, ItemKind, ItemSounds, Pace, PotionRules, Pricing, Purchase, Requirement, Rng, ScrollEffect, Skill, WeaponRefine, BlessOil}
 
 /**
  * 玩家指令的执行：移动、攻击、施法、物品、NPC 买卖存取、设置、说话。
@@ -208,6 +208,7 @@ object PlayerOps:
             consumeOne(w, p, uid)
             w.roster.transfer(p, Place(w.mapId, c))
           }
+        case ItemKind.Scroll(ScrollEffect.Bless) => bless(w, p, uid)
         case ItemKind.Scroll(ScrollEffect.Other) => Left("这个暂时用不了")
         case ItemKind.Book(_, level) =>
           for
@@ -224,6 +225,32 @@ object PlayerOps:
         case ItemKind.Equip(_) | ItemKind.Amulet(_) => equip(w, p, uid, None)
         case ItemKind.Material | ItemKind.Other     => Left("这个东西不能直接使用")
     yield r
+
+  /** 用祝福油（#1320，规则见 BlessOil）：手上没武器不消耗；提示照原版。 */
+  private def bless(w: World, p: Player, uid: ItemUid): Result =
+    for
+      wpn <- p.worn.get(EquipSlot.Weapon).toRight("手上没有武器：要给哪把加幸运就先拿在手上")
+      wd  <- defOf(w, wpn)
+    yield
+      given Rng = w.rngOf
+      consumeOne(w, p, uid)
+      BlessOil(wpn, wd) match
+        case BlessOil.Outcome.Blessed(better) =>
+          p.worn(EquipSlot.Weapon) = better
+          w.out.notice(p, s"武器被加幸运了...（${wpn.name.value} 幸运 ${luckLabel(better)}）", Tone.Good)
+        case BlessOil.Outcome.Cursed(worse) =>
+          p.worn(EquipSlot.Weapon) = worse
+          w.out.notice(p, s"你的武器被诅咒了！（${wpn.name.value} 幸运 ${luckLabel(worse)}）", Tone.Bad)
+        case BlessOil.Outcome.NoEffect =>
+          w.out.notice(p, s"无效（${wpn.name.value} 幸运 ${luckLabel(wpn)}）", Tone.System)
+      w.vitals.recalc(p)
+      w.out.checkpoint(p)
+
+  /** 武器上祝福来的幸运减诅咒，如「+3」「-1」 */
+  private def luckLabel(wpn: ItemInstance): String =
+    val b = BlessOil.blessing(wpn)
+    val n = b.luck - b.curse
+    if n > 0 then s"+$n" else s"$n"
 
   private def canWear(p: Player, d: ItemDef): Result =
     Requirement.refusal(d, p.level, p.stats, p.sex).toLeft(())

@@ -3,7 +3,7 @@ package mir.client.ui
 import mir.data.{Catalog, ItemDef, SkillDef, Span}
 import mir.model.{EquipSlot, ItemBonus, ItemInstance, Job, LearnedSkill, PoisonKind}
 import mir.protocol.SelfStats
-import mir.rules.{Mining, WeaponRefine, Pk, PkStanding, SafeZone, Upgrade, Charges, Durability, Rates, ItemEffects, ItemKind, PotionRules, Pricing, Recovery, Requirement, Rules, ScrollEffect, dressSex}
+import mir.rules.{Mining, WeaponRefine, Pk, PkStanding, SafeZone, Upgrade, Charges, Durability, Rates, ItemEffects, ItemKind, PotionRules, Pricing, Recovery, Requirement, Rules, ScrollEffect, BlessOil, dressSex}
 
 /**
  * 把物品、属性、技能讲成可量化的说明（用户 #1165：所有效果给精确数值）。纯函数，只出文字。
@@ -43,8 +43,8 @@ object Describe:
         else s"攻击速度 ${signed(e.attackSpeed)}　全身攻速合计为负时，从 −1 起每 2 点两刀间隔 +$step 毫秒",
         if e.attackSpeed > 0 then Tint.Good else Tint.Bad
       )),
-      Option.when(e.luck != 0)(Line(s"幸运 +${e.luck}　全身幸运 L>0 时每刀有 1/(10−L) 机会打出攻击上限", Tint.Good)),
-      Option.when(e.curse != 0)(Line(s"诅咒 +${e.curse}　抵消幸运；幸运为负时每刀有 1/(10−|L|) 机会只打出攻击下限", Tint.Bad)),
+      Option.when(e.luck != 0)(Line(s"幸运 +${e.luck}　全身幸运 L>0 时每次普攻、攻击魔法、道术有 1/(10−L) 机会打出上限", Tint.Good)),
+      Option.when(e.curse != 0)(Line(s"诅咒 +${e.curse}　抵消幸运；幸运为负时每次普攻、攻击魔法、道术有 1/(10−|L|) 机会只打出下限", Tint.Bad)),
       Option.when(e.magicAvoid != 0)(Line(s"魔法躲避 +${e.magicAvoid}$notYet", Tint.Dim)),
       Option.when(e.poisonAvoid != 0)(Line(s"毒物躲避 +${e.poisonAvoid}$notYet", Tint.Dim)),
       Option.when(e.hpRegen != 0)(Line(s"体力恢复 +${e.hpRegen}　每 ${sec(Recovery.IntervalMs)}自然回血多 ${e.hpRegen} 点")),
@@ -52,11 +52,19 @@ object Describe:
       Option.when(e.poisonRegen != 0)(Line(s"中毒恢复 +${e.poisonRegen}$notYet", Tint.Dim))
     ).flatten
 
-  private def scrollText(e: ScrollEffect): String = e match
-    case ScrollEffect.Town   => "使用后立即回到回城点（角色出生的城）"
-    case ScrollEffect.Escape => "使用后立即回到回城点（角色出生的城）"
-    case ScrollEffect.Random => "传送到当前地图上随机一个能站的格子"
-    case ScrollEffect.Other  => "暂时不能使用"
+  private def scrollText(e: ScrollEffect): List[String] = e match
+    case ScrollEffect.Town   => List("使用后立即回到回城点（角色出生的城）")
+    case ScrollEffect.Escape => List("使用后立即回到回城点（角色出生的城）")
+    case ScrollEffect.Random => List("传送到当前地图上随机一个能站的格子")
+    case ScrollEffect.Other  => List("暂时不能使用")
+    case ScrollEffect.Bless  =>
+      import BlessOil.*
+      List(
+        s"给手上拿着的武器加 1 点幸运，最多加到 +$MaxLuck；手上没武器用不了",
+        s"武器现在 0 点：必成；1、2 点：${MidBase}+k 瓶里约中 1 次；3 点起：${HighFactor}×k 瓶里约中 1 次（k = 武器攻击上下限之差 ÷ 5，最少按 1 算）",
+        s"每瓶有 1/$CurseOdds 机会反被诅咒：武器幸运 −1，没有幸运就加 1 点诅咒；有诅咒时下一瓶先去掉诅咒",
+        "幸运让普攻、攻击魔法、灵魂火符、治愈术更常打出上限（见属性面板）"
+      )
 
   private def potionLines(hp: Int, mp: Int, instant: Boolean): List[Line] =
     def what(f: Int => Int) =
@@ -138,7 +146,7 @@ object Describe:
       case ItemKind.Book(bookJob, level) =>
         val ok = bookJob.contains(job) && me.level >= level
         List(Line(s"技能书：${bookJob.fold("")(_.label)}人物 $level 级可学「${d.name.value}」", if ok then Tint.Plain else Tint.Bad))
-      case ItemKind.Scroll(e) => List(Line(scrollText(e)))
+      case ItemKind.Scroll(e) => scrollText(e).map(Line(_))
       case ItemKind.Bundle(_) =>
         val one = catalog.bundleContent(d).fold("药")(x => s"「${x.name.value}」")
         List(Line(s"双击拆成 ${ItemKind.BundleSize} 个$one"), Line("并进包裹里同名的那叠，没有就占 1 格", Tint.Dim))
@@ -211,8 +219,8 @@ object Describe:
   def statLines(name: String, job: Job, me: SelfStats, monsterAgility: Int, monsterHit: Int): List[Line] =
     val s     = me.stats
     val luck  = Rules.luckOdds(s.luck).map { n =>
-      if s.luck > 0 then s"幸运 ${s.luck}：每刀有 1/$n（${pct(1.0 / n)}）机会直接打出攻击上限 ${s.dc.hi}"
-      else s"幸运 ${s.luck}（诅咒）：每刀有 1/$n（${pct(1.0 / n)}）机会只打出攻击下限 ${s.dc.lo}"
+      if s.luck > 0 then s"幸运 ${s.luck}：每刀有 1/$n（${pct(1.0 / n)}）机会直接打出攻击上限 ${s.dc.hi}；攻击魔法、灵魂火符、治愈术同样有这个机会打出上限"
+      else s"幸运 ${s.luck}（诅咒）：每刀有 1/$n（${pct(1.0 / n)}）机会只打出攻击下限 ${s.dc.lo}；攻击魔法、灵魂火符、治愈术同样会打出下限"
     }
     List(
       Some(Line(s"$name　${job.label}　${me.level} 级", Tint.Title)),

@@ -751,7 +751,7 @@ object SpellSpec extends ZIOSpecDefault:
       val p     = caster(s, Job.Taoist, List(2))
       noRegen(p)
       p.stats = p.stats.copy(sc = Span(40, 40))
-      val total = SpellRules.heal(catalog.skill(SkillId(2)).get, 3, Span(40, 40))(using Rng.seeded(1))
+      val total = SpellRules.heal(catalog.skill(SkillId(2)).get, 3, Span(40, 40), 0)(using Rng.seeded(1))
       p.hp = 10
       s.cast(p, 2, None, p.cell)
       val atCast = p.hp

@@ -92,9 +92,11 @@ final class SpellCtx(
   def lv: Int = learned.level
   def mc: mir.data.Span = p.stats.mc
   def sc: mir.data.Span = p.stats.sc
+  /** 人物幸运：威力类技能吃它（Rules.luckyPower） */
+  def luck: Int = p.stats.luck
 
   /** 法师攻击魔法的威力 */
-  def mcPower()(using Rng): Int = SpellRules.mcDamage(d, lv, mc)
+  def mcPower()(using Rng): Int = SpellRules.mcDamage(d, lv, mc, luck)
 
   /** 检查链走完就算放出去了 */
   def run(e: Either[Effect, Unit]): Effect = e.fold(identity, _ => Effect.Cast)

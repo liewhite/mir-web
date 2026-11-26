@@ -25,8 +25,11 @@ object ItemInstance:
  * 字段名进存档，改名要兼顾旧存档。
  */
 enum ItemBonus:
-  /** 武器：攻击/魔法/道术上限、准确、攻击速度（可为负：原版 2/3 的攻速附加是减速）、强度（砍怪时少磨持久） */
-  case Weapon(dc: Int = 0, mc: Int = 0, sc: Int = 0, hit: Int = 0, attackSpeed: Int = 0, strength: Int = 0)
+  /**
+   * 武器：攻击/魔法/道术上限、准确、攻击速度（可为负：原版 2/3 的攻速附加是减速）、强度（砍怪时少磨持久），
+   * 以及祝福油加的幸运、被诅咒的诅咒（原版 btValue[3]、btValue[4]，见 BlessOil）。
+   */
+  case Weapon(dc: Int = 0, mc: Int = 0, sc: Int = 0, hit: Int = 0, attackSpeed: Int = 0, strength: Int = 0, luck: Int = 0, curse: Int = 0)
   /**
    * 衣服、头盔、项链、戒指、手镯：加在物品表 AC、MAC、DC、MC、SC 的上限上。
    * AC、MAC 两栏的含义随部位变（衣服头盔是防御魔防，有的项链是准确敏捷、有的是幸运等），由 ItemEffects 解读。

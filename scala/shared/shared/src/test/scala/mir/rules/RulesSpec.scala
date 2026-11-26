@@ -244,10 +244,10 @@ object RulesSpec extends ZIOSpecDefault:
       test("Rng.lowest/highest 求出区间端点，和逐个取值的最小最大一致") {
         val fire = catalog.skill(SkillId(1)).get
         val mc   = Span(3, 9)
-        val all  = Odds.of()(r => SpellRules.mcDamage(fire, 2, mc)(using r)).get.keySet
+        val all  = Odds.of()(r => SpellRules.mcDamage(fire, 2, mc, 0)(using r)).get.keySet
         assertTrue(
-          SpellRules.mcDamage(fire, 2, mc)(using Rng.lowest) == all.min,
-          SpellRules.mcDamage(fire, 2, mc)(using Rng.highest) == all.max
+          SpellRules.mcDamage(fire, 2, mc, 0)(using Rng.lowest) == all.min,
+          SpellRules.mcDamage(fire, 2, mc, 0)(using Rng.highest) == all.max
         )
       },
       test("法师攻击魔法伤害 ×1.3 四舍五入（#1285）") {
@@ -258,8 +258,8 @@ object RulesSpec extends ZIOSpecDefault:
           Rules.attackPower(Rules.skillPower(Rules.magicBase(fire.power), 2, fire.defPower) + mc.lo, mc.hi - mc.lo + 1)
         def x(v: Int)    = math.floor(v * 1.3 + 0.5).toInt
         assertTrue(
-          SpellRules.mcDamage(fire, 2, mc)(using Rng.lowest) == x(orig(Rng.lowest)),
-          SpellRules.mcDamage(fire, 2, mc)(using Rng.highest) == x(orig(Rng.highest)),
+          SpellRules.mcDamage(fire, 2, mc, 0)(using Rng.lowest) == x(orig(Rng.lowest)),
+          SpellRules.mcDamage(fire, 2, mc, 0)(using Rng.highest) == x(orig(Rng.highest)),
           x(orig(Rng.highest)) > orig(Rng.highest)
         )
       },

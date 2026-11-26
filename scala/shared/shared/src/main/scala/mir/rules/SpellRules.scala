@@ -98,17 +98,18 @@ object SpellRules:
   /**
    * 法师攻击魔法的威力：GetAttackPower(GetPower(MPow) + 魔法下限, 魔法上限 - 下限 + 1)（火球、雷电、地狱火、疾光电影、爆裂火焰、地狱雷光、冰咆哮、火墙每跳），
    * 再 × Rates.mageSpell（本服法师加强，#1285），四舍五入。
+   * 这几个威力都吃人物幸运（luck，见 Rules.luckyPower；用户 11-26 #1320 定魔法道术也做）。
    */
-  def mcDamage(d: SkillDef, level: Int, mc: Span)(using Rng): Int =
-    round(Rules.attackPower(Rules.skillPower(Rules.magicBase(d.power), level, d.defPower) + mc.lo, mc.hi - mc.lo + 1) * Rates.mageSpell)
+  def mcDamage(d: SkillDef, level: Int, mc: Span, luck: Int)(using Rng): Int =
+    round(Rules.luckyPower(Rules.skillPower(Rules.magicBase(d.power), level, d.defPower) + mc.lo, mc.hi - mc.lo + 1, luck) * Rates.mageSpell)
 
   /** 灵魂火符的威力（道术）。 */
-  def scDamage(d: SkillDef, level: Int, sc: Span)(using Rng): Int =
-    Rules.attackPower(Rules.skillPower(Rules.magicBase(d.power), level, d.defPower) + sc.lo, sc.hi - sc.lo + 1)
+  def scDamage(d: SkillDef, level: Int, sc: Span, luck: Int)(using Rng): Int =
+    Rules.luckyPower(Rules.skillPower(Rules.magicBase(d.power), level, d.defPower) + sc.lo, sc.hi - sc.lo + 1, luck)
 
   /** 治愈术、群体治疗术回多少血：GetAttackPower(GetPower(MPow) + 道术下限×2, (上限 - 下限)×2 + 1)。 */
-  def heal(d: SkillDef, level: Int, sc: Span)(using Rng): Int =
-    Rules.attackPower(Rules.skillPower(Rules.magicBase(d.power), level, d.defPower) + sc.lo * 2, (sc.hi - sc.lo) * 2 + 1)
+  def heal(d: SkillDef, level: Int, sc: Span, luck: Int)(using Rng): Int =
+    Rules.luckyPower(Rules.skillPower(Rules.magicBase(d.power), level, d.defPower) + sc.lo * 2, (sc.hi - sc.lo) * 2 + 1, luck)
 
   /**
    * 治愈术、群体治疗术不是一下回满，而是进目标的「待回治疗量」慢慢回（ObjBase.pas RM_MAGHEALING 与回复节拍）：
@@ -142,8 +143,8 @@ object SpellRules:
     Rules.skillPower(15 + Rules.rpow(mc), level, d.defPower)
 
   /** 幽灵盾、神圣战甲术持续：GetAttackPower(GetPower13(60) + 道术下限×10, 道术上限 - 下限 + 1)。 */
-  def defenceUpSecs(d: SkillDef, level: Int, sc: Span)(using Rng): Int =
-    Rules.attackPower(Rules.skillPower13(60, level, d.defPower) + sc.lo * 10, sc.hi - sc.lo + 1)
+  def defenceUpSecs(d: SkillDef, level: Int, sc: Span, luck: Int)(using Rng): Int =
+    Rules.luckyPower(Rules.skillPower13(60, level, d.defPower) + sc.lo * 10, sc.hi - sc.lo + 1, luck)
 
   /** 幽灵盾、神圣战甲术加多少（加在魔防/防御上限）：被加者等级/7 + 1（RecalcAbilitys）。 */
   def defenceUpAmount(targetLevel: Int): Int = targetLevel / 7 + 1

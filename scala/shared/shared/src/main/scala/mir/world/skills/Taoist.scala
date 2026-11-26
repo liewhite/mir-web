@@ -21,14 +21,14 @@ object Taoist:
       import c.*
       val who = friendOrSelf
       c.fx("magic", 200, 10, 60, Anchor.OnActor(who.id))
-      healed(mend(who, SpellRules.heal(d, lv, sc)))
+      healed(mend(who, SpellRules.heal(d, lv, sc, luck)))
 
   /** 群体治疗术：中心周围 1 格的自己人（MagBigHealing）。 */
   object GroupHealing extends SkillHandler:
     override val castFx = fx(1790)
     def cast(c: SpellCtx)(using Rng): Effect =
       import c.*
-      val heal   = SpellRules.heal(d, lv, sc)
+      val heal   = SpellRules.heal(d, lv, sc, luck)
       val center = friendCenter
       val any    = friendsAround(center, SpellRules.GroupRadius).map(mend(_, heal)).foldLeft(false)(_ || _)
       c.fx("magic", 1800, 10, 80, Anchor.OnCell(center))
@@ -59,7 +59,7 @@ object Taoist:
       run(enemy.flatMap { t =>
         charm.map { a =>
           consume(a)
-          val power = SpellRules.scDamage(d, lv, sc)
+          val power = SpellRules.scDamage(d, lv, sc, luck)
           val delay = 80 * p.cell.chebyshev(t.cell)
           c.fx("magic", 1160 + p.cell.dir16(t.cell) * 10, 3, 60, Anchor.OnActor(t.id), from = Some(p.cell), duration = Some(delay))
           sound(p.cell, SpellPhase.Fly)
@@ -77,7 +77,7 @@ object Taoist:
       import c.*
       run(charm.map { a =>
         consume(a)
-        val secs   = SpellRules.defenceUpSecs(d, lv, sc)
+        val secs   = SpellRules.defenceUpSecs(d, lv, sc, luck)
         val center = friendCenter
         friendsAround(center, SpellRules.DefenceRadius).foreach { a =>
           w.conditions.defenceUp(a, magic = magic, SpellRules.defenceUpAmount(levelOf(a)), secs)

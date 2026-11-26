@@ -73,6 +73,7 @@ object RulesGoldenSpec extends ZIOSpecDefault:
           case ScrollEffect.Random => "random"
           case ScrollEffect.Town   => "town"
           case ScrollEffect.Other  => "other"
+          case ScrollEffect.Bless  => "other" // TS 版没做祝福油（#1320）
         obj("scroll", "effect" -> Json.Str(name))
       case ItemKind.Book(j, level) => obj("book", "job" -> Json.Num(j.fold(-1)(_.code)), "level" -> Json.Num(level))
       case ItemKind.Bundle(of)     => obj("bundle", "of" -> Json.Num(of))
