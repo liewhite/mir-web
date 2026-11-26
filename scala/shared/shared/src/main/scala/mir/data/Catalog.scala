@@ -30,7 +30,7 @@ final class Catalog(val data: GameData):
   /** 怪物的动作表；没有动作表名或表里没有时为 None。 */
   def actions(m: MonsterDef): Option[MonsterActionTable] = m.act.flatMap(data.monsterActions.get)
 
-  /** 升到下一级要的经验；满级为 None。 */
+  /** 原版经验表里这一级升下一级要的经验，表外为 None；本服实际要的（不设上限）看 Leveling.expToNext。 */
   def expToNext(level: Int): Option[Exp] = data.exp.get(level).map(Exp(_))
 
   def displayName(m: MonsterName): MonsterName = data.displayNames.getOrElse(m, m)

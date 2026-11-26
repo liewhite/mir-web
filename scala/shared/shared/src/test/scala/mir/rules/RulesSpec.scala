@@ -152,13 +152,25 @@ object RulesSpec extends ZIOSpecDefault:
       test("打怪经验 ×100，复活过的减半后取整") {
         assertTrue(Rates.killExp(5, 1.0) == Exp(500L), Rates.killExp(5, 0.5) == Exp(200L))
       },
-      test("经验够了连升，扣掉每级要的；满级不再升") {
+      test("经验够了连升，扣掉每级要的") {
         val need1 = catalog.expToNext(1).get.value
         val need2 = catalog.expToNext(2).get.value
         val p     = Leveling.gain(catalog, Progress(1, Exp(0L)), Exp(need1 + need2 + 7))
-        val top   = Leveling.gain(catalog, Progress(48, Exp(0L)), Exp(5L))
         val none  = Leveling.gain(catalog, Progress(3, Exp(9L)), Exp(0L))
-        assertTrue(p == Progress(3, Exp(7L)), top == Progress(48, Exp(5L)), none == Progress(3, Exp(9L)))
+        assertTrue(p == Progress(3, Exp(7L)), none == Progress(3, Exp(9L)))
+      },
+      test("不设等级上限：46 级起每级都按 46 级那档 4.8 亿（#1335）") {
+        val at46 = Leveling.expToNext(catalog, 46)
+        val p48  = Leveling.gain(catalog, Progress(48, Exp(0L)), Exp(at46.value * 3 + 5))
+        // 以前卡在满级（48）攒下的经验，下次得经验时连升
+        val stuck = Leveling.gain(catalog, Progress(48, Exp(at46.value * 2)), Exp(1L))
+        assertTrue(
+          at46 == Exp(480_000_000L),
+          Leveling.expToNext(catalog, 45) == Exp(120_000_000L),
+          List(47, 48, 60, 200).forall(lv => Leveling.expToNext(catalog, lv) == at46),
+          p48 == Progress(51, Exp(5L)),
+          stuck == Progress(50, Exp(1L))
+        )
       },
       test("爆率：普通怪一律原版 ×20 封顶 100%，boss 的高级装备至少 10%（#1241）") {
         // 按数据表里真实的爆率行算（第一行）

@@ -243,8 +243,8 @@ object CharSummary:
 final case class SelfStats(
     level: Int,
     exp: Exp,
-    /** 升下一级要的经验；满级为空 */
-    expToNext: Option[Exp],
+    /** 升下一级要的经验（不设等级上限，总有下一级，Leveling.expToNext） */
+    expToNext: Exp,
     hp: Hp,
     mp: Mp,
     gold: Gold,

@@ -113,7 +113,7 @@ object ProtocolSpec extends ZIOSpecDefault:
     ServerMsg.Damage(ActorId(100), 12, Some(me)),
     ServerMsg.Miss(ActorId(100)),
     ServerMsg.Heal(me, 20),
-    ServerMsg.Stats(SelfStats(1, Exp(50L), Some(Exp(100L)), Hp(19), Mp(15), Gold(1000), stat)),
+    ServerMsg.Stats(SelfStats(1, Exp(50L), Exp(100L), Hp(19), Mp(15), Gold(1000), stat)),
     ServerMsg.Bag(Vector(Some(pot), None), Vector(None, Some(pot))),
     ServerMsg.Equipment(Map(EquipSlot.Weapon -> pot.copy(uid = ItemUid(1L)), EquipSlot.RingL -> pot)),
     ServerMsg.Storage(List(pot)),

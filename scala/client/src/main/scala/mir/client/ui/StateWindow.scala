@@ -75,7 +75,7 @@ final class StateWindow(ui: ClassicUi) extends Window:
     val bx = o.x + 58
     val by = o.y + 62
     val rows = List(
-      ("经验", st.expToNext.fold("满级")(need => f"${100.0 * st.exp.value / math.max(1L, need.value)}%.2f%%"), false),
+      ("经验", f"${100.0 * st.exp.value / math.max(1L, st.expToNext.value)}%.2f%%", false),
       ("准确", s.hit.toString, false),
       ("敏捷", s.agility.toString, false),
       ("魔法躲避", s"${s.magicAvoid}", false),

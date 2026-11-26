@@ -1,6 +1,7 @@
 package mir.data
 
 import mir.core.*
+import mir.rules.Leveling
 import mir.testkit.TestFiles
 import zio.json.*
 import zio.test.*
@@ -82,8 +83,7 @@ object GameDataSpec extends ZIOSpecDefault:
           List(RouteDef(MapId("H006"), 83, 25, MapId("H007"), 161, 172, Some(GateLook.ZombiePit))),
         catalog.data.guards.head.direction == Dir.UpLeft,
         catalog.expToNext(1).contains(Exp(100)),
-        catalog.expToNext(47).isDefined,
-        catalog.expToNext(48).isEmpty,
+        (1 to Leveling.LinearFrom).forall(lv => catalog.expToNext(lv).isDefined),
         catalog.displayName(MonsterName("僵尸10")) == MonsterName("僵尸1"),
         catalog.teleport(TeleportRef(0)).map(_.name).contains("比奇省"),
         catalog.teleport(TeleportRef(119)).isEmpty,

@@ -124,7 +124,7 @@ object Gold:
     def <(o: Gold): Boolean  = g < o
   given JsonCodec[Gold] = JsonCodec.int
 
-/** 经验值（满级要 10 亿，经验倍率后会超过 Int）。 */
+/** 经验值（46 级起每级要 4.8 亿，经验倍率后会超过 Int）。 */
 opaque type Exp = Long
 object Exp:
   def apply(n: Long): Exp = n

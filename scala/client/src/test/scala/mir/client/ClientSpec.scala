@@ -483,7 +483,7 @@ object ClientSpec extends ZIOSpecDefault:
         EquipSlot.RingL -> inst("天尊戒指"), EquipSlot.RingR -> inst("玻璃戒指"),
         EquipSlot.BraceletL -> inst("护身符"), EquipSlot.BraceletR -> inst("道士手镯"))
       val bothStrong = who(Job.Taoist, EquipSlot.RingL -> inst("天尊戒指"), EquipSlot.RingR -> inst("天尊戒指"))
-      val me   = SelfStats(30, Exp(0), None, Hp(1), Mp(1), Gold(0), stats)
+      val me   = SelfStats(30, Exp(0), Exp(1), Hp(1), Mp(1), Gold(0), stats)
       val up   = gain(warrior, "青铜剑")
       val desc = Describe.itemLines(catalog, item("青铜剑"), Some(inst("青铜剑")), Job.Warrior, me, Some(item("木剑") -> None), up)
       val taoUp   = gain(who(Job.Taoist, EquipSlot.Weapon -> inst("降魔")), "无极棍")
@@ -642,7 +642,7 @@ object ClientSpec extends ZIOSpecDefault:
       // 宋体 12 像素：汉字和全角符号 12，半角 6
       def w(s: String): Double = s.map(c => if c < '\u2e80' then 6 else 12).sum.toDouble
       val stats = Stats(300, 200, Span(5, 20), Span(5, 15), Span(10, 40), Span(8, 35), Span(8, 35), 15, 15, 1000, 0, 0, 0, 0, 0)
-      val me    = SelfStats(35, Exp(0), None, Hp(1), Mp(1), Gold(0), stats)
+      val me    = SelfStats(35, Exp(0), Exp(1), Hp(1), Mp(1), Gold(0), stats)
       val all   = catalog.data.skills.map(d => d -> Describe.skillLines(catalog, d, LearnedSkill(d.id, 1, 0, None), me))
       val fire  = all.find(_._1.id == SkillId(1)).get._2
       val levelRows = fire.filter(_.text.matches("\\d 级：.*"))
