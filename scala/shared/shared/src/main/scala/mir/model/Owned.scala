@@ -86,6 +86,11 @@ final case class CharSettings(
     autoHunt: Boolean = false,
     /** 自动随机（#1350，默认关，要同时开着自动打怪）：附近没怪可打就用随机传送卷飞走，飞到有怪的地方就停下来打 */
     autoRandom: Boolean = false,
+    /**
+     * 自动打怪先捡东西（#1354，默认关 = #1337 的先打怪）：开着时闲下来先捡附近该捡的再找下一只怪；被打还手仍然最先。
+     * 只在自动捡、自动打怪都开着时有区别。
+     */
+    pickupFirst: Boolean = false,
     /** 持续施法（#1308，默认关）：对怪放了攻击技能就接着一直放到它死；开着自动打怪时也用技能打（法师、道士） */
     sustainCast: Boolean = false,
     /** 战士：烈火好了就自动开 */

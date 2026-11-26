@@ -314,6 +314,25 @@ object SpellSpec extends ZIOSpecDefault:
         s.run(5000)
         assertTrue(allDead, !pickedEarly, p.gold.value >= g0.value + 77)
       },
+      test("开着「自动打怪时先捡东西」：脚边有东西、旁边有怪，先捡完再去打（#1354）") {
+        val s = sim()
+        val p = caster(s, Job.Warrior, Nil)
+        p.settings = p.settings.copy(autoHunt = true, autoPickup = true, pickupKinds = Set(PickupKind.Gold), pickupFirst = true)
+        s.w.dropAt(Cell(29, 30), Loot.Coins(Gold(77)))
+        val chick = put(s, "鸡", Cell(33, 30))
+        pin(chick)
+        val g0 = p.gold
+        // 金币到手前鸡都该活着；之后接着去把鸡打死
+        var hitEarly = false
+        var t = 0
+        while t < 20_000 && p.gold == g0 do
+          s.run(50)
+          t += 50
+          if chick.hp < chick.maxHp || chick.dead then hitEarly = true
+        val picked = p.gold.value >= g0.value + 77
+        s.run(10_000)
+        assertTrue(picked, !hitEarly, chick.dead)
+      },
       test("自动随机：附近没怪就用随机传送卷飞走，飞到有怪就停下打；不开自动打怪不飞（#1350）") {
         val s = sim()
         val p = caster(s, Job.Warrior, Nil)

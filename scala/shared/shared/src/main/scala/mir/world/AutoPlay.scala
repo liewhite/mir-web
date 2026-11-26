@@ -74,6 +74,9 @@ object AutoPlay:
         // 同一格常叠着别的掉落，只捡勾了的种类（#1235）
         PlayerOps.pickUp(w, p, worth(w, p, _))
         p.intent = Intent.Idle
+      case Some(g) if w.occupant(g.cell).exists(_.id != p.id) =>
+        // 有人（怪）站上去了捡不了，先放下，别原地干等（nearestLoot 也跳过有人站着的格子，下一步就去干别的）
+        p.intent = Intent.Idle
       case Some(g) =>
         // 捡东西路上被打，开着还手就先回头打它（#1337）
         takeHitter(w, p) match
@@ -87,16 +90,18 @@ object AutoPlay:
     hitter
 
   /**
-   * 闲着时挑下一件事：先还手；开着自动打怪时附近能打的怪都打完才捡东西（用户 11-26 #1337：「应该优先自动打怪」，
-   * 原来先捡，两只怪一起来时杀完一只就丢下另一只去捡）；没开自动打怪就还手完直接捡。
+   * 闲着时挑下一件事：先还手；然后默认附近能打的怪都打完才捡东西（用户 11-26 #1337：「应该优先自动打怪」，
+   * 原来先捡，两只怪一起来时杀完一只就丢下另一只去捡）；开着「自动打怪先捡东西」（#1354，留言板玩家要的，
+   * 怪多的地方一直轮不到捡）就反过来，先把附近该捡的捡完再找下一只怪。被打还手总在最前（保命）。
    */
   private def idle(w: World, p: Player): Unit =
     if free(w, p) then
       val hitter = takeHitter(w, p)
       val spell  = barrageSpell(w, p)
-      def loot   = Option.when(p.settings.autoPickup)(nearestLoot(w, p, 6)).flatten.map(g => Intent.Fetch(g.id))
-      def prey   = Option.when(p.settings.autoHunt)(nearestPrey(w, p, spell)).flatten.map(engage(spell))
-      p.intent = hitter.map(engage(spell)).orElse(prey).orElse(loot).getOrElse(Intent.Idle)
+      val loot   = () => Option.when(p.settings.autoPickup)(nearestLoot(w, p, 6)).flatten.map(g => Intent.Fetch(g.id))
+      val prey   = () => Option.when(p.settings.autoHunt)(nearestPrey(w, p, spell)).flatten.map(engage(spell))
+      val chores = if p.settings.pickupFirst then List(loot, prey) else List(prey, loot)
+      p.intent = hitter.map(engage(spell)).orElse(chores.iterator.flatMap(_()).nextOption()).getOrElse(Intent.Idle)
       if p.intent == Intent.Idle then autoRandom(w, p)
 
   /**
