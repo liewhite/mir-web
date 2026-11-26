@@ -74,19 +74,29 @@ object AutoPlay:
         // 同一格常叠着别的掉落，只捡勾了的种类（#1235）
         PlayerOps.pickUp(w, p, worth(w, p, _))
         p.intent = Intent.Idle
-      case Some(g) => if free(w, p) then walk(w, p, g.cell, Path.find(w.walkableFor(p), p.cell, g.cell, PathNodes, adjacent = false))
+      case Some(g) =>
+        // 捡东西路上被打，开着还手就先回头打它（#1337）
+        takeHitter(w, p) match
+          case Some(a) => p.intent = engage(barrageSpell(w, p))(a)
+          case None    => if free(w, p) then walk(w, p, g.cell, Path.find(w.walkableFor(p), p.cell, g.cell, PathNodes, adjacent = false))
 
+  /** 最近打过自己、开着被打还手、还活着、3 格内的敌人；看过就清掉，下次只认新挨的打。 */
+  private def takeHitter(w: World, p: Player): Option[Actor] =
+    val hitter = p.lastHitBy.flatMap(w.actor).filter(a => p.settings.autoFightBack && !a.dead && w.isEnemy(p, a) && p.cell.chebyshev(a.cell) <= 3)
+    p.lastHitBy = None
+    hitter
+
+  /**
+   * 闲着时挑下一件事：先还手；开着自动打怪时附近能打的怪都打完才捡东西（用户 11-26 #1337：「应该优先自动打怪」，
+   * 原来先捡，两只怪一起来时杀完一只就丢下另一只去捡）；没开自动打怪就还手完直接捡。
+   */
   private def idle(w: World, p: Player): Unit =
     if free(w, p) then
-      // 被打自动还手
-      val hitter = p.lastHitBy.flatMap(w.actor).filter(a => p.settings.autoFightBack && !a.dead && w.isEnemy(p, a) && p.cell.chebyshev(a.cell) <= 3)
-      p.lastHitBy = None
-      // 先还手，再捡东西，最后才自己找怪打
-      val spell = barrageSpell(w, p)
-      p.intent = hitter.map(engage(spell))
-        .orElse(Option.when(p.settings.autoPickup)(nearestLoot(w, p, 6)).flatten.map(g => Intent.Fetch(g.id)))
-        .orElse(Option.when(p.settings.autoHunt)(nearestPrey(w, p, spell)).flatten.map(engage(spell)))
-        .getOrElse(Intent.Idle)
+      val hitter = takeHitter(w, p)
+      val spell  = barrageSpell(w, p)
+      def loot   = Option.when(p.settings.autoPickup)(nearestLoot(w, p, 6)).flatten.map(g => Intent.Fetch(g.id))
+      def prey   = Option.when(p.settings.autoHunt)(nearestPrey(w, p, spell)).flatten.map(engage(spell))
+      p.intent = hitter.map(engage(spell)).orElse(prey).orElse(loot).getOrElse(Intent.Idle)
 
   /** 怎么打：有持续施法用的技能就站着放它，否则走过去普通攻击 */
   private def engage(spell: Option[Skill])(a: Actor): Intent =

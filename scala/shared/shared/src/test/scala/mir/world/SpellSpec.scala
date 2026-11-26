@@ -294,6 +294,25 @@ object SpellSpec extends ZIOSpecDefault:
         val hpBefore = m2.hp
         s.run(5000)
         assertTrue(idle, killed, m2.hp == hpBefore, !m2.dead)
+      },
+      test("自动打怪优先于捡东西：附近的怪都打死了才去捡，哪怕东西就在脚边（#1337）") {
+        val s = sim()
+        val p = caster(s, Job.Warrior, Nil)
+        p.settings = p.settings.copy(autoHunt = true, autoPickup = true, pickupKinds = Set(PickupKind.Gold))
+        s.w.dropAt(Cell(29, 30), Loot.Coins(Gold(77)))
+        val chicks = List(put(s, "鸡", Cell(33, 30)), put(s, "鸡", Cell(30, 34)))
+        chicks.foreach(pin)
+        val g0 = p.gold
+        // 一直跑到两只都死；期间只要有鸡活着，金币就该还在地上
+        var pickedEarly = false
+        var t = 0
+        while t < 20_000 && chicks.exists(!_.dead) do
+          s.run(50)
+          t += 50
+          if p.gold != g0 then pickedEarly = true
+        val allDead = chicks.forall(_.dead)
+        s.run(5000)
+        assertTrue(allDead, !pickedEarly, p.gold.value >= g0.value + 77)
       }
     ),
     suite("持续施法、自动施毒（#1308）")(
