@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.{MerchantDef, MonsterDef, MonsterLook, Span}
 import mir.model.*
 import mir.protocol.{ActionView, FieldView, GroundThing, GroundView, Look, PetView}
-import mir.rules.{Claim, PetBody, Pk, PkStanding, Skill, Stats, Summoning, Ward}
+import mir.rules.{Claim, PetBody, Pk, PkStanding, Rates, Skill, Stats, Summoning, Ward}
 
 import scala.collection.mutable
 
@@ -204,9 +204,11 @@ final class Monster(id: ActorId, initDefn: MonsterDef, initBehavior: Behavior, i
   private[world] var cover: Cover   = Cover.Open
   private[world] var coverAt: Millis = Millis.zero
   private[world] var bornAt: Millis  = now
-  /** 攻击、走路间隔（毫秒）：平时取数据表；宝宝按等级变快、本领（如沃玛教主狂暴）也会改 */
+  /** 平时的走路间隔（毫秒）：数据表，boss 按 Rates.walkMs 加快（#1333） */
+  private[world] def baseWalkMs: Int = Rates.walkMs(defn.name, defn.walkSpeed)
+  /** 攻击、走路间隔（毫秒）：平时取数据表（boss 走路见 baseWalkMs）；宝宝按等级变快、本领（如沃玛教主狂暴）也会改 */
   private[world] var attackInterval: Int = defn.attackSpeed
-  private[world] var walkInterval: Int   = defn.walkSpeed
+  private[world] var walkInterval: Int   = baseWalkMs
   /** 自己召出来的小怪（放小怪的出招和召唤本领共用，用来限数量） */
   private[world] val minions: mutable.ArrayBuffer[ActorId] = mutable.ArrayBuffer.empty
   /** 附加本领各自的状态（顺序同 behavior.extras，刷出来时由 MonsterAi.init 设好） */

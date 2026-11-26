@@ -422,7 +422,7 @@ object MonsterAi:
           else advanceRage(w, m, c.rage, c.rageAt)
         ExtraState.CowKing(level, rage, rageAt, w.now)
 
-  /** 狂暴阶段往前走：准备 8 秒（几乎不出手）→ 狂暴 8 秒（攻速、移速变快）→ 平静（恢复数据表速度）。 */
+  /** 狂暴阶段往前走：准备 8 秒（几乎不出手）→ 狂暴 8 秒（攻速、移速变快；boss 平时已比 400 毫秒快的不减速）→ 平静（恢复平时速度）。 */
   private def advanceRage(w: World, m: Monster, rage: Rage, since: Millis): (Rage, Millis) = rage match
     case Rage.Ready if w.now - since < 8000 =>
       m.attackInterval = 10_000
@@ -430,11 +430,11 @@ object MonsterAi:
     case Rage.Ready => advanceRage(w, m, Rage.Crazy, w.now)
     case Rage.Crazy if w.now - since < 8000 =>
       m.attackInterval = 500
-      m.walkInterval = 400
+      m.walkInterval = math.min(400, m.baseWalkMs)
       (Rage.Crazy, since)
     case Rage.Crazy =>
       m.attackInterval = m.defn.attackSpeed
-      m.walkInterval = m.defn.walkSpeed
+      m.walkInterval = m.baseWalkMs
       (Rage.Calm, since)
     case Rage.Calm => (Rage.Calm, since)
 

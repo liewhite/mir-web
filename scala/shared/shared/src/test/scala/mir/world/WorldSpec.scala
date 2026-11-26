@@ -195,9 +195,37 @@ object WorldSpec extends ZIOSpecDefault:
           case _                                                       => false
         s.run(30_000)
         val crazy = (k.extras, k.attackInterval, k.walkInterval) match
-          case (Vector(ExtraState.CowKing(_, Rage.Crazy, _, _)), 500, 400) => true
-          case _                                                         => false
+          case (Vector(ExtraState.CowKing(_, Rage.Crazy, _, _)), 500, w) => w == math.min(400, Rates.bossWalkMs)
+          case _                                                       => false
         assertTrue(ready, crazy)
+      },
+      test("boss 追人每格约 350 毫秒（接近人跑步的 300 毫秒/格），普通怪照数据表；本来不走的 boss 照旧不走（#1333）") {
+        /** 放一只怪追 7 格外的人，返回它每走一格之间隔了多少毫秒 */
+        def gaps(name: String): Vector[Long] =
+          val s = sim()
+          join(s.w, "甲", Cell(27, 30))
+          val m     = put(s.w, name, Cell(20, 30))
+          var moves = Vector.empty[Long]
+          var at    = m.cell
+          (0 until 8000 by 50).foreach { _ =>
+            s.w.tick(s.w.now + 50)
+            s.flush(): Unit
+            if m.cell != at then
+              moves :+= s.w.now.value
+              at = m.cell
+          }
+          moves.zip(moves.drop(1)).map((a, b) => b - a)
+        val boss  = gaps("沃玛教主")
+        val plain = gaps("沃玛战士")
+        val table = catalog.monster(MonsterName("沃玛战士")).get.walkSpeed
+        assertTrue(
+          catalog.monster(MonsterName("沃玛教主")).get.walkSpeed > Rates.bossWalkMs,
+          boss.size >= 4,
+          boss.forall(g => g >= Rates.bossWalkMs && g <= 350),
+          plain.nonEmpty,
+          plain.forall(_ >= table),
+          Rates.walkMs(MonsterName("赤月恶魔"), 0) == 0
+        )
       },
       test("守卫平时不和玩家互打、不打鸡鹿羊，隔几格也一刀砍死野怪（#1205）") {
         val s    = sim()

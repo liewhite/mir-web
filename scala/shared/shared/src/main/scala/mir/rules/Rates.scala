@@ -38,6 +38,17 @@ object Rates:
   def respawnMinutes(m: MonsterName, tableMinutes: Int): Int = rankOf(m) match
     case MonsterRank.Boss   => math.min(tableMinutes, bossRespawnMaxMinutes)
     case MonsterRank.Common => tableMinutes
+  /**
+   * boss（Rates.bosses）走路每格最多多少毫秒（用户 11-26 在 #1333 定：所有 boss 移动加快，接近人的跑步速度）。
+   * 人跑步 2 格 600 毫秒＝每秒 3.3 格；boss 取它的九成左右：每格 333 毫秒，服务端 50 毫秒一步取整后实际每格约 350 毫秒＝每秒约 2.9 格，
+   * 追得上走路的人（每秒 1.7 格），跑步的人能慢慢拉开。数据表更快的照数据表；本来不走的（走路间隔 0、原地不动的）照旧不动。
+   */
+  val bossWalkMs: Int = 333
+
+  /** 怪平时的走路间隔（毫秒）：数据表的 WALK_SPD，boss 再封顶 bossWalkMs */
+  def walkMs(m: MonsterName, tableMs: Int): Int = rankOf(m) match
+    case MonsterRank.Boss   => math.min(tableMs, bossWalkMs)
+    case MonsterRank.Common => tableMs
   /** 怪掉的东西只给归属者和他的队友捡的时间（毫秒；用户 11-25 在 #1158 定 1 分钟，原版默认 2 分钟），见 Ward */
   val lootWardMs: Long = 60_000
   /** 召唤骷髅没仗打、往主人身边赶时每格最多多少毫秒（用户 11-25 在 #1275 要跟得上跑步的主人：和玩家跑步 2 格 600 毫秒一样快），打怪追怪照原版公式 SpellRules.skeletonWalkMs */
