@@ -65,22 +65,35 @@ object Frames:
         case ActKind.Rush   => rush(a, dir, now)
         case ActKind.Backstep => backstep(HA.walk, a, dir, now)
         case ActKind.Attack => once(HA.hit, a, dir, now)
-        case ActKind.Heavy =>
-          a.hit match
-            case Some(HitStyle.Wide | HitStyle.Fire) => once(HA.bigHit, a, dir, now)
-            case _                                   => once(HA.heavyHit, a, dir, now)
+        case ActKind.Heavy  => once(heavyPose(a), a, dir, now)
         case ActKind.Spell                => once(HA.spell, a, dir, now)
         case ActKind.Struck               => once(HA.struck, a, dir, now)
         case ActKind.Die | ActKind.Dead   => once(HA.die, a, dir, now)
         case ActKind.Stand | ActKind.DigUp | ActKind.DigDown => looped(HA.stand, a, dir.code, now)
 
-  /** 剑术刀光（原版 HitEffectBase）：攻杀、刺杀、半月、烈火在 magic 库的起始帧。 */
+  /**
+   * Heavy 动作的身子：剑术（攻杀/刺杀/半月/烈火）和普通攻击一样用 ActHit（原版 HumActor.pas 把 SM_POWERHIT/LONGHIT/WIDEHIT/FIREHIT
+   * 和 SM_HIT 归在一起），刀光贴图的偏移是按这个姿势做的；没带剑术的 Heavy（挖矿，原版 SM_HEAVYHIT）用 ActHeavyHit（#1361）。
+   */
+  private def heavyPose(a: ActionView): ActionInfo =
+    a.hit.flatMap(swordLight).fold(HA.heavyHit)(_ => HA.hit)
+
+  /**
+   * 剑术刀光在 magic 库的起始帧（原版 MagicEff.pas HitEffectBase[m_nHitEffectNumber-1]）。
+   * 烈火原版 m_nHitEffectNumber=4 → 下标 3 = 3480（火焰爆发）；源码注释把 3480 标成 Prepared、3390 标成 Trigger 是反的，
+   * 3390 是蓄火时剑上的小火团，原版只在注释掉的代码里用（#1361）。
+   */
   def swordLight(style: HitStyle): Option[Int] = style match
     case HitStyle.Power  => Some(800)
     case HitStyle.Long   => Some(1410)
     case HitStyle.Wide   => Some(1700)
-    case HitStyle.Fire   => Some(3390)
+    case HitStyle.Fire   => Some(3480)
     case HitStyle.Normal => None
+
+  /** 当前该画的刀光帧：起始帧 + 方向×10 + 身子动作的同一帧序号（原版 HumActor.pas `idx + m_btDir*10 + (m_nCurrentFrame-m_nStartFrame)`）。 */
+  def swordLightFrame(a: ActionView, dir: Dir, now: Millis): Option[Int] =
+    if a.kind != ActKind.Heavy || finished(a, now) then None
+    else a.hit.flatMap(swordLight).map(base => base + dir.code * 10 + frameOf(HA.hit, a, now, loop = false))
 
   /** 怪物当前帧（相对该怪的起始帧），画法差别按外观查 MonsterLook（和服务端共用）。石像状态（祖玛雕像没醒时）停在 ActDeath 第一帧。 */
   def monster(t: MonsterActionTable, style: MonsterLook, a: ActionView, dir: Dir, now: Millis, dead: Boolean, cover: Cover): Int =

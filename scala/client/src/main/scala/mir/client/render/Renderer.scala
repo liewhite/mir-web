@@ -289,13 +289,9 @@ final class Renderer(
     put(body, tint)
     put(hair, tint)
     if front then put(weapon, None)
-    // 剑术刀光
-    val act = a.action
-    if act.kind == ActKind.Heavy && now - act.startedAt < act.duration then
-      act.hit.flatMap(Frames.swordLight).foreach { base =>
-        val f = math.min(5, ((now - act.startedAt).toDouble / act.duration * 6).toInt)
-        sprites.sprite("magic", base + a.dir.code * 10 + f).foreach(sp => lighter(blit(sp, dx + sp.ox, dy + sp.oy)))
-      }
+    // 剑术刀光：和身子同一帧
+    Frames.swordLightFrame(a.action, a.dir, now).flatMap(sprites.sprite("magic", _))
+      .foreach(sp => lighter(blit(sp, dx + sp.ox, dy + sp.oy)))
     body
 
   private def drawMonster(a: ActorView, m: Look.Monster, now: Millis, dx: Double, dy: Double): Option[Sprite] =

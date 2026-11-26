@@ -109,6 +109,21 @@ object ClientSpec extends ZIOSpecDefault:
         Frames.goldLook(500) == 115
       )
     },
+    test("剑术照原版（#1361）：身子用普通攻击动作，刀光帧跟身子同一帧，烈火用 3480；挖矿用重击动作没刀光") {
+      def heavy(s: HitStyle) = ActionView(ActKind.Heavy, Millis(0), 510, hit = Some(s))
+      val fire = heavy(HitStyle.Fire)
+      val dig  = ActionView(ActKind.Heavy, Millis(0), 510)
+      val at   = Millis(255) // 6 帧摊 510ms，第 3 帧
+      assertTrue(
+        Frames.human(fire, Dir.Right, at, dead = false) == 200 + 2 * 8 + 3,
+        Frames.swordLightFrame(fire, Dir.Right, at).contains(3480 + 2 * 10 + 3),
+        Frames.swordLightFrame(heavy(HitStyle.Wide), Dir.Up, Millis(0)).contains(1700),
+        Frames.human(heavy(HitStyle.Power), Dir.Up, Millis(0), dead = false) == 200,
+        Frames.swordLightFrame(fire, Dir.Right, Millis(510)).isEmpty,
+        Frames.human(dig, Dir.Up, Millis(0), dead = false) == 264,
+        Frames.swordLightFrame(dig, Dir.Up, Millis(0)).isEmpty
+      )
+    },
     test("怪物帧号：石像停在 ActDeath 第一帧，埋着的食人花钻出用走路帧") {
       val m     = catalog.monster(MonsterName("祖玛雕像")).get
       val t     = catalog.actions(m).get
