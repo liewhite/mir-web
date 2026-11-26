@@ -15,7 +15,7 @@ object GroupsSpec extends ZIOSpecDefault:
     val g    = Social()
     var dead = Set.empty[String]
     names.foreach(g.online(_, prefs))
-    def find(n: String): Option[Seen] = names.find(_.equalsIgnoreCase(n)).map(x => Seen(x, !dead(x)))
+    def find(n: String): Option[Seen] = Social.pick(names, n).map(x => Seen(x, !dead(x)))
     def run(me: String, c: SocialCmd): Vector[Letter] = g.handle(me, c, Directory.onlineOnly(find))
     def members(n: String): List[String] = g.groupView(n).members
     def refused(out: Vector[Letter], me: String): Boolean = out.exists { case Letter(`me`, ServerMsg.Refused(_)) => true; case _ => false }
@@ -55,6 +55,14 @@ object GroupsSpec extends ZIOSpecDefault:
       val t = Town(Seq("Abc", "Xyz"))
       t.run("Abc", SocialCmd.CreateGroup("xyz"))
       assertTrue(t.members("Xyz") == List("Abc", "Xyz"))
+    },
+    test("踢人：组里有只差大小写的两个人（yoyo / Yoyo），踢大小写完全一样的那个（#1358）") {
+      val t = Town(Seq("甲", "yoyo", "Yoyo"))
+      t.run("甲", SocialCmd.CreateGroup("yoyo"))
+      t.run("甲", SocialCmd.AddMember("Yoyo"))
+      val before = t.members("甲")
+      t.run("甲", SocialCmd.RemoveMember("Yoyo"))
+      assertTrue(before == List("甲", "yoyo", "Yoyo"), t.members("甲") == List("甲", "yoyo"))
     },
     test("加人只有队长能加，最多 11 人") {
       val names = (1 to 13).map(i => s"人$i")

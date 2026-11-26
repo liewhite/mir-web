@@ -78,7 +78,7 @@ final class Groups(book: Book):
   def remove(me: String, name: String): Vector[Letter] =
     if !leaderOf.get(me).contains(me) then refuse(me, "只有队长才能删人。")
     else
-      mates(me).find(_.equalsIgnoreCase(name.trim)) match
+      Social.pick(mates(me), name) match
         case Some(who) => removeFrom(me, who)
         case None      => refuse(me, s"${name.trim} 不在本小组里。")
 

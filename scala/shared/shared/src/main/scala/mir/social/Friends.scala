@@ -35,7 +35,7 @@ final class Friends(book: Book):
           Vector(list(me), Letter(me, ServerMsg.Notice(s"已把 $name 加为好友。", Tone.System)))
 
   def remove(me: String, raw: String): Vector[Letter] =
-    names(me).find(_.equalsIgnoreCase(raw.trim)) match
+    Social.pick(names(me), raw) match
       case Some(name) =>
         book.update(me)(p => p.copy(friends = p.friends.filterNot(_ == name)))
         Vector(list(me), Letter(me, ServerMsg.Notice(s"已把 $name 从好友里删掉。", Tone.System)))

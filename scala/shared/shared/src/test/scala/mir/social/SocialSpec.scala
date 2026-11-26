@@ -13,8 +13,8 @@ object SocialSpec extends ZIOSpecDefault:
     val known = online ++ others
     online.foreach(s.online(_, SocialPrefs()))
     val dir = Directory(
-      n => here.find(_.equalsIgnoreCase(n)).map(Seen(_, true)),
-      n => known.find(_.equalsIgnoreCase(n))
+      n => Social.pick(here, n).map(Seen(_, true)),
+      n => Social.pick(known, n)
     )
     def run(me: String, c: SocialCmd): Vector[Letter] = s.handle(me, c, dir)
     def come(n: String): Vector[Letter] =
@@ -95,6 +95,18 @@ object SocialSpec extends ZIOSpecDefault:
       val gone = t.run("甲", SocialCmd.RemoveFriend("BOB"))
       val miss = t.run("甲", SocialCmd.RemoveFriend("Bob"))
       assertTrue(friendsOf(gone, "甲").contains(Nil), refused(miss, "甲").isDefined, t.s.prefsOf("甲").exists(_.friends.isEmpty))
+    },
+    test("删好友：名单里有只差大小写的两个人（yoyo / Yoyo），删大小写完全一样的那个（#1358）") {
+      val t = Town(Seq("甲"), others = Seq("yoyo", "Yoyo"))
+      t.run("甲", SocialCmd.AddFriend("yoyo"))
+      t.run("甲", SocialCmd.AddFriend("Yoyo"))
+      val added = t.s.prefsOf("甲").map(_.friends)
+      val out   = t.run("甲", SocialCmd.RemoveFriend("Yoyo"))
+      assertTrue(
+        added.contains(List("yoyo", "Yoyo")),
+        friendsOf(out, "甲").contains(List(FriendView("yoyo", false))),
+        Social.pick(List("yoyo", "Yoyo"), " YOYO ").contains("yoyo")
+      )
     },
     test("好友上线、下线：加了他的人收到提示和新名单；顶号重进不再提示；自己上线收到名单") {
       val t = Town(Seq("甲"), others = Seq("乙"))

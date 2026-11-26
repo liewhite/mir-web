@@ -92,3 +92,11 @@ final class Social extends Company:
 
 object Social:
   def refuse(me: String, why: String): Vector[Letter] = Vector(Letter(me, ServerMsg.Refused(why)))
+
+  /**
+   * 在名单里按名字找人：不分大小写（原版习惯），但优先大小写完全一样的。
+   * #1343 前建的角色可能只差大小写（线上有 yoyo / Yoyo），两个都在名单里时删好友、踢人别弄错（#1358）。
+   */
+  def pick(names: Iterable[String], raw: String): Option[String] =
+    val n = raw.trim
+    names.find(_ == n).orElse(names.find(_.equalsIgnoreCase(n)))
