@@ -241,7 +241,11 @@ object Describe:
         s"敏捷 ${s.agility}：被打中率 =（对方准确+1）÷ ${s.agility}，附近怪（准确约 $monsterHit）打中你 ${pct(Rules.hitChance(monsterHit, s.agility))}"
       )),
       Some(Line(
-        s"攻击间隔 ${s.hitInterval} 毫秒：基础 ${Rules.hitInterval(0)}，全身攻速每 2 点 −${Rules.HitIntervalStepMs}，最快 ${Rules.HitIntervalMinMs}"
+        s"攻击间隔 ${s.hitInterval} 毫秒：基础 ${Rules.HitIntervalBaseMs}，全身攻速每 2 点 −${Rules.HitIntervalStepMs}，最快 ${Rules.HitIntervalMinMs}"
+      )),
+      Option.when(Rates.jobHitSpeed(job) > 0)(Line(
+        s"本服战士加强：白送 ${Rates.jobHitSpeed(job)} 档攻速（不穿攻速装 ${Rules.HitIntervalBaseMs} → ${Rules.hitInterval(0, job)} 毫秒一刀），和装备攻速叠加，上面已算进去",
+        Tint.Good
       )),
       Option.when(s.magicAvoid != 0)(Line(s"魔法躲避 ${s.magicAvoid}$notYet", Tint.Dim)),
       Option.when(s.poisonAvoid != 0)(Line(s"毒物躲避 ${s.poisonAvoid}$notYet", Tint.Dim)),

@@ -142,6 +142,20 @@ object RulesSpec extends ZIOSpecDefault:
           t.dc == Span(tl.dc.lo + e.dc.lo, tl.dc.hi + e.dc.hi)
         )
       },
+      test("战士白送 3 档攻速：不穿装 720 毫秒，和装备攻速叠加，到 15 档截断；法师道士不变（#1349）") {
+        def stats(job: Job, speed: Int) = Rules.computeStats(job, 30, List(ItemEffects(attackSpeed = speed)), PassiveSkills())
+        assertTrue(
+          stats(Job.Warrior, 0).hitInterval == 720,
+          stats(Job.Warrior, 4).hitInterval == 600,
+          stats(Job.Warrior, -2).hitInterval == 780,
+          Rules.hitSpeedLevel(26, Job.Warrior) == 15,
+          Rules.hitSpeedLevel(40, Job.Warrior) == 15,
+          stats(Job.Warrior, 26).hitInterval == Rules.HitIntervalMinMs,
+          stats(Job.Wizard, 0).hitInterval == 900,
+          stats(Job.Taoist, 4).hitInterval == 780,
+          Rules.hitSpeedLevel(30, Job.Wizard) == 15
+        )
+      },
       test("穿戴要求按人物当前值判断") {
         val stats = Rules.computeStats(Job.Warrior, 10, Nil, PassiveSkills())
         val dc    = Requirement.Dc(5)

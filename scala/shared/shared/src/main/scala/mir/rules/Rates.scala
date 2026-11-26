@@ -65,6 +65,11 @@ object Rates:
   /** 法师攻击魔法（火球、雷电、冰咆哮、火墙等）算出的伤害再乘的倍数，四舍五入；不动魔法面板和魔法盾（用户 11-25 在 #1285 定） */
   val mageSpell: Double = 1.3
   /**
+   * 战士在装备攻速之外白送的攻速档（每档两刀间隔 −60 毫秒，不穿攻速装 900 → 720 毫秒；用户 11-26 在 #1349 定 +3 档：
+   * 算上怪的防御后大多数怪法师输出比战士高）。和装备攻速叠加，仍受攻速档上限、间隔下限和挥刀动画的限制。
+   */
+  val warriorHitSpeed: Int = 3
+  /**
    * 神兽（两种形态）的成长（用户 11-25 在 #1285 要削弱初始攻防魔防和成长）：技能每级 +30%（骷髅 35%），
    * 道术上限每点加血 +1.6%（骷髅 1.8%）。
    * - 攻击：数据表打 85 折、每点道术 +1.2%（#1285；11-26 #1245 从 1.6% 降到 1.2%）；
@@ -90,6 +95,11 @@ object Rates:
       def scale(v: Int) = math.floor(v * warriorBody + 0.5).toInt
       Span(scale(s.lo), scale(s.hi))
     case _ => s
+
+  /** 职业白送的攻速档（只有战士有）。 */
+  def jobHitSpeed(job: Job): Int = job match
+    case Job.Warrior => warriorHitSpeed
+    case _           => 0
 
   /** 一行爆率实际的掉落概率（0..1）：原版 × drop；boss 的高级装备至少 bossHighEquipMin。item 为空表示金币。 */
   def dropChance(rank: MonsterRank, d: DropDef, item: Option[ItemDef]): Double =

@@ -4,7 +4,7 @@
  */
 import type { Range } from '../data/defs';
 import type { ItemEffects } from './items';
-import { jobRange } from './rates';
+import { jobRange, RATES } from './rates';
 
 export type Job = 0 | 1 | 2; // 战士 法师 道士
 export const JOB_NAME = ['战士', '法师', '道士'] as const;
@@ -118,7 +118,7 @@ export interface PassiveSkills {
 /**
  * 汇总：等级属性 + 装备 + 被动技能。
  * 准确默认 5、敏捷默认 15（道士 +3）（PlayObject.RecalcHitSpeed）。
- * 攻速：装备攻速合计 x，x>0 取 x/2，否则 (x-1)/2，上限 15；攻击间隔 = 900 - 攻速×60。
+ * 攻速：装备攻速合计 x，x>0 取 x/2，否则 (x-1)/2，战士再 +RATES.warriorHitSpeed（#1349），上限 15；攻击间隔 = 900 - 攻速×60。
  */
 export function computeStats(job: Job, level: number, equips: ItemEffects[], passive: PassiveSkills): Stats {
   const base = levelAbility(job, level);
@@ -142,7 +142,8 @@ export function computeStats(job: Job, level: number, equips: ItemEffects[], pas
   if (passive.oneSword > 0) s.hit += round((9 / 3) * passive.oneSword);
   if (passive.spiritSword > 0) s.hit += round((8 / 3) * passive.spiritSword);
   if (passive.powerHit > 0) s.hit += passive.powerHit;
-  const hitSpeed = Math.min(15, speed > 0 ? Math.floor(speed / 2) : Math.trunc((speed - 1) / 2));
+  const jobSpeed = job === 0 ? RATES.warriorHitSpeed : 0;
+  const hitSpeed = Math.min(15, (speed > 0 ? Math.floor(speed / 2) : Math.trunc((speed - 1) / 2)) + jobSpeed);
   s.hitInterval = Math.max(300, 900 - hitSpeed * 60);
   s.dc = jobRange(job, s.dc);
   s.ac = jobRange(job, s.ac);

@@ -129,7 +129,8 @@ object Rules:
   /**
    * 汇总：等级属性 + 装备 + 被动技能，最后乘职业倍率（Rates.jobSpan：战士攻击、防御、魔防 ×Rates.warriorBody）。
    * 准确默认 5、敏捷默认 15（道士 +3）（PlayObject.RecalcHitSpeed）。
-   * 攻速：装备攻速合计 x，x>0 取 x/2，否则 (x-1)/2（向零取整），上限 15；攻击间隔 = 900 - 攻速×60，至少 300。
+   * 攻速：装备攻速合计 x，x>0 取 x/2，否则 (x-1)/2（向零取整），再加职业白送的档（Rates.jobHitSpeed），上限 15；
+   * 攻击间隔 = 900 - 攻速×60，至少 300。
    */
   def computeStats(job: Job, level: Int, equips: Iterable[ItemEffects], passive: PassiveSkills): Stats =
     val base = levelAbility(job, level)
@@ -153,7 +154,7 @@ object Rules:
         passive.powerHit.fold(0)(SwordRules.powerHitHit)
     worn.copy(
       dc = Rates.jobSpan(job, worn.dc), ac = Rates.jobSpan(job, worn.ac), mac = Rates.jobSpan(job, worn.mac),
-      hit = worn.hit + passiveHit, hitInterval = hitInterval(equips.iterator.map(_.attackSpeed).sum)
+      hit = worn.hit + passiveHit, hitInterval = hitInterval(equips.iterator.map(_.attackSpeed).sum, job)
     )
 
   /** 没有攻速加成时两次普通攻击的间隔（毫秒）、每档攻速缩短的毫秒数、间隔下限、攻速档上限。 */
@@ -162,13 +163,17 @@ object Rules:
   val HitIntervalMinMs  = 300
   val HitSpeedMaxLevel  = 15
 
-  /** 全身装备攻速合计 → 攻速档：x>0 取 x/2，否则 (x-1)/2（向零取整），上限 15（PlayObject.RecalcHitSpeed）。 */
-  def hitSpeedLevel(speedSum: Int): Int =
-    math.min(HitSpeedMaxLevel, if speedSum > 0 then speedSum / 2 else (speedSum - 1) / 2)
+  /**
+   * 全身装备攻速合计 + 职业 → 攻速档：x>0 取 x/2，否则 (x-1)/2（向零取整）（PlayObject.RecalcHitSpeed），
+   * 加上职业白送的档（本服战士，#1349），上限 15。
+   */
+  def hitSpeedLevel(speedSum: Int, job: Job): Int =
+    val worn = if speedSum > 0 then speedSum / 2 else (speedSum - 1) / 2
+    math.min(HitSpeedMaxLevel, worn + Rates.jobHitSpeed(job))
 
-  /** 全身装备攻速合计 → 两次普通攻击的最短间隔（毫秒）。 */
-  def hitInterval(speedSum: Int): Int =
-    math.max(HitIntervalMinMs, HitIntervalBaseMs - hitSpeedLevel(speedSum) * HitIntervalStepMs)
+  /** 全身装备攻速合计 + 职业 → 两次普通攻击的最短间隔（毫秒）。 */
+  def hitInterval(speedSum: Int, job: Job): Int =
+    math.max(HitIntervalMinMs, HitIntervalBaseMs - hitSpeedLevel(speedSum, job) * HitIntervalStepMs)
 
   /**
    * 幸运/诅咒触发的机会是「N 次里 1 次」，N = 10 - min(9, |幸运|)；幸运为 0 时不触发（None）。

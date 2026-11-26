@@ -388,7 +388,7 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
       mp    <- view.stats.map(_.mp.value)
     yield view.cooldowns.get(id).forall(_ <= now) && mp >= Skill.manaCost(d, known.level)).getOrElse(false)
 
-  private def hitInterval: Int = view.stats.fold(Rules.hitInterval(0))(_.stats.hitInterval)
+  private def hitInterval: Int = view.stats.fold(Rules.HitIntervalBaseMs)(_.stats.hitInterval)
 
 object GameClient:
   val RecentKeep = 20
