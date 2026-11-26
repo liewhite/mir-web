@@ -14,10 +14,12 @@ import zio.json.*
  *   每帖、每条回复带 canDelete（看的人能不能删它）。
  * - `POST api/board/topics {name,body}`、`POST api/board/topics/<帖>/replies {name,body}`：要登录，name 是署名（自己的角色名或账号名）。
  * - `DELETE api/board/topics/<帖>`、`DELETE api/board/replies/<回复>`：作者或管理员。
+ * - `GET api/board/qr`：微信群二维码图（#1363，文件是 ServerConfig.boardQr，PNG/JPEG 按文件头回 Content-Type），不用登录；每次现读文件、no-cache 靠 ETag 校验，
+ *   覆盖文件就换图、不用重启；没有文件回 404（页面就不显示那块）。
  * 出错 `{error}` 是给玩家看的中文：没登录 401、内容不对 400、不能删 403、没有 404、发得太勤 429。
  * 发帖和回复每账号 10 分钟最多 10 条（RateLimiter.boardWrites）；发、删都打日志「留言板：…」。
  */
-final class BoardApi(store: BoardStore, chars: Characters, admins: Set[String]):
+final class BoardApi(store: BoardStore, chars: Characters, admins: Set[String], qrFile: java.nio.file.Path):
   import BoardApi.*
 
   private val writes = RateLimiter.boardWrites()
@@ -29,6 +31,11 @@ final class BoardApi(store: BoardStore, chars: Characters, admins: Set[String]):
       case (Method.GET, Nil) =>
         val asked = req.url.queryParams.getAll("page").headOption.flatMap(_.toIntOption).getOrElse(1)
         viewer(account).flatMap(v => ZIO.attemptBlocking(store.page(asked)).map(p => JsonReply(Status.Ok, render(p, v).toJson)))
+      case (Method.GET | Method.HEAD, List("qr")) =>
+        ZIO.attemptBlocking(imageType(qrFile)).flatMap {
+          case Some(ctype) => StaticFiles.serve(req, qrFile.getParent, Chunk(qrFile.getFileName.toString), "no-cache", Some(ctype))
+          case None        => ZIO.succeed(JsonReply(Status.NotFound, """{"error":"not found"}"""))
+        }
       case (Method.POST, List("topics")) =>
         member(account) { m =>
           written(req, m, BoardRules.MaxTopic) { (author, text, now) =>
@@ -119,6 +126,17 @@ object BoardApi:
       case Rejected.NotFound                                       => Status.NotFound
       case Rejected.Forbidden                                      => Status.Forbidden
     JsonReply(status, Map("error" -> r.message).toJson)
+
+  /** 按文件头认图片类型（二维码文件不带扩展名）；没有文件或不是 PNG/JPEG 就 None。 */
+  private[http] def imageType(file: java.nio.file.Path): Option[String] =
+    if !java.nio.file.Files.isRegularFile(file) then None
+    else
+      val in = java.nio.file.Files.newInputStream(file)
+      val head = try in.readNBytes(8).map(_ & 0xff).toList finally in.close()
+      head match
+        case 0x89 :: 0x50 :: 0x4e :: 0x47 :: _ => Some("image/png")
+        case 0xff :: 0xd8 :: 0xff :: _         => Some("image/jpeg")
+        case _                                 => None
 
   private def preview(text: String): String = ClientError.oneLine(text, 60)
 

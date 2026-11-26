@@ -48,6 +48,8 @@ textarea { width: 100%; resize: vertical; min-height: 84px; display: block; }
 .reply-form textarea { min-height: 56px; }
 .pager { display: flex; justify-content: center; align-items: center; gap: 12px; margin: 12px 0; }
 .empty { text-align: center; color: #9a8a6a; padding: 30px 0; }
+#qr { text-align: center; }
+#qr img { display: block; width: 220px; max-width: 70vw; height: auto; margin: 6px auto 0; border-radius: 4px; background: #fff; }
 </style>
 </head>
 <body>
@@ -57,6 +59,12 @@ textarea { width: 100%; resize: vertical; min-height: 84px; display: block; }
     <a href="changelog.html">更新日志</a>
     <a href="./" data-back>回游戏</a>
   </header>
+  <!-- 微信群二维码（#1363）：图在服务器数据目录，覆盖就换；取不到（没放图）整块不显示 -->
+  <div id="qr" class="box hidden">
+    <div class="who">加微信群</div>
+    <div class="muted">手机上长按图片识别，或截图用微信扫一扫</div>
+    <img alt="微信群二维码" src="api/board/qr" onload="this.parentNode.classList.remove('hidden')">
+  </div>
   <div class="box muted">有问题、建议、发现 bug 都可以在这里说，所有人都看得到。看帖不用登录，发帖、回复要登录（用游戏账号）。</div>
 
   <!-- 没登录：登录 / 注册（和游戏同一个账号） -->

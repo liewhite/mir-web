@@ -64,7 +64,7 @@ object Boot:
                    release = mir.protocol.Release.of(json))
       stopGame <- ZIO.acquireRelease(ZIO.succeed(GameServer.run(game)))(stop => ZIO.attemptBlocking(stop()).orDie)
       _       <- AdminSocket.serve(cfg.adminSocket, game.adminAndWait)
-      boardApi = BoardApi(store.board, store.chars, cfg.boardAdmins)
+      boardApi = BoardApi(store.board, store.chars, cfg.boardAdmins, cfg.boardQr)
       http     = HttpServer(store.accounts, tokens, game, boardApi, cfg.assetsDir, cfg.webDir, cfg.liveness.pingEveryMs)
       httpCfg  = Server.Config.default.binding(cfg.host, cfg.port).gracefulShutdownTimeout(GracefulHttpStop)
       env     <- ((ZLayer.succeed(httpCfg) ++ ZLayer.succeed(netty)) >>> Server.customized).build

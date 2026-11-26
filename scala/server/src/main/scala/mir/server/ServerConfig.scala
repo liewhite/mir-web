@@ -26,6 +26,9 @@ final case class ServerConfig(
   /** 管理入口（#1243，mir.server.admin.AdminSocket）：只有服务账号连得上的 unix socket */
   def adminSocket: Path = dataDir.resolve("admin.sock")
   def gameJson: Path  = assetsDir.resolve("data").resolve("game.json")
+  /** 留言板顶上的微信群二维码（#1363）：PNG 或 JPEG（按文件头认，文件名不带扩展名），不进仓库；覆盖这个文件就换图，服务不用重启；
+   *  没有这个文件留言板就不显示那块 */
+  def boardQr: Path   = dataDir.resolve("board").resolve("wechat-qr")
 
 /**
  * 判掉线（#1218、#1238）：服务端每 `pingEveryMs` 向每个连接发一个 WebSocket 协议层 ping 帧，浏览器在网络层自动回 pong，

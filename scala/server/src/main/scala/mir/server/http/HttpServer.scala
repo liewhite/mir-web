@@ -234,7 +234,8 @@ object StaticFiles:
   )
   private val compressible = Set("html", "css", "js", "map", "json", "bin", "webmanifest")
 
-  def serve(req: Request, root: Path, segments: Chunk[String], cache: String): Task[Response] =
+  /** contentType 不给就按扩展名定。 */
+  def serve(req: Request, root: Path, segments: Chunk[String], cache: String, contentType: Option[String] = None): Task[Response] =
     val safe = segments.nonEmpty && segments.forall(s => s.nonEmpty && s != "." && s != ".." && !s.contains('/') && !s.contains('\\'))
     if !safe then ZIO.succeed(notFound)
     else
@@ -245,7 +246,7 @@ object StaticFiles:
           val ext  = file.getFileName.toString.split('.').lastOption.getOrElse("").toLowerCase
           val etag = s"\"${java.lang.Long.toString(size, 36)}-${java.lang.Long.toString(mtime, 36)}\""
           val base = Response(status = Status.Ok)
-            .addHeader("content-type", types.getOrElse(ext, "application/octet-stream"))
+            .addHeader("content-type", contentType.getOrElse(types.getOrElse(ext, "application/octet-stream")))
             .addHeader("etag", etag)
             .addHeader("cache-control", cache)
             .addHeader("x-content-type-options", "nosniff")

@@ -109,5 +109,26 @@ object BoardSpec extends ZIOSpecDefault:
           p2 == 1 // 1 + 9 + 删剩 1 = 11 帖，一页 20
         )
       }
+    },
+    test("微信群二维码：没图 404；放上图游客就能取；覆盖文件不重启就换了（ETag 变）") {
+      val cfg = tempConfig()
+      withServer(cfg) { http =>
+        val missing = http.get("/api/board/qr").statusCode
+        Files.createDirectories(cfg.boardQr.getParent)
+        Files.writeString(cfg.boardQr, "not an image")
+        val junk = http.get("/api/board/qr").statusCode
+        Files.write(cfg.boardQr, Array(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1).map(_.toByte))
+        val first = http.get("/api/board/qr")
+        val tag1  = first.headers.firstValue("etag").orElse("")
+        val same  = http.get("/api/board/qr", "If-None-Match" -> tag1).statusCode
+        Files.write(cfg.boardQr, Array(0xff, 0xd8, 0xff, 0xe0, 0, 0x10).map(_.toByte))
+        val second = http.get("/api/board/qr", "If-None-Match" -> tag1)
+        (missing, junk, first.statusCode, first.headers.firstValue("content-type").orElse(""),
+          first.headers.firstValue("cache-control").orElse(""), tag1, same, second.statusCode,
+          second.headers.firstValue("etag").orElse(""), second.headers.firstValue("content-type").orElse(""))
+      }.map { case (missing, junk, ok, ctype, cache, tag1, same, changed, tag2, ctype2) =>
+        assertTrue(missing == 404, junk == 404, ok == 200, ctype == "image/png", cache == "no-cache", tag1.nonEmpty,
+          same == 304, changed == 200, tag2 != tag1, ctype2 == "image/jpeg")
+      }
     }
   ) @@ TestAspect.sequential @@ TestAspect.withLiveClock @@ TestAspect.timeout(2.minutes)
