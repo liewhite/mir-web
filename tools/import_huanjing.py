@@ -37,12 +37,13 @@ DARK_LORD = _dark_lord()
 
 
 def _dark_moon() -> dict:
-    """暗之赤月恶魔（用户 11-26 定，#1331）：血 20000、攻击上下限是魔龙教主的 80%（250~350 → 200~280），
-    其余（外观、原地不动打周围一圈、防御、经验）同 1.76 数据表的赤月恶魔；爆率同魔龙教主（import_v180_drops.py）。"""
+    """暗之赤月恶魔（用户 11-26 定，#1331）：血 20000，其余（外观、原地不动打周围一圈、防御、经验）同 1.76 数据表的赤月恶魔；
+    爆率同魔龙教主（import_v180_drops.py）。
+    攻击 130~170（平均 150）：用户 11-26 在 #1340 定「削弱一点，平均攻击 150 左右」
+    （#1331 原定魔龙教主的 80% 即 200~280，45 级道士两下就死）。"""
     moon = next(m for m in json.loads(CATALOG.read_text())["monsters"] if m["Name"] == "赤月恶魔")
-    lord = next(m for m in MOLONG_MONSTERS if m["Name"] == "魔龙教主")
     return {k: v for k, v in moon.items() if k != "Idx"} | {"Name": "暗之赤月恶魔", "HP": 20000,
-                   "DC": round(lord["DC"] * 0.8), "DCMAX": round(lord["DCMAX"] * 0.8)}
+                   "DC": 130, "DCMAX": 170}
 
 
 DARK_MOON = _dark_moon()
