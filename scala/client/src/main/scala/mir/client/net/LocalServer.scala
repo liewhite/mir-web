@@ -82,6 +82,7 @@ final class LocalServer(catalog: Catalog, assets: Assets, listener: LinkEvent =>
           enter(chars.find(_._1.id == id).fold(data)(_._2), Carried())
     case SessionCmd.Ping(ms) => deliver(ServerMsg.Pong(ms, clock))
     case SessionCmd.Reloading => () // 本地服务端跟着页面一起刷新，没有要留的
+    case SessionCmd.Loaded(_, _) => () // 只给线上记日志
 
   /** 本机只有一个角色：组队、私聊、好友照同一套规则跑（别人总是「不在线」、查无此人），换图不变。 */
   private val society = mir.social.Social()

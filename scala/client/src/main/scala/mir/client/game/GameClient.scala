@@ -23,7 +23,9 @@ final case class ClientEnv(
     /** 服务端发来它的版本：判断页面过没过时，要马上刷新的这里就刷新（#1242、#1289）；测试里默认同一版 */
     serverRelease: Release => Freshness = _ => Freshness.Current,
     /** 现在刷新页面换服务端这个提交的新版（Stale 等到切画面时调，#1289）；调之前已告诉服务端别下线角色 */
-    refresh: String => Unit = _ => ()
+    refresh: String => Unit = _ => (),
+    /** 这一页的加载计时（#1327）：连上、第一次进图时把设备和耗时报给服务端；本地模式和测试里不报 */
+    load: Option[LoadTimer] = None
 )
 
 /**
@@ -80,6 +82,10 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
 
   def enterGame(id: CharId): Unit =
     playing = Some(id)
+    sendEnter(id)
+
+  private def sendEnter(id: CharId): Unit =
+    env.load.foreach(_.entering(env.localNow()))
     send(SessionCmd.EnterGame(id))
 
   def ping(): Unit = send(SessionCmd.Ping(math.round(env.localNow())))
@@ -161,9 +167,11 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
         ui.kicked(why)
       // 每次连上都发：比过版本，已经在玩就直接回游戏（断线重连、刷新前在玩），不回选人
       case ServerMsg.LoggedIn(account, build, wire, data) =>
-        def proceed(): Unit = playing match
-          case Some(id) => send(SessionCmd.EnterGame(id))
-          case None     => ui.loggedIn(account)
+        def proceed(): Unit =
+          env.load.flatMap(_.connected()).foreach(send)
+          playing match
+            case Some(id) => sendEnter(id)
+            case None     => ui.loggedIn(account)
         env.serverRelease(Release(build, wire, data)) match
           case Freshness.Reload  => () // 页面马上刷新，不再进游戏或选人
           case Freshness.Current =>
@@ -188,6 +196,7 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
   /** 进入画面：界面切到游戏，再补发进图到现在收到的好装备和 boss 提示。 */
   private def arrive(mapId: MapId): Unit =
     ui.entered(mapId)
+    env.load.flatMap(_.arrived(env.localNow())).foreach(send)
     arrived = true
     view.ground.values.foreach(spotted)
     view.actors.values.foreach(sighted)

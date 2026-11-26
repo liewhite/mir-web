@@ -5,7 +5,7 @@ import mir.data.Catalog
 import mir.model.*
 import mir.protocol.*
 import mir.server.admin.{AdminCmd, AdminReply}
-import mir.server.game.{BossReport, Farewell, GameServer, Headcount, Link, LinkEvent, Maps}
+import mir.server.game.{BossReport, Farewell, GameServer, Headcount, Link, LinkEvent, LoadLog, Maps}
 import mir.server.store.{Db, Freezer, Frozen, Snapshots}
 import mir.social.Social
 import mir.world.{BossAlive, BossSpot, CharacterData, Chronicle, Loot}
@@ -50,6 +50,20 @@ object GameServerSpec extends ZIOSpecDefault:
     def say(l: Link, cmd: ClientCmd): Unit = { game.post(LinkEvent.Received(l, cmd)); game.step() }
 
   def spec = suite("游戏主循环")(
+    test("页面报来的设备和加载耗时写成一行日志（#1327）；进游戏时不影响上线") {
+      val connected = LoadLog.line("bob", None, Device.Phone, LoadStage.Connected(12_345L, 3_400L))
+      val playable  = LoadLog.line("bob", Some("阿狸"), Device.Desktop, LoadStage.Playable(5_100L, 40_260L))
+      val f = Fixture()
+      val a = f.connect(1)
+      f.say(a, SessionCmd.Loaded(Device.Phone, LoadStage.Connected(100L, 200L)))
+      f.say(a, SessionCmd.EnterGame(f.char.id))
+      assertTrue(
+        connected == "bob：手机，连上服务器；打开页面到登录好 12.3 秒，读游戏数据 3.4 秒",
+        playable == "阿狸（bob）：电脑，进图可玩；点进游戏到可玩 5.1 秒，打开页面到可玩 40.3 秒",
+        a.got.exists(_.isInstanceOf[ServerMsg.EnterMap]),
+        !a.got.exists(_.isInstanceOf[ServerMsg.Refused])
+      )
+    },
     test("掉线超时：30 秒内有 Ping 或协议层 pong 不断；超过 30 秒没消息就关连接、存档下线；之后再来的事件忽略、能重新进游戏") {
       val f = Fixture()
       val a = f.connect(1)

@@ -720,6 +720,24 @@ object ClientSpec extends ZIOSpecDefault:
         run(Freshness.Stale, playing) == (0, true), run(Freshness.Stuck, playing) == (0, true)
       )
     },
+    test("加载耗时每页各报一次（#1327）：连上时报登录、读数据，第一次进图可玩时报进图、整页；断线重连、换图不再报") {
+      var now = 1000.0
+      val c = GameClient(catalog, ClientEnv(() => now, _ => Future.never, (_, _, _) => (), load = Some(LoadTimer(Device.Phone, 800.0, 1000.0))))
+      c.map = Some(map0)
+      def got(m: ServerMsg) = c.receive(LinkEvent.Received(m))
+      def loaded = c.recent.collect { case SessionCmd.Loaded(d, s) => (d, s) }
+      got(ServerMsg.LoggedIn("me", "x", "w", "d"))
+      now = 9000.0
+      c.enterGame(CharId(7))
+      now = 12500.0
+      got(ServerMsg.EnterMap(ActorId(1), MapId("0"), Cell(10, 10), Dir.Down, Millis(0)))
+      got(ServerMsg.LoggedIn("me", "x", "w", "d"))
+      got(ServerMsg.EnterMap(ActorId(1), MapId("0"), Cell(10, 10), Dir.Down, Millis(0)))
+      assertTrue(
+        loaded == Vector(Device.Phone -> LoadStage.Connected(800L, 200L), Device.Phone -> LoadStage.Playable(3500L, 12500L)),
+        c.recent.indexWhere(_.isInstanceOf[SessionCmd.Loaded]) < c.recent.indexWhere(_.isInstanceOf[SessionCmd.EnterGame])
+      )
+    },
     test("地上出现达到档位的装备在聊天栏提示一次（#1301）：不分职业，「全部」按沃玛，进图后重新算") {
       var notes = Vector.empty[String]
       val c = GameClient(catalog, ClientEnv(() => 0.0, _ => Future.never, (_, _, _) => ()))

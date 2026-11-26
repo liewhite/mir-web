@@ -2,14 +2,14 @@ package mir.client
 
 import mir.client.assets.{Assets, SpriteStore}
 import mir.client.audio.Audio
-import mir.client.game.{ClientEnv, Controller, Freshness, GameClient}
+import mir.client.game.{ClientEnv, Controller, Freshness, GameClient, LoadTimer}
 import mir.client.input.{Input, Joystick}
 import mir.client.net.{AccountApi, LocalServer, WsTransport}
 import mir.client.render.{Renderer, ViewOptions}
 import mir.client.ui.{ClassicUi, Gfx, Insets, Lobby, UiEnv, Viewport}
 import mir.core.*
 import mir.data.Catalog
-import mir.protocol.Release
+import mir.protocol.{Device, Release}
 import org.scalajs.dom
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits.*
 import zio.json.*
@@ -39,19 +39,22 @@ object Main:
     val boot =
       for
         _       <- if local then Future.unit else Lobby.ensureLogin()
+        loggedIn = dom.window.performance.now()
         _        = Lobby.status("读取游戏数据…")
         assets  <- Assets.load()
         text    <- assets.text("data/game.json")
         catalog <- Catalog.decode(text).fold(e => Future.failed(Exception(s"游戏数据有误：$e")), Future.successful)
         audio   <- Audio.load(assets)
-      yield start(catalog, Release.of(text), assets, audio, local)
+      yield start(catalog, Release.of(text), assets, audio, local, loggedIn)
     boot.failed.foreach { e =>
       ErrorReport.caught("启动", e)
       Lobby.status(s"出错了：${e.getMessage}")
     }
 
   /** mine：页面自己的版本（本脚本的提交、通讯格式 + 读到的游戏数据），和服务端的比（#1289） */
-  private def start(catalog: Catalog, mine: Release, assets: Assets, audio: Audio, local: Boolean): Unit =
+  private def start(catalog: Catalog, mine: Release, assets: Assets, audio: Audio, local: Boolean, loggedInAt: Double): Unit =
+    val dataAt   = dom.window.performance.now()
+    val touch    = dom.window.matchMedia("(pointer: coarse)").matches
     val canvas   = dom.document.querySelector("#game").asInstanceOf[dom.HTMLCanvasElement]
     val sprites  = SpriteStore(assets, ErrorReport.assetFailed)
     val renderer = Renderer(canvas, sprites, assets, catalog, ErrorReport.assetFailed)
@@ -75,7 +78,8 @@ object Main:
       ,
       sound = (id, at, me) => audio.play(id, at, me),
       serverRelease = server => freshen(mine, server, clientRef.flatMap(_.current)),
-      refresh = commit => reload(commit, clientRef.flatMap(_.current))
+      refresh = commit => reload(commit, clientRef.flatMap(_.current)),
+      load = Option.unless(local)(LoadTimer(Device.of(dom.window.navigator.userAgent, touch), loggedInAt, dataAt))
     )
     val client = GameClient(catalog, env)
     clientRef = Some(client)
@@ -98,7 +102,6 @@ object Main:
       signOut = () => AccountApi.logout().onComplete(_ => dom.window.location.reload()),
       uiScale = () => view.uiScale
     )
-    val touch = dom.window.matchMedia("(pointer: coarse)").matches
     val ui    = ClassicUi(Gfx(renderer.ctx, sprites), catalog, client, ctl, joystick, lobby, uiEnv, touch)
     client.ui = ui
 

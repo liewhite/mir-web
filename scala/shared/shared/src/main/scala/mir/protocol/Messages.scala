@@ -27,6 +27,11 @@ enum SessionCmd:
    * 等刷新后的页面再进这个角色时接上；掉线超时（30 秒）前没回来再按下线处理。
    */
   case Reloading
+  /**
+   * 这一页的设备和加载耗时（#1327）：服务端只记日志，查新人是卡在加载还是进来就走了。
+   * 每页各报一次连上服务器（Connected）和第一次进图可玩（Playable）。
+   */
+  case Loaded(device: Device, stage: LoadStage)
 
 object SessionCmd:
   given JsonCodec[SessionCmd] = DeriveJsonCodec.gen
@@ -44,6 +49,36 @@ object SessionCmd:
       .orElse(JsonDecoder[GameCmd].widen[ClientCmd])
       .orElse(JsonDecoder[SocialCmd].widen[ClientCmd])
     JsonCodec(encoder, decoder)
+
+/** 玩家用的设备（客户端按浏览器标识和触屏判断，#1327）。 */
+enum Device(val label: String):
+  case Phone   extends Device("手机")
+  case Tablet  extends Device("平板")
+  case Desktop extends Device("电脑")
+
+object Device:
+  given JsonCodec[Device] = EnumCodec.byName(values, _.toString)
+
+  /**
+   * 按浏览器标识（User-Agent）和是不是触屏判断：iPad（标识里也带 Mobile，所以先看）、不带 Mobile 的安卓是平板，
+   * iPadOS 的 Safari 默认冒充 Mac，所以「Mac 又是触屏」也算平板；其余带 Mobile/iPhone 的是手机，都不带的是电脑。
+   */
+  def of(userAgent: String, touch: Boolean): Device =
+    val ua     = userAgent.toLowerCase
+    val mobile = ua.contains("mobile") || ua.contains("iphone") || ua.contains("ipod")
+    if ua.contains("ipad") || (ua.contains("android") && !mobile) || (ua.contains("macintosh") && touch) then Tablet
+    else if mobile then Phone
+    else Desktop
+
+/** 加载到了哪一步、各段花了多少毫秒（客户端本地时钟，从打开页面算起）。 */
+enum LoadStage:
+  /** 连上服务器：打开页面到登录好（含输密码；已登录过的近乎 0）、登录好到读完游戏数据和素材索引 */
+  case Connected(loginMs: Long, dataMs: Long)
+  /** 第一次进图可玩：点进游戏到地图和周围画面下完、打开页面到可玩（含输密码、选人） */
+  case Playable(enterMs: Long, pageMs: Long)
+
+object LoadStage:
+  given JsonCodec[LoadStage] = DeriveJsonCodec.gen
 
 /** 游戏指令：进了游戏后对世界的操作。 */
 enum GameCmd:

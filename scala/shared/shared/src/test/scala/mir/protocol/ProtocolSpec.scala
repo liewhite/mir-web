@@ -30,6 +30,8 @@ object ProtocolSpec extends ZIOSpecDefault:
     SessionCmd.DeleteChar(CharId(3L)),
     SessionCmd.EnterGame(CharId(3L)),
     SessionCmd.Reloading,
+    SessionCmd.Loaded(Device.Phone, LoadStage.Connected(12000L, 3400L)),
+    SessionCmd.Loaded(Device.Desktop, LoadStage.Playable(5100L, 40200L)),
     GameCmd.Walk(c1, Dir.UpLeft),
     GameCmd.Run(c1, Dir.Down),
     GameCmd.Turn(Dir.Right),
@@ -148,6 +150,19 @@ object ProtocolSpec extends ZIOSpecDefault:
   def spec = suite("通信协议")(
     test("客户端指令每种都往返一致") {
       assertTrue(roundTrip(clientSamples).isEmpty)
+    },
+    test("设备按浏览器标识分手机、平板、电脑（#1327）：iPad 冒充 Mac 时看触屏") {
+      val iphone  = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1"
+      val ipad    = "Mozilla/5.0 (iPad; CPU OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1"
+      val mac     = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15"
+      val android = "Mozilla/5.0 (Linux; Android 14; 23127PN0CC) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36"
+      val pad     = "Mozilla/5.0 (Linux; Android 13; SM-X710) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+      val win     = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36"
+      assertTrue(
+        Device.of(iphone, true) == Device.Phone, Device.of(android, true) == Device.Phone,
+        Device.of(ipad, true) == Device.Tablet, Device.of(mac, true) == Device.Tablet, Device.of(pad, true) == Device.Tablet,
+        Device.of(mac, false) == Device.Desktop, Device.of(win, false) == Device.Desktop
+      )
     },
     test("服务端事件每种都往返一致") {
       assertTrue(roundTrip(serverSamples).isEmpty)

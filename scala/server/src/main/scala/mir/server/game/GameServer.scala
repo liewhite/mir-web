@@ -100,6 +100,8 @@ final class GameServer(
    */
   private final class Conn(val link: Link, var playing: Option[CharId], var heardAt: Millis):
     var reloading = false
+    /** 页面报来的设备（#1327，连上后第一条就报）：「上线」那行日志带上 */
+    var device = Option.empty[Device]
   /** 一个在线角色：哪个连接、在哪张图、在图里的对象编号。 */
   private final class Online(val id: CharId, val name: String, val conn: Conn, var map: MapId, var actor: ActorId)
 
@@ -251,6 +253,9 @@ final class GameServer(
       case SessionCmd.Login(_, _) => refuse("已经登录")
       case SessionCmd.Ping(ms)    => c.link.send(ServerMsg.Pong(ms, clock()))
       case SessionCmd.Reloading   => c.reloading = true
+      case SessionCmd.Loaded(device, stage) =>
+        c.device = Some(device)
+        System.err.println(s"加载 ${LoadLog.line(account.name, c.playing.flatMap(online.get).map(_.name), device, stage)}")
       case SessionCmd.ListChars   => charList()
       case SessionCmd.CreateChar(name, job, sex) =>
         chars.create(account.id, CharacterData.newbie(catalog, name.trim, job, sex, uids)).fold(refuse, _ => charList())
@@ -281,7 +286,7 @@ final class GameServer(
     val o = Online(sc.id, sc.data.name, c, data.place.map, ActorId(0))
     c.playing = Some(sc.id)
     online(sc.id) = o
-    System.err.println(s"上线 ${o.name}（${c.link.account.name}），在线 ${online.size} 人")
+    System.err.println(s"上线 ${o.name}（${c.link.account.name}）${c.device.fold("")(d => s"，${d.label}")}，在线 ${online.size} 人")
     enter(o, data, carried)
     if online.contains(sc.id) then post(social.online(o.name, data.social))
 
