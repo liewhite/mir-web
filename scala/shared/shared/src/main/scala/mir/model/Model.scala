@@ -36,6 +36,8 @@ enum EquipSlot(val key: String, val label: String):
   /** 腰带、靴子：1.76 没有，照 1.80 加（#1311）；旧存档里没有这两个键，读进来就是空着 */
   case Belt      extends EquipSlot("belt", "腰带")
   case Boots     extends EquipSlot("boots", "靴子")
+  /** 勋章：原版状态窗的照明物格（U_RIGHTHAND，StdMode 30），本服戴圣域掉的荣誉勋章（#1332）；旧存档没有这个键就是空着 */
+  case Medal     extends EquipSlot("medal", "勋章")
 
 object EquipSlot:
   given JsonCodec[EquipSlot] = EnumCodec.byName(values, _.key)

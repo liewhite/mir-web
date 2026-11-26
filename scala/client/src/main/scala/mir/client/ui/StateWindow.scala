@@ -162,6 +162,7 @@ object StateWindow:
   /** 装备格（状态窗内坐标，FState.pas DSWNecklace 等） */
   val EquipRects: Map[EquipSlot, Rect] = Map(
     EquipSlot.Necklace  -> Rect(168, 87, 34, 31),
+    EquipSlot.Medal     -> Rect(168, 125, 34, 31), // 原版照明物格 DSWLight，戴勋章（#1332）
     EquipSlot.Helmet    -> Rect(115, 93, 18, 18),
     EquipSlot.BraceletR -> Rect(42, 176, 34, 31),
     EquipSlot.BraceletL -> Rect(168, 176, 34, 31),

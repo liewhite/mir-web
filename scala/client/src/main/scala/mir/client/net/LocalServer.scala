@@ -128,18 +128,18 @@ final class LocalServer(catalog: Catalog, assets: Assets, listener: LinkEvent =>
     d.copy(gold = Gold(50_000), bag = free.zip(kit.flatten).foldLeft(d.bag)((b, p) => b.updated(p._1, Some(p._2))))
 
   /**
-   * 地址带 &gear180（#1312，本机看 1.80 新装备的图标、外观、说明用）：新建的角色 60 级，穿本职业的雷霆/烈焰/光芒整套和终极武器，
-   * 包裹里放三职业其余 1.80 装备（放得下的部分）。
+   * 地址带 &gear180（#1312，本机看 1.80 新装备的图标、外观、说明用）：新建的角色 60 级，穿本职业的雷霆/烈焰/光芒整套和终极武器、
+   * 本职业的四档勋章（#1332），包裹里放三职业其余 1.80 装备和勋章（放得下的部分）。
    */
   private def gear180: Boolean = dom.window.location.search.contains("gear180")
 
   private def gear180Of(d: CharacterData): CharacterData =
     import mir.model.{EquipSlot, Job, Sex}
     def one(n: String) = catalog.item(ItemName(n)).map(it => mir.model.ItemInstance.fresh(uids.next(), it))
-    val (set, weapon) = d.job match
-      case Job.Warrior => ("雷霆", "开天")
-      case Job.Wizard  => ("烈焰", "镇天")
-      case Job.Taoist  => ("光芒", "玄天")
+    val (set, weapon, medal) = d.job match
+      case Job.Warrior => ("雷霆", "开天", "荣誉勋章43号")
+      case Job.Wizard  => ("烈焰", "镇天", "荣誉勋章44号")
+      case Job.Taoist  => ("光芒", "玄天", "荣誉勋章45号")
     val armor = (d.job, d.sex) match
       case (Job.Warrior, Sex.Male) => "雷霆战甲(男)"
       case (Job.Warrior, _)        => "雷霆战甲(女)"
@@ -148,7 +148,7 @@ final class LocalServer(catalog: Catalog, assets: Assets, listener: LinkEvent =>
       case (Job.Taoist, Sex.Male)  => "光芒道袍(男)"
       case (Job.Taoist, _)         => "光芒道袍(女)"
     val gear = catalog.data.items.filter(it => it.id >= 2000).map(_.name.value)
-    val worn = List(EquipSlot.Dress -> armor, EquipSlot.Weapon -> weapon) ++
+    val worn = List(EquipSlot.Dress -> armor, EquipSlot.Weapon -> weapon, EquipSlot.Medal -> medal) ++
       gear.filter(n => n.startsWith(set)).flatMap { n =>
         catalog.item(ItemName(n)).map(mir.rules.ItemKind.of).collect { case mir.rules.ItemKind.Equip(s :: _) => s -> n }
       }.filterNot((s, _) => s == EquipSlot.Dress)

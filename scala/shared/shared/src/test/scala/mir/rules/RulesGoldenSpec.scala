@@ -55,10 +55,10 @@ object RulesGoldenSpec extends ZIOSpecDefault:
 
   private def job(code: Int): Job = Job.values.find(_.code == code).get
 
-  /** TS 版（只作对照）没有 1.80 才有的腰带、靴子位（#1311、#1312 只做了 Scala 版），这两类不比。 */
-  private val beltOrBoots = Set(EquipSlot.Belt, EquipSlot.Boots)
+  /** TS 版（只作对照）没有 1.80 才有的腰带、靴子位（#1311、#1312 只做了 Scala 版），也没有勋章格（#1332），这几类不比。 */
+  private val scalaOnly = Set(EquipSlot.Belt, EquipSlot.Boots, EquipSlot.Medal)
   private def compared(d: ItemDef): Boolean = ItemKind.of(d) match
-    case ItemKind.Equip(slots) => !slots.exists(beltOrBoots)
+    case ItemKind.Equip(slots) => !slots.exists(scalaOnly)
     case _                     => true
 
   /** 把 ItemKind 写成 TS 版 itemKind() 的 JSON 形状，好直接比。 */
@@ -139,7 +139,7 @@ object RulesGoldenSpec extends ZIOSpecDefault:
     },
     test("每一行爆率的实际掉落概率") {
       // 同一只怪的爆率表里同一物品可能出现几行，按怪物分组后逐行按顺序比
-      // TS 认不出腰带靴子，boss 保底在两边不同：这两类的行不比
+      // TS 认不出腰带靴子、勋章，boss 保底在两边不同：这几类的行不比
       def keep(item: ItemName) = catalog.item(item).forall(compared)
       val want = golden.drops.groupBy(_.monster).view.mapValues(_.collect { case c if keep(c.item) => (c.item, c.chance) }).toMap
       val got = catalog.data.drops.map { (m, rs) =>
@@ -148,6 +148,6 @@ object RulesGoldenSpec extends ZIOSpecDefault:
         }
       }
       val diffs = (want.keySet ++ got.keySet).filter(m => want.getOrElse(m, Nil) != got.getOrElse(m, Nil))
-      assertTrue(golden.drops.size == 6833 + 309 + 69 * 2 + 195, diffs.isEmpty) // + 1.80 爆率（#1314）、暗之魔龙教主（#1329）、暗之赤月恶魔（#1331）
+      assertTrue(golden.drops.size == 6833 + 309 + 69 * 2 + 195 + 210, diffs.isEmpty) // + 1.80 爆率（#1314）、暗之魔龙教主（#1329）、暗之赤月恶魔（#1331）、圣域（#1332）
     }
   )
