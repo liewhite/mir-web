@@ -29,7 +29,12 @@ final class Board(ui: ClassicUi):
   def orbStickRect: Rect = Rect(boardX, boardY, OrbStickWidth, Height)
 
   /** 聊天框（底栏中间黑底那块的上部，9 行） */
-  def chatRect: Rect = Rect(boardX + 208, ui.H - 130, 387, ChatLines * 12)
+  def chatRect: Rect = Rect(boardX + 208, ui.H - 130, ChatWidth, ChatLines * ChatRowH)
+
+  /** 这一帧聊天栏登记的点击区（整块、私聊行、「新消息」键）：按在它们上下拖、滚轮就是翻看聊天栏（#1364） */
+  private var chatHits = Set.empty[Rect]
+
+  def onChat(b: Button): Boolean = chatHits.contains(b.rect)
 
   def draw(m: Me): Unit =
     drawBottom(m)
@@ -86,15 +91,7 @@ final class Board(ui: ClassicUi):
       g.imgPart(Gfx.Main, 7, bx + 666, ui.H - 73, 0, 0, math.round(bw * math.min(1, er)).toDouble, bh)
       // 原版这里还有一条负重条；不限重量后不画
     }
-    // 聊天、系统消息；点聊天框说话，点私聊那行就私聊回对方（原版点聊天行填「/名字 」）
-    val cr = chatRect
-    val lines = ui.chat.takeRight(ChatLines).flatMap(l => wrap(l.text, cr.w).map(t => l.copy(text = t))).takeRight(ChatLines)
-    ui.hit(cr)(ui.openChat())
-    lines.zipWithIndex.foreach { (l, i) =>
-      if l.bg != "transparent" then g.rect(cr.x, cr.y + i * 12, g.width(l.text), 12, l.bg)
-      g.text(l.text, cr.x, cr.y + i * 12, l.fg)
-      l.replyTo.foreach(peer => ui.hit(Rect(cr.x, cr.y + i * 12, cr.w, 12))(ui.whisperTo(peer)))
-    }
+    drawChat()
     // 功能按钮：状态、包裹、技能、设置
     ui.button(Button(Rect(bx + 643, by + 61, 24, 24), () => ui.run(UiAction.State(StatePage.Equip)), img = Some(8)))
     ui.button(Button(Rect(bx + 682, by + 41, 24, 22), () => ui.run(UiAction.Bag), img = Some(9)))
@@ -141,21 +138,30 @@ final class Board(ui: ClassicUi):
     g.frame(r, if down then "#104284" else "#0c2142", "#3a4a78")
     g.text("友", r.x + (r.w - g.width("友")) / 2, r.y + 0.5, if down then "#fffbf0" else "#8090c0")
 
-  /** 折好的行（每帧都画，量字宽不便宜，记住） */
-  private val wrapped = scala.collection.mutable.HashMap.empty[String, Vector[String]]
-
-  /** 超过宽度的一行按字折成几行。 */
-  private def wrap(text: String, w: Double): Vector[String] =
-    if wrapped.size > 200 then wrapped.clear()
-    wrapped.getOrElseUpdate(
-      text,
-      if g.width(text) <= w then Vector(text)
-      else
-        text.foldLeft(Vector("")) { (acc, c) =>
-          val next = acc.last + c
-          if g.width(next) > w && acc.last.nonEmpty then acc :+ c.toString else acc.init :+ next
-        }
-    )
+  /**
+   * 聊天、系统消息；点聊天框说话，点私聊那行就私聊回对方（原版点聊天行填「/名字 」）。
+   * 往回翻着时（#1364）右下角一个「↓ 最新」键，有没看的新消息写条数，点一下回到最底下。
+   */
+  private def drawChat(): Unit =
+    val cr  = chatRect
+    val log = ui.chatLog
+    val rowHits = log.visible.zipWithIndex.flatMap { (l, i) =>
+      val y = cr.y + i * ChatRowH
+      if l.bg != "transparent" then g.rect(cr.x, y, g.width(l.text), ChatRowH, l.bg)
+      g.text(l.text, cr.x, y, l.fg)
+      l.replyTo.map(peer => Rect(cr.x, y, cr.w, ChatRowH) -> (() => ui.whisperTo(peer)))
+    }
+    val latest = Option.when(log.scrolledBack > 0) {
+      val label = if log.unseenCount > 0 then s"↓ ${log.unseenCount} 条新消息" else "↓ 最新"
+      val w     = g.width(label) + 10
+      val r     = Rect(cr.x + cr.w - w, cr.y + cr.h - ChatRowH - 4, w, ChatRowH + 4)
+      g.frame(r, if ui.isPressed(r) then "rgba(90,70,30,.95)" else "rgba(10,7,3,.85)", "#c9a060")
+      g.text(label, r.x + 5, r.y + 2, if log.unseenCount > 0 then "#ffe08a" else "#ddd")
+      r -> (() => log.toBottom())
+    }
+    val all = (cr -> (() => ui.openChat())) +: (rowHits ++ latest)
+    all.foreach((r, act) => ui.hit(r)(act()))
+    chatHits = all.map(_._1).toSet
 
   /**
    * 点快捷栏：拿着东西就放上去；包裹关着时点一下就用；包裹开着时和包裹格子一样
@@ -364,6 +370,9 @@ object Board:
   val Width     = 800.0
   val Height    = 251.0
   val ChatLines = 9
+  /** 聊天框字宽（原版 BOXWIDTH 374，这里到框内右边）和行高 */
+  val ChatWidth = 387.0
+  val ChatRowH  = 12.0
   /** 左下角摇杆区宽度：聊天框从 208 起，留 8 像素不挨着 */
   val OrbStickWidth = 200.0
   val AttackR   = 38.0

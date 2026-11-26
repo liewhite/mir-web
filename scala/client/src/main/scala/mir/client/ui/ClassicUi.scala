@@ -20,6 +20,9 @@ final case class Me(actor: ActorView, name: String, job: Job, sex: Sex, hair: In
 /** 聊天框一行：系统消息（按颜色）或谁说的话；replyTo 是私聊行的对方（点这行就私聊回他）。 */
 final case class ChatLine(text: String, fg: String, bg: String, replyTo: Option[String] = None)
 
+/** 按在聊天栏上的一根手指（鼠标）：startY 按下处、lastY 上次翻到处；dragging：已经算拖动（不再算点） */
+final case class ChatDrag(pointer: Double, startY: Double, lastY: Double, dragging: Boolean)
+
 /** 现在在哪个画面：网页表单（加载、登录）、选人、游戏里。 */
 enum Screen:
   case Lobby
@@ -66,7 +69,13 @@ final class ClassicUi(
   var ctlScale: Double = 1
   var screen: Screen   = Screen.Lobby
 
-  private var chatLines  = Vector.empty[ChatLine]
+  /** 聊天栏的记录和翻看位置（#1364） */
+  val chatLog            = ChatLog(ClassicUi.ChatKeep, Board.ChatLines)
+  /** 按在聊天栏上的那根手指（鼠标）：上下拖动就翻看，拖动了就不算点（不开聊天框、不私聊） */
+  private var chatDrag   = Option.empty[ChatDrag]
+  /** 滚轮、拖动翻聊天栏攒的像素 */
+  private val wheelSteps = ChatLog.Steps(ClassicUi.WheelStepPx)
+  private val dragSteps  = ChatLog.Steps(Board.ChatRowH)
   var mouse: Pt          = Pt(-1, -1)
   private var pressed    = Option.empty[Button]
   /** 按下 pressed 的时刻（判断长按） */
@@ -214,9 +223,12 @@ final class ClassicUi(
       case Tone.Item   => ("#ff0", "#000")
     push(ChatLine(text, fg, bg))
 
-  private def push(l: ChatLine): Unit = chatLines = (chatLines :+ l).takeRight(ClassicUi.ChatKeep)
+  /** 照原版 AddChatBoardString：进来时就按聊天框宽度折好行 */
+  private def push(l: ChatLine): Unit =
+    chatLog.add(ChatLog.wrap(l.text, Board.ChatWidth, g.width).map(t => l.copy(text = t)))
 
-  def chat: Vector[ChatLine] = chatLines
+  /** 聊天栏留着的全部行（已折行） */
+  def chat: Vector[ChatLine] = chatLog.rows
 
   // ======================= 开关窗口 =======================
 
@@ -255,7 +267,10 @@ final class ClassicUi(
   }
 
   /** 打开聊天框（可预填），回车按开头的符号发成说话、喊话、队伍聊天或私聊。 */
-  def openChat(prefill: String = ""): Unit = ask(ChatInput.ChatHint, prefill)(text => client.send(Speech.command(text)))
+  def openChat(prefill: String = ""): Unit =
+    // 说话时回到最新，看得到自己说的和对方回的
+    chatLog.toBottom()
+    ask(ChatInput.ChatHint, prefill)(text => client.send(Speech.command(text)))
 
   /** 打开聊天框并填好「/名字 」，接着打内容就是私聊他。 */
   def whisperTo(name: String): Unit =
@@ -418,9 +433,9 @@ final class ClassicUi(
     screen match
       case Screen.Lobby     => Press.Pass
       case Screen.Select(s) => s.pointerDown(p); Press.Ui
-      case Screen.Game      => gameDown(p, button)
+      case Screen.Game      => gameDown(p, pointer, button)
 
-  private def gameDown(p: Pt, button: Int): Press =
+  private def gameDown(p: Pt, finger: Double, button: Int): Press =
     if button == 2 && hand.isDefined then
       hand = None
       Press.Ui
@@ -441,6 +456,9 @@ final class ClassicUi(
             case Some(b) =>
               pressed = Some(b)
               pressedAt = dom.window.performance.now()
+              if board.onChat(b) then
+                dragSteps.reset()
+                chatDrag = Some(ChatDrag(finger, p.y, p.y, dragging = false))
               Press.Ui
             case None =>
               val onUi = hits.covers(p.x, p.y)
@@ -455,13 +473,33 @@ final class ClassicUi(
     mouse = p
     screen match
       case Screen.Select(s) => s.pointerMove(p)
-      case _                => ()
+      case _                => chatDrag.filter(_.pointer == pointer).foreach(dragChat(_, p))
+
+  /**
+   * 在聊天栏上拖（#1364，手机翻看历史）：上下挪过 ChatDragSlop 才算拖，从那起取消这次点击；
+   * 手指往下拖看更早的（内容跟着手指走），每 12 像素（一行高）翻一行。
+   */
+  private def dragChat(d: ChatDrag, p: Pt): Unit =
+    val moved = d.dragging || math.abs(p.y - d.startY) > ClassicUi.ChatDragSlop
+    if moved then
+      pressed = None
+      chatLog.scroll(dragSteps.move(p.y - d.lastY))
+      chatDrag = Some(d.copy(lastY = p.y, dragging = true))
+
+  /** 滚轮（#1364）：在聊天栏上滚就翻看，往下滚看新的；接了返回 true。 */
+  def wheel(p: Pt, deltaPx: Double): Boolean = screen match
+    // 滚在聊天栏自己的点击区上才算（被窗口盖住的地方不算）
+    case Screen.Game if hits.buttonAt(p.x, p.y, 0).exists(board.onChat) =>
+      chatLog.scroll(-wheelSteps.move(deltaPx))
+      true
+    case _ => false
 
   def pointerUp(p: Pt, pointer: Double): Unit =
     mouse = p
     screen match
       case Screen.Select(s) => s.pointerUp(p)
       case _ =>
+        if chatDrag.exists(_.pointer == pointer) then chatDrag = None
         val b = pressed
         pressed = None
         val held = dom.window.performance.now() - pressedAt >= Button.HoldMs
@@ -482,9 +520,12 @@ final class ClassicUi(
     case _                              => false
 
   private def gameKey(k: String): Boolean =
-    val act = UiAction.Keys.get(k)
-    act.foreach(run)
-    act.isDefined
+    ClassicUi.chatKeys.get(k) match
+      case Some(f) => f(chatLog); true
+      case None =>
+        val act = UiAction.Keys.get(k)
+        act.foreach(run)
+        act.isDefined
 
 object ClassicUi:
   /** 进游戏时聊天栏的操作提示 */
@@ -494,8 +535,19 @@ object ClassicUi:
     case ControlMode.Classic =>
       "欢迎来到玛法大陆。左键按住地面走路、右键按住跑；左键点怪打它（打别的玩家要按住 Shift）；F1-F8 技能放向鼠标指着的怪或地面（鼠标没指着怪就打锁定的）；空格捡东西，回车说话。设置里可以换回摇杆操作。"
 
-  /** 聊天框留多少行 */
+  /** 聊天框留多少行（折行后，原版 200） */
   val ChatKeep      = 200
+  /** 翻聊天栏的键（照原版 ClMain.pas FormKeyDown：上下键一行，PageUp/PageDown 一屏） */
+  val chatKeys: Map[String, ChatLog => Unit] = Map(
+    "ArrowUp"   -> (_.scroll(1)),
+    "ArrowDown" -> (_.scroll(-1)),
+    "PageUp"    -> (_.pageUp()),
+    "PageDown"  -> (_.pageDown())
+  )
+  /** 手指在聊天栏上挪多远才算拖动（界面像素），没过就还是点 */
+  val ChatDragSlop  = 6.0
+  /** 滚轮每滚这么多像素翻一行（鼠标滚一格约 100 像素，翻 3 行） */
+  val WheelStepPx   = 33.0
   /** 原版 M2Server 的 sLineNoticePreFix */
   val AnnouncePrefix = "〖公告〗"
   val DoubleClickMs = 400.0

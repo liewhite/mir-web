@@ -235,6 +235,49 @@ object ClientSpec extends ZIOSpecDefault:
         Input.fKey("f").isEmpty
       )
     },
+    test("聊天栏翻看（#1364）：在最底下跟着新消息走；往回翻着时新消息不拉走视图、记条数，翻回最底下清零；翻不过头；超出只留最近的行") {
+      import mir.client.ui.{ChatLine, ChatLog}
+      def line(s: String)   = Vector(ChatLine(s, "#fff", "#000"))
+      def texts(l: ChatLog) = l.visible.map(_.text)
+      val l                 = ChatLog(keep = 10, view = 3)
+      (1 to 5).foreach(i => l.add(line(s"m$i")))
+      val following = texts(l)
+      l.scroll(1)
+      val back1 = texts(l)
+      l.add(line("m6"))
+      l.add(Vector(ChatLine("m7a", "#fff", "#000"), ChatLine("m7b", "#fff", "#000")))
+      val stayed = texts(l)
+      val unseen = l.unseenCount
+      l.pageUp()
+      val top = texts(l) // 只有 8 行，最多翻到最早那行在最上面
+      l.pageDown(); l.pageDown()
+      val bottom = (texts(l), l.unseenCount, l.scrolledBack)
+      (1 to 5).foreach(i => l.add(line(s"n$i")))
+      val trimmed = l.rows.size
+      l.scroll(100)
+      val oldest = texts(l)
+      assertTrue(
+        following == Vector("m3", "m4", "m5"),
+        back1 == Vector("m2", "m3", "m4"),
+        stayed == Vector("m2", "m3", "m4"),
+        unseen == 2,
+        top == Vector("m1", "m2", "m3"),
+        bottom == (Vector("m6", "m7a", "m7b"), 0, 0),
+        trimmed == 10,
+        oldest == Vector("m4", "m5", "m6")
+      )
+    },
+    test("聊天栏折行和拖动、滚轮的步子（#1364）：超宽按字折；移动攒够一行高才翻一行，余下的留着") {
+      import mir.client.ui.ChatLog
+      val measure = (s: String) => s.length * 10.0
+      val steps   = ChatLog.Steps(12)
+      val moves   = List(5.0, 5.0, 5.0, 30.0, -40.0).map(steps.move)
+      assertTrue(
+        ChatLog.wrap("abc", 30, measure) == Vector("abc"),
+        ChatLog.wrap("abcdefg", 30, measure) == Vector("abc", "def", "g"),
+        moves == List(0, 0, 1, 2, -2)
+      )
+    },
     test("对时：按往返的一半校正，往返太慢的不采信") {
       val c = ServerClock()
       c.roughly(Millis(10_000), 100)

@@ -22,6 +22,8 @@ trait Overlay:
   def pointerMove(p: Pt, pointer: Double): Unit
   def pointerUp(p: Pt, pointer: Double): Unit
   def key(k: String): Boolean
+  /** 滚轮（deltaPx 是往下滚的 CSS 像素，向上为负）：界面接了返回 true（如翻聊天栏 #1364） */
+  def wheel(p: Pt, deltaPx: Double): Boolean
   /** 这一点盖着界面（窗口、底栏、按钮）：鼠标在上面时不算指着地图上的东西 */
   def covers(p: Pt): Boolean
   /** 现在地图上怎么操作（设置里切换，#1353） */
@@ -57,11 +59,11 @@ final class Input(
   /** 原版操作：按着鼠标做的事（哪个指针、做什么）；没按着为 None */
   private var steering = Option.empty[(Double, Hold)]
 
-  private def css(e: dom.PointerEvent): (Double, Double) =
+  private def css(e: dom.MouseEvent): (Double, Double) =
     val r = canvas.getBoundingClientRect()
     (e.clientX - r.left, e.clientY - r.top)
 
-  private def uiPos(e: dom.PointerEvent): Pt =
+  private def uiPos(e: dom.MouseEvent): Pt =
     val (x, y) = css(e)
     val s      = uiScale()
     Pt(x / s, y / s)
@@ -180,6 +182,17 @@ final class Input(
       ctl.stickReleased()
     else if uiFingers.remove(e.pointerId) || e.pointerType == "mouse" then overlay.pointerUp(uiPos(e), e.pointerId)
 
+  canvas.addEventListener(
+    "wheel",
+    (e: dom.WheelEvent) =>
+      // deltaMode 1 是按行（Firefox 鼠标）、2 是按页，折成像素
+      val px = e.deltaY * (e.deltaMode match
+        case 1 => Input.WheelLinePx
+        case 2 => Input.WheelPagePx
+        case _ => 1.0)
+      if overlay.wheel(uiPos(e), px) then e.preventDefault()
+  )
+
   canvas.addEventListener("pointerup", release)
   canvas.addEventListener("pointercancel", release)
 
@@ -244,6 +257,9 @@ private enum Hold:
 
 object Input:
   val SlopCss = 14.0
+  /** 滚轮按行、按页报时一行、一页折多少像素 */
+  val WheelLinePx = 33.0
+  val WheelPagePx = 300.0
 
   /**
    * 真的按键事件：浏览器自动填充（如 Chrome 选了保存的账号）会发不带 key、code 的 keydown/keyup，
