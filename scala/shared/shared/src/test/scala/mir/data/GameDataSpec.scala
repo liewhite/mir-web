@@ -15,14 +15,14 @@ object GameDataSpec extends ZIOSpecDefault:
       assertTrue(
         d.maps.size == 265 + 16 + 10, // 1.76 数据表 + 1.80 魔龙补充表（#1313）+ 幻境（#1317）
         d.routes.size == 1301 + 173 + 19,
-        d.spawns.size == 2378 + 100 + 218, // 魔龙 100（高级怪只留血域和龙源血路的，#1245）
+        d.spawns.size == 2378 + 100 + 220, // 魔龙 100（高级怪只留血域和龙源血路的，#1245）；幻境含十层两只魔龙教主（#1329）
         d.guards.size == 49,
         d.merchants.size == 69 + 8,
         d.minimaps.size == 117 + 14 + 9,
         d.items.size == 264 + 42, // + 1.80 新装备补充表（#1312）
-        d.monsters.size == 188 + 7,
-        d.drops.size == 188 + 7, // + 魔龙怪爆率（#1314）
-        d.drops.values.map(_.size).sum == 6833 + 309 + 195, // + 魔龙 7 种 + 普通腰带靴子接在老怪后面的
+        d.monsters.size == 188 + 7 + 1, // + 暗之魔龙教主（#1329）
+        d.drops.size == 188 + 7 + 1, // + 魔龙怪爆率（#1314）、暗之魔龙教主
+        d.drops.values.map(_.size).sum == 6833 + 309 + 69 + 195, // + 魔龙 7 种 + 暗之魔龙教主（同教主 69 行）+ 普通腰带靴子接在老怪后面的
         d.displayNames.size == 66,
         d.skills.size == 33,
         d.exp.size == 47,
@@ -122,7 +122,7 @@ object GameDataSpec extends ZIOSpecDefault:
       assertTrue(
         menu.toSet == (Set("6", "61", "62", "611", "621", "612", "613", "622", "63", "632", "631", "64").map(("魔龙", _)) + (("城市", "6"))),
         fromCity == molong,
-        boss == List("66"),
+        boss.toSet == Set("66", "H010"), // 幻境十层也刷（#1329）
         highMaps == Set("66", "65"),
         mir.rules.Rates.bosses(MonsterName("魔龙教主")),
         d.monsters.filter(_.name.value.startsWith("魔龙")).forall(m => catalog.actions(m).isDefined)
@@ -143,6 +143,7 @@ object GameDataSpec extends ZIOSpecDefault:
         lord.keySet == Set(GearTier.Thunder, GearTier.Ultimate),
         lord(GearTier.Thunder).toSet.size == tierSize(GearTier.Thunder),
         lord(GearTier.Ultimate).toSet.size == tierSize(GearTier.Ultimate),
+        catalog.data.drops(MonsterName("暗之魔龙教主")) == catalog.data.drops(MonsterName("魔龙教主")), // #1329
         dropped("骷髅")("布鞋"), dropped("僵尸1")("铁腰带"), dropped("沃玛战士")("紫绸靴"), dropped("祖玛卫士")("钢铁腰带"),
         catalog.data.drops.values.flatten.map(_.item.value).toSet.intersect(belts) == belts
       )

@@ -2199,6 +2199,24 @@
    "radius": 200,
    "count": 1,
    "minutes": 90
+  },
+  {
+   "map": "H010",
+   "x": 200,
+   "y": 200,
+   "monster": "魔龙教主",
+   "radius": 200,
+   "count": 1,
+   "minutes": 120
+  },
+  {
+   "map": "H010",
+   "x": 200,
+   "y": 200,
+   "monster": "暗之魔龙教主",
+   "radius": 200,
+   "count": 1,
+   "minutes": 120
   }
  ],
  "minimaps": [
@@ -2237,6 +2255,33 @@
   {
    "map": "H010",
    "image": 184
+  }
+ ],
+ "monsters": [
+  {
+   "Name": "暗之魔龙教主",
+   "Race": 81,
+   "RaceImg": 78,
+   "Appr": 218,
+   "Lvl": 60,
+   "Undead": 1,
+   "CoolEye": 100,
+   "Exp": 20000,
+   "HP": 32000,
+   "MP": 0,
+   "AC": 30,
+   "MAC": 30,
+   "DC": 375,
+   "DCMAX": 525,
+   "MC": 0,
+   "SC": 0,
+   "SPEED": 25,
+   "HIT": 30,
+   "WALK_SPD": 700,
+   "WalkStep": 1,
+   "WaLkWait": 0,
+   "ATTACK_SPD": 1500,
+   "ViewRange": 0
   }
  ]
 }

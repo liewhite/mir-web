@@ -148,6 +148,17 @@ object WorldSpec extends ZIOSpecDefault:
         }
         assertTrue(hits.nonEmpty, hits.forall(n => n >= 150 && n <= 350), hits.sum.toDouble / hits.size > 200)
       },
+      test("暗之魔龙教主攻击是魔龙教主的 1.5 倍（#1329，用户 11-26 定）") {
+        val s = sim()
+        val p = join(s.w, "甲", Cell(30, 30))
+        put(s.w, "暗之魔龙教主", Cell(31, 30))
+        s.run(2500)
+        val hits = (0 until 300).flatMap { _ =>
+          s.w.tick(s.w.now + 50)
+          s.flush().getOrElse(p.id, Vector.empty).collect { case ServerMsg.Damage(t, n, _) if t == p.id && n > 0 => n }
+        }
+        assertTrue(hits.nonEmpty, hits.forall(n => n >= 225 && n <= 525), hits.sum.toDouble / hits.size > 300)
+      },
       test("祖玛教主掉血会召唤祖玛怪") {
         val s = sim()
         join(s.w, "甲", Cell(30, 30))
@@ -1257,16 +1268,18 @@ object WorldSpec extends ZIOSpecDefault:
           after.nextRefill == spot.nextRefill
         )
       },
-      test("幻境十层刷牛魔小怪和赤月恶魔、牛魔王、暗之牛魔王、暗之双头金刚，打得死（#1317）") {
+      test("幻境十层刷牛魔小怪和赤月恶魔、牛魔王、暗之牛魔王、暗之双头金刚、魔龙教主、暗之魔龙教主，打得死（#1317、#1329）") {
         val map   = catalog.map(MapId("H010")).get
         val w     = world(map)
         val p     = join(w, "甲", Cell(155, 157))
         w.tick(Millis(50))
         val names = w.monsters.map(_.defn.name.value).toSet
         val boss  = w.monsters.find(_.defn.name == MonsterName("暗之牛魔王")).get
+        val dark  = w.monsters.find(_.defn.name == MonsterName("暗之魔龙教主")).get
         w.vitals.damage(boss, boss.hp, Some(p.id))
         assertTrue(
-          Set("牛魔战士", "牛魔法师", "赤月恶魔", "牛魔王", "暗之牛魔王", "暗之双头金刚").subsetOf(names),
+          Set("牛魔战士", "牛魔法师", "赤月恶魔", "牛魔王", "暗之牛魔王", "暗之双头金刚", "魔龙教主", "暗之魔龙教主").subsetOf(names),
+          dark.maxHp == 32000,
           !names.exists(_.startsWith("宝箱")),
           boss.dead
         )

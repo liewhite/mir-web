@@ -18,6 +18,7 @@ import json
 
 from build_data import BOSSES
 from catalog import CATALOG, EXTRA_DIR
+from import_huanjing import DARK_LORD
 from import_v180 import MONSTERS as MOLONG_MONSTERS
 
 
@@ -91,7 +92,7 @@ def main() -> None:
             append[name] = rows
     out = {
         "_说明": "1.80 爆率（#1314），由 tools/import_v180_drops.py 生成，格式同 ref/Mir176 catalog.json 的 drops，见 tools/catalog.py",
-        "drops": MOLONG,
+        "drops": MOLONG | {DARK_LORD["Name"]: LORD},  # 幻境十层的暗之魔龙教主爆率同魔龙教主（用户 11-26 定的推荐，#1329）
         "drops_append": append,
     }
     path = EXTRA_DIR / "v180-drops.json"
