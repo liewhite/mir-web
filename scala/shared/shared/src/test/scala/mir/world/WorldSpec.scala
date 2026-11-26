@@ -159,7 +159,7 @@ object WorldSpec extends ZIOSpecDefault:
         }
         assertTrue(hits.nonEmpty, hits.forall(n => n >= 225 && n <= 525), hits.sum.toDouble / hits.size > 300)
       },
-      test("暗之赤月恶魔原地打周围，攻击 130~170（#1331；#1340 用户 11-26 削到平均 150）") {
+      test("暗之赤月恶魔原地打周围，攻击 180~250（#1331；#1340 用户 11-26 削弱）") {
         val s  = sim()
         val p  = join(s.w, "甲", Cell(30, 30))
         val at = Cell(33, 30)
@@ -169,7 +169,7 @@ object WorldSpec extends ZIOSpecDefault:
           s.w.tick(s.w.now + 50)
           s.flush().getOrElse(p.id, Vector.empty).collect { case ServerMsg.Damage(t, n, _) if t == p.id && n > 0 => n }
         }
-        assertTrue(hits.nonEmpty, hits.forall(n => n >= 60 && n <= 170), hits.sum.toDouble / hits.size > 90, m.cell == at)
+        assertTrue(hits.nonEmpty, hits.forall(n => n >= 100 && n <= 250), hits.sum.toDouble / hits.size > 140, m.cell == at)
       },
       test("祖玛教主掉血会召唤祖玛怪") {
         val s = sim()
