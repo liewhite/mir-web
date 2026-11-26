@@ -33,6 +33,17 @@ object Store:
 object Boot:
   /** Netty 停机不等默认的 2 秒「安静期」：连接都已经关了，多等只会拉长重启时间（#1290） */
   private val netty = zio.http.netty.NettyConfig.defaultWithFastShutdown
+  /**
+   * 停 HTTP 时等还没回完的请求最多多久（zio-http 默认 10 秒）。到这一步游戏已停、快照已存，剩下的只是素材下载这类请求，
+   * 断了客户端会自己重下；机器卡的时候（#1359）它们回得慢，等满 10 秒会让停服拖过 systemd 的 30 秒被强杀。
+   */
+  private val GracefulHttpStop = 3.seconds
+
+  /** 停服各段用时：t0 是开始停游戏的时刻（没开始停就是开服半途失败在收尾，不打） */
+  private def stopLog(t0: java.util.concurrent.atomic.AtomicLong, what: String): ZIO[Any, Nothing, Unit] =
+    ZIO.succeed(Option(t0.get).filter(_ != 0L).foreach { s =>
+      java.lang.System.err.println(s"停服：$what（从开始停服算 ${(java.lang.System.nanoTime() - s) / 1_000_000} 毫秒）")
+    })
 
   def start(cfg: ServerConfig): ZIO[Scope, Throwable, Int] =
     for
@@ -41,6 +52,9 @@ object Boot:
       json    <- ZIO.attemptBlocking(Files.readString(cfg.gameJson))
       catalog <- ZIO.fromEither(Catalog.decode(json)).mapError(e => Exception(s"${cfg.gameJson} 解码失败：$e"))
       store   <- Store.open(cfg)
+      // 停服各段用时（#1359：查停服为什么拖到被强杀）；收尾倒着执行，这一条在网络停完、关库之前跑
+      stopT0   = java.util.concurrent.atomic.AtomicLong(0L)
+      _       <- ZIO.addFinalizer(stopLog(stopT0, "网络已停，关库"))
       clock    = () => Millis(java.lang.System.currentTimeMillis())
       social   = mir.social.Social()
       maps     = Maps(catalog, cfg.assetsDir, store.uids, clock, social)
@@ -52,12 +66,16 @@ object Boot:
       _       <- AdminSocket.serve(cfg.adminSocket, game.adminAndWait)
       boardApi = BoardApi(store.board, store.chars, cfg.boardAdmins)
       http     = HttpServer(store.accounts, tokens, game, boardApi, cfg.assetsDir, cfg.webDir, cfg.liveness.pingEveryMs)
-      env     <- ((ZLayer.succeed(Server.Config.default.binding(cfg.host, cfg.port)) ++ ZLayer.succeed(netty)) >>> Server.customized).build
+      httpCfg  = Server.Config.default.binding(cfg.host, cfg.port).gracefulShutdownTimeout(GracefulHttpStop)
+      env     <- ((ZLayer.succeed(httpCfg) ++ ZLayer.succeed(netty)) >>> Server.customized).build
       server   = env.get[Server]
       // 环境里只有 Scope 时 zio 2.1.27 的 ZEnvironment.prune 会误报缺 Any（测试里环境不空所以不出错），给它空环境
       _       <- server.install(http.routes).provideEnvironment(ZEnvironment.empty)
       // 收尾是倒着执行的：这一条在 HTTP 停之前跑。停游戏的函数只停一次，上面那条到时什么也不做
-      _       <- ZIO.addFinalizer(ZIO.attemptBlocking(stopGame()).orDie *> http.drained(1.second))
+      _       <- ZIO.addFinalizer(
+                   ZIO.succeed(stopT0.set(java.lang.System.nanoTime())) *> ZIO.attemptBlocking(stopGame()).orDie *>
+                     stopLog(stopT0, "游戏已停、快照已存，等连接断开") *> http.drained(1.second) *>
+                     stopLog(stopT0, "连接已断，停 HTTP"))
       port    <- server.port
       _       <- ZIO.logInfo(s"mir176 listening on ${cfg.host}:$port, assets=${cfg.assetsDir}, web=${cfg.webDir}, data=${cfg.dataDir}")
     yield port

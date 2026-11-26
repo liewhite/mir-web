@@ -7,7 +7,7 @@
 #   deploy/jvm/deploy.sh --trial     只上传并在服务器上试启动一次，不换下旧服（试完删掉这个版本目录）；不限 master 分支
 #
 # 只动 mir176 自己的东西：/opt/mir176、/etc/mir176.env、/etc/systemd/system/mir176.service、/var/lib/mir176，
-# 试启动时临时用 systemd 单元 mir176-trial、端口 MIR_TRIAL_PORT（默认 18177，只听 127.0.0.1）、/run/mir176-trial.env。
+# 试启动时临时用 systemd 单元 mir176-trial（及 -check、-smoke）、端口 MIR_TRIAL_PORT（默认 18177，只听 127.0.0.1）、/run/mir176-trial.env。
 # Ingress 不变（k8s.yaml 指向 10.42.0.1:18176，WebSocket 走同一个 Ingress）。
 # 服务器上：
 #   /opt/mir176/jre                       JRE 21（第一次从本机上传）
@@ -148,15 +148,53 @@ echo "== 试启动新版（线上库的副本、127.0.0.1:${TRIAL_PORT}）"
 remote REL="$REL" TRIAL_PORT="$TRIAL_PORT" MODE="$MODE" <<'R'
 d=$OPT/releases/$REL
 T=$DATA/trial
-fail() { echo "试启动不通过：$1"; echo "旧服没停，线上不受影响。新版本目录已删。"; sudo rm -rf "$d"; exit 1; }
+# 试启动别挤线上（#1359）：kaojiang 2 核 3.5G 没有 swap，线上服和 k3s（muliao 的公网入口、Traefik）已占大半内存。
+# 11-26 晚高峰试启动把整机挤到内存吃紧，k3s 卡住、Traefik 被重启，线上 34 人连接全断。所以：
+#  - 试启动的几个 JVM 都用最省的配置（小堆、Serial GC、只用 C1 编译），CPU/IO 优先级最低，各自限内存，超了只杀它自己；
+#  - 开始前看整机可用内存，不够就不试（也就不换版）；
+#  - 试的过程中盯着整机内存压力（/proc/pressure/memory），一冒头就立即杀掉试启动、不换版。
+# 类缓存（#1290）用这套配置生成，线上 G1 大堆照样能用（只记类，不记 GC 和堆大小）。
+LEAN="-Xms32m -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1 -XX:ReservedCodeCacheSize=48m -Xss512k -Dfile.encoding=UTF-8"
+LOW=(-p Nice=19 -p CPUWeight=1 -p IOWeight=1 -p User=mir176 -p EnvironmentFile=/run/mir176-trial.env)
+UNITS="mir176-trial mir176-trial-check mir176-trial-smoke"
+NEED_MB=850        # 开始前整机可用内存至少要这么多：开服那个 JVM 限 450M，再给线上和系统缓存留 400M
+PSI_LIMIT=5        # 整机「有进程在等内存」的时间占比（最近 10 秒，%）到这个数就停；平时是 0
+FLOOR_MB=300       # 试的过程中整机可用内存低于这个也停
+R_FILE=; S_FILE=
+mem_avail() { awk '/^MemAvailable/{print int($2/1024)}' /proc/meminfo; }
+mem_stall() { awk '/^some/{split($2,a,"="); print int(a[2])}' /proc/pressure/memory; }
+# 盯内存的后台循环：线上开始被挤就杀掉试启动的进程，原因写进 R_FILE；这期间最差的一刻写进 S_FILE
+watch_pressure() {
+  local lo=999999 hi=0
+  while sleep 2; do
+    local s a; s=$(mem_stall); a=$(mem_avail)
+    (( a < lo )) && lo=$a; (( s > hi )) && hi=$s
+    echo "试启动期间整机可用内存最低 ${lo}MB、等内存的时间最高占 ${hi}%" > "$S_FILE"
+    if (( s >= PSI_LIMIT || a < FLOOR_MB )); then
+      echo "整机内存吃紧（等内存的时间占 ${s}%、可用 ${a}MB），为了不挤垮线上服，已立即停掉试启动" > "$R_FILE"
+      sudo systemctl kill -s KILL $UNITS 2>/dev/null || true
+      return
+    fi
+  done
+}
+WPID=
+fail() {
+  local why=$1; [[ -s $R_FILE ]] && why=$(cat "$R_FILE")
+  echo "试启动不通过：$why"; echo "旧服没停，线上不受影响。新版本目录已删。"; sudo rm -rf "$d"; exit 1
+}
 cleanup() {
-  sudo systemctl stop mir176-trial 2>/dev/null || true
-  sudo systemctl reset-failed mir176-trial 2>/dev/null || true
+  [[ -n $WPID ]] && kill "$WPID" 2>/dev/null || true
+  for u in $UNITS; do sudo systemctl stop "$u" 2>/dev/null || true; sudo systemctl reset-failed "$u" 2>/dev/null || true; done
   sudo rm -rf "$T" /run/mir176-trial.env
+  rm -f "$R_FILE" "$S_FILE"
 }
 trap cleanup EXIT
 cleanup
+R_FILE=$(mktemp); S_FILE=$(mktemp)
 ! ss -ltn "sport = :$TRIAL_PORT" | grep -q LISTEN || fail "端口 $TRIAL_PORT 被占用"
+avail=$(mem_avail)
+(( avail >= NEED_MB )) || fail "服务器现在可用内存只有 ${avail}MB（试启动要 ${NEED_MB}MB 才不挤线上服），等在线人少些再部署"
+echo "整机可用内存 ${avail}MB、等内存的时间占 $(mem_stall)%"
 B=$(backup_db) || fail "数据库备份失败"
 echo "数据库备份：$B"
 sudo -u mir176 mkdir -p "$T" && sudo -u mir176 cp "$B" "$T/mir.db"
@@ -165,22 +203,28 @@ sudo -u mir176 mkdir -p "$T" && sudo -u mir176 cp "$B" "$T/mir.db"
   | sudo tee /run/mir176-trial.env >/dev/null
 sudo chmod 600 /run/mir176-trial.env
 J=$OPT/jre/bin/java
+watch_pressure & WPID=$!
 echo "-- 角色存档检查"
-sudo systemd-run --quiet --wait --pipe --collect -p User=mir176 -p EnvironmentFile=/run/mir176-trial.env -p MemoryMax=400M \
-  $J -Xmx256m -Dfile.encoding=UTF-8 -jar "$d/mir176.jar" check || fail "新版读不了现有的角色存档"
+sudo systemd-run --quiet --wait --pipe --collect --unit=mir176-trial-check "${LOW[@]}" -p MemoryMax=400M \
+  $J $LEAN -Xmx256m -jar "$d/mir176.jar" check || fail "新版读不了现有的角色存档"
 echo "-- 开服"
-# 限内存：试启动吃超了只杀它自己，不挤线上（服务器没有 swap）。退出时写类缓存（#1290）
-sudo systemd-run --quiet --unit=mir176-trial -p User=mir176 -p EnvironmentFile=/run/mir176-trial.env \
-  -p MemoryMax=700M -p RuntimeMaxSec=600 -p ProtectSystem=strict -p ProtectHome=true -p PrivateTmp=true -p ReadWritePaths=$T \
+# 退出时写类缓存（#1290）
+sudo systemd-run --quiet --unit=mir176-trial "${LOW[@]}" \
+  -p MemoryMax=450M -p RuntimeMaxSec=600 -p ProtectSystem=strict -p ProtectHome=true -p PrivateTmp=true -p ReadWritePaths=$T \
   -p TimeoutStopSec=60 -p SuccessExitStatus=143 \
-  $J -Xms128m -Xmx512m -Dfile.encoding=UTF-8 -XX:ArchiveClassesAtExit=$T/mir176.jsa -jar "$d/mir176.jar" serve
+  $J $LEAN -Xmx256m -XX:ArchiveClassesAtExit=$T/mir176.jsa -jar "$d/mir176.jar" serve
 t0=$(date +%s)
-health "http://127.0.0.1:$TRIAL_PORT/healthz" 90 || { sudo journalctl -u mir176-trial -n 30 --no-pager; fail "90 秒内健康检查不过"; }
+trial_up() { for _ in $(seq 1 150); do curl -sf -m 2 "http://127.0.0.1:$TRIAL_PORT/healthz" >/dev/null && return 0; [[ -s $R_FILE ]] && return 1; sleep 1; done; return 1; }
+trial_up || { sudo journalctl -u mir176-trial -n 30 --no-pager; fail "150 秒内健康检查不过"; }
 echo "开服 $(( $(date +%s) - t0 )) 秒"
 echo "-- 冒烟（注册一次性账号、建角色、进图；在副本库上）"
-$J -Xmx128m -Dfile.encoding=UTF-8 -jar "$d/mir176.jar" smoke "http://127.0.0.1:$TRIAL_PORT" \
+sudo systemd-run --quiet --wait --pipe --collect --unit=mir176-trial-smoke "${LOW[@]}" -p MemoryMax=250M \
+  $J $LEAN -Xmx128m -jar "$d/mir176.jar" smoke "http://127.0.0.1:$TRIAL_PORT" \
   || { sudo journalctl -u mir176-trial -n 30 --no-pager; fail "冒烟检查不过"; }
 sudo systemctl stop mir176-trial
+kill "$WPID" 2>/dev/null || true; WPID=
+[[ -s $R_FILE ]] && fail "$(cat "$R_FILE")"
+cat "$S_FILE"
 if sudo test -s "$T/mir176.jsa"; then sudo cp "$T/mir176.jsa" "$d/mir176.jsa" && sudo chown "$(id -un)": "$d/mir176.jsa"; else echo "（没生成类缓存，不影响）"; fi
 echo "试启动通过"
 if [[ $MODE == --trial ]]; then rm -rf "$d"; echo "（--trial：版本目录已删，线上没动）"; fi
