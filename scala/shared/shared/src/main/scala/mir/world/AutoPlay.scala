@@ -2,12 +2,12 @@ package mir.world
 
 import mir.core.*
 import mir.model.{CharSettings, Cover, PickupKind}
-import mir.rules.{AutoRules, GearTiers, ItemKind, Skill, SpellRules, Upgrade}
+import mir.rules.{AutoRules, GearTiers, ItemKind, ScrollEffect, Skill, SpellRules, Upgrade}
 import mir.terrain.{MeleeReach, Path, Reach}
 import mir.world.skills.Amulets
 
 /**
- * 玩家的自动功能，按角色设置（CharSettings）在服务端执行：自动喝药、按住攻击（打到死）、被打还手、自动打怪、自动烈火、自动捡物，
+ * 玩家的自动功能，按角色设置（CharSettings）在服务端执行：自动喝药、按住攻击（打到死）、被打还手、自动打怪、自动随机、自动烈火、自动捡物，
  * 以及自动放的辅助技能（AutoCast：法师魔法盾，道士治愈、战甲、幽灵盾、召唤、隐身）。
  * 照 TS 版 game/controller.ts 移植。玩家亲手走动后 1 秒内不自动走动，免得和摇杆抢。
  */
@@ -97,6 +97,34 @@ object AutoPlay:
       def loot   = Option.when(p.settings.autoPickup)(nearestLoot(w, p, 6)).flatten.map(g => Intent.Fetch(g.id))
       def prey   = Option.when(p.settings.autoHunt)(nearestPrey(w, p, spell)).flatten.map(engage(spell))
       p.intent = hitter.map(engage(spell)).orElse(prey).orElse(loot).getOrElse(Intent.Idle)
+      if p.intent == Intent.Idle then autoRandom(w, p)
+
+  /**
+   * 自动随机（#1350，用户 11-26：「周围没有怪物就自动使用随机卷轴飞走……直到有怪就停下来打，不然继续飞」）：
+   * 开着自动打怪和自动随机、没怪可打也没东西可捡，且落地、上次出手、亲手走动之后都已静下 AutoRules.RandomQuietMs，
+   * 就用一张随机传送卷（和双击一样走 PlayerOps.useItem）；只剩卷包就先拆一包。
+   * 站在安全区里不飞（城里买东西时别把人飞走），但自己飞来刚好落进安全区的接着飞。
+   * 飞不了（没卷、这张图不让随机）提示一次，RandomRetryMs 后再试。
+   */
+  private def autoRandom(w: World, p: Player): Unit =
+    def quiet(t: Millis): Boolean = w.now - t >= AutoRules.RandomQuietMs
+    val s = p.settings
+    val ready = s.autoHunt && s.autoRandom && w.now >= p.autoFlyPausedUntil &&
+      quiet(p.arrivedAt) && quiet(p.manualUntil) && p.revealedAt.forall(quiet) &&
+      (!w.justice.inSafeZone(p) || p.autoFlewAt.contains(p.arrivedAt))
+    if ready then
+      randomScroll(w, p).toRight("包里没有随机传送卷").flatMap(PlayerOps.useItem(w, p, _)) match
+        case Right(_) => p.autoFlewAt = Some(w.now)
+        case Left(why) =>
+          p.autoFlyPausedUntil = w.now + AutoRules.RandomRetryMs
+          w.out.refuse(p, s"自动随机停了：$why（${AutoRules.RandomRetryMs / 1000} 秒后再试）")
+
+  /** 身上（快捷栏、包裹）的随机传送卷；没有就取一包随机传送卷包（用它就是拆开） */
+  private def randomScroll(w: World, p: Player): Option[ItemUid] =
+    val flies = ItemKind.Scroll(ScrollEffect.Random)
+    val carried = (p.belt.iterator ++ p.bag.iterator).flatten.flatMap(it => w.catalog.item(it.name).map(it.uid -> _)).toVector
+    carried.collectFirst { case (uid, d) if ItemKind.of(d) == flies => uid }
+      .orElse(carried.collectFirst { case (uid, d) if w.catalog.bundleContent(d).exists(ItemKind.of(_) == flies) => uid })
 
   /** 怎么打：有持续施法用的技能就站着放它，否则走过去普通攻击 */
   private def engage(spell: Option[Skill])(a: Actor): Intent =

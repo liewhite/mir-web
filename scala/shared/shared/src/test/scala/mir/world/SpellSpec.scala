@@ -313,6 +313,39 @@ object SpellSpec extends ZIOSpecDefault:
         val allDead = chicks.forall(_.dead)
         s.run(5000)
         assertTrue(allDead, !pickedEarly, p.gold.value >= g0.value + 77)
+      },
+      test("自动随机：附近没怪就用随机传送卷飞走，飞到有怪就停下打；不开自动打怪不飞（#1350）") {
+        val s = sim()
+        val p = caster(s, Job.Warrior, Nil)
+        noRegen(p)
+        (0 until 3).foreach(i => p.bag(i) = Some(ItemInstance(ItemUid(800L + i), ItemName("随机传送卷"), 1, 1)))
+        def scrolls = p.bag.flatten.count(_.name == ItemName("随机传送卷"))
+        p.settings = p.settings.copy(autoRandom = true)
+        s.run(5000)
+        val stayed = p.cell == Cell(30, 30) && scrolls == 3
+        p.settings = p.settings.copy(autoHunt = true)
+        s.run(2000) // 早已静够 3 秒，开了马上飞；落地后 3 秒内不会再飞
+        val flew = p.cell != Cell(30, 30) && scrolls == 2
+        // 落地处身边放一只打不死的怪：一直打它，不再飞
+        val here = p.cell
+        val m    = sturdy(s, Cell(if here.x > 30 then here.x - 2 else here.x + 2, here.y))
+        s.run(8000)
+        assertTrue(stayed, flew, scrolls == 2, p.intent.foe.contains(m.id), p.cell.chebyshev(m.cell) <= 1)
+      },
+      test("自动随机：只剩卷包就先拆开再飞；什么都没有就提示一次、过一会儿再试（#1350）") {
+        val s = sim()
+        val p = caster(s, Job.Warrior, Nil)
+        noRegen(p)
+        p.settings = p.settings.copy(autoHunt = true, autoRandom = true)
+        s.run(5000)
+        val told = s.notices.count(_.contains("包里没有随机传送卷"))
+        s.run(5000)
+        val toldOnce = s.notices.count(_.contains("包里没有随机传送卷")) == told
+        p.bag(0) = Some(ItemInstance(ItemUid(900L), ItemName("随机传送卷包"), 1, 1))
+        p.autoFlyPausedUntil = Millis.zero
+        s.run(2000)
+        val left = (p.belt.iterator ++ p.bag.iterator).flatten.find(_.name == ItemName("随机传送卷")).map(_.count)
+        assertTrue(told == 1, toldOnce, p.cell != Cell(30, 30), left.contains(5))
       }
     ),
     suite("持续施法、自动施毒（#1308）")(

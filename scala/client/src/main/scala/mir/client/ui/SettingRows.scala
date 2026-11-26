@@ -55,6 +55,9 @@ object SettingRow:
         s"自动打怪（闲着就打 ${AutoRules.HuntRadius} 格内最近的野怪，别人在打的不抢；开了持续施法就用技能打；动摇杆就停）",
         _.autoHunt, (s, v) => s.copy(autoHunt = v)),
       GameToggle(
+        s"自动随机（要开自动打怪：附近没怪、停手 ${AutoRules.RandomQuietMs / 1000} 秒就用随机传送卷飞走，有怪停下打；安全区不飞）",
+        _.autoRandom, (s, v) => s.copy(autoRandom = v)),
+      GameToggle(
         "持续施法（法师、道士：对怪放一次攻击技能就一直放到它死；走动、普攻、没蓝没符就停）",
         _.sustainCast, (s, v) => s.copy(sustainCast = v))
     ),

@@ -117,6 +117,10 @@ final class Player(id: ActorId, val charName: String, val job: Job, val sex: Sex
   private[world] val autoCastTried: mutable.Map[Skill, Millis] = mutable.Map.empty
   /** 持续施法最近亲手用的攻击技能：自动打怪、还手时接着用它（#1308）；不存档 */
   private[world] var barrageSkill: Option[Skill] = None
+  /** 自动随机（#1350）上次飞走的时刻：和到达时刻相同说明是自己飞来的，落进安全区也接着飞；不存档 */
+  private[world] var autoFlewAt: Option[Millis] = None
+  /** 自动随机飞不了（没卷、这张图不让随机）之后，到这个时刻前不再试 */
+  private[world] var autoFlyPausedUntil: Millis = Millis.zero
   /** 上次因为出手（攻击、放技能）现身的时刻：自动隐身等一会儿再补，不在打架时来回隐身 */
   private[world] var revealedAt: Option[Millis] = None
   /** 还在回血回蓝的普通药（可以叠着喝） */

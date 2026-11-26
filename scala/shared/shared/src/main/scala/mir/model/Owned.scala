@@ -84,6 +84,8 @@ final case class CharSettings(
     autoFightBack: Boolean = true,
     /** 自动打怪（#1307，默认关）：闲着时自己去打附近的野怪（不抢别人正在打的） */
     autoHunt: Boolean = false,
+    /** 自动随机（#1350，默认关，要同时开着自动打怪）：附近没怪可打就用随机传送卷飞走，飞到有怪的地方就停下来打 */
+    autoRandom: Boolean = false,
     /** 持续施法（#1308，默认关）：对怪放了攻击技能就接着一直放到它死；开着自动打怪时也用技能打（法师、道士） */
     sustainCast: Boolean = false,
     /** 战士：烈火好了就自动开 */
