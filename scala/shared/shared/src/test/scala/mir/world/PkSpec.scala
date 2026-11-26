@@ -251,6 +251,38 @@ object PkSpec extends ZIOSpecDefault:
         !catalog.data.maps.filterNot(_.has(MapFlag.Fight)).exists(SafeZone.wholeMap)
       )
     },
+    test("玩家死了报一条 PlayerSlain 给服务端记日志（#1338）：谁、几级、哪格、被谁杀、PK 怎么算、红名掉了什么") {
+      val s   = sim()
+      val a   = join(s.w, "甲", Cell(30, 30))
+      val b   = join(s.w, "乙", Cell(31, 30))
+      s.w.flush(): Unit
+      def slain() = s.w.flush().chronicle.collect { case e: Chronicle.PlayerSlain => e }
+      kill(s.w, a, b)
+      val murder = slain()
+      val c   = join(s.w, "丙", Cell(40, 40))
+      c.pkPoints = 250
+      s.w.vitals.damage(c, 1_000_000, None)
+      val red = slain()
+      val d   = join(s.w, "丁", Cell(20, 20))
+      val pet = put(s.w, "蛤蟆", Cell(21, 20))
+      pet.master = Some(a.id)
+      a.pets += pet.id
+      hit(s.w, d, a)                          // 丁先打主人，宝宝才去打他
+      d.statuses.remove(StatusKind.Brawler)   // 丁不算灰名，宝宝杀他算谋杀
+      kill(s.w, pet, d)
+      val byPet = slain()
+      val e   = join(s.w, "戊", Cell(50, 50))
+      val mob = put(s.w, "鸡", Cell(51, 50))
+      kill(s.w, mob, e)
+      val byMob = slain()
+      assertTrue(
+        murder == Vector(Chronicle.PlayerSlain("乙", b.level, Cell(31, 30), Slayer.Human("甲"), DeathVerdict.Murder, 0, Vector.empty)),
+        red.map(r => (r.victim, r.by, r.verdict, r.pkPoints)) == Vector(("丙", Slayer.Unknown, DeathVerdict.Ordinary, 250)),
+        red.flatMap(_.lost).nonEmpty,
+        byPet.map(r => (r.by, r.verdict)) == Vector((Slayer.Pet(MonsterName("蛤蟆"), Some("甲")), DeathVerdict.Murder)),
+        byMob.map(r => (r.victim, r.at, r.by, r.verdict)) == Vector(("戊", Cell(50, 50), Slayer.Mob(MonsterName("鸡")), DeathVerdict.Ordinary))
+      )
+    },
     test("竞技地图里打人杀人都不算：不变灰、不涨 PK 值，红名死了也不掉东西") {
       val s = sim(arena)
       val a = join(s.w, "甲", Cell(30, 30))

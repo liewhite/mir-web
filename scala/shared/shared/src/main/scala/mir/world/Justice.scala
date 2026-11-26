@@ -82,19 +82,32 @@ final class Justice(w: World):
    * 玩家 v 死了（Vitals.kill 调，killer 是最后一下的来源）：
    *  - 凶手（玩家，或宝宝的主人）杀的不是红名：v 不是灰名就算谋杀，PK 值 +Pk.KillPoints；v 是灰名就是正当防卫，不加；
    *  - v 是红名：照 Pk.deathDrop 掉东西（不管是谁杀的，被守卫、怪杀也掉）。
-   * 竞技地图里都不算。
+   * 竞技地图里都不算。最后报一条 Chronicle.PlayerSlain 给服务端记日志（#1338）。
    */
   private[world] def died(v: Player, killer: Option[ActorId]): Unit =
-    if !arena then
-      val murderer = killer.flatMap(w.actor).flatMap(ownerOf).filter(_.id != v.id)
-      murderer.filter(_ => !Pk.isRed(v.pkPoints)).foreach { k =>
-        if Pk.isMurder(v.pkPoints, v.brawler) then
-          setPoints(k, k.pkPoints + Pk.KillPoints)
-          w.out.notice(k, s"你犯了谋杀罪！！！PK 值 ${k.pkPoints}${standingNote(k.pkPoints)}", Tone.Bad)
-          w.out.notice(v, s"你被 ${k.charName} 杀害了！！！", Tone.Bad)
-        else w.out.notice(k, "[你受到正当规则保护。]", Tone.Good)
-      }
-      Pk.deathDrop(v.pkPoints).foreach(scatter(v, _))
+    val by = killer.flatMap(w.actor)
+    val (verdict, lost) =
+      if arena then (DeathVerdict.Arena, Vector.empty)
+      else
+        val murderer = by.flatMap(ownerOf).filter(_.id != v.id).filter(_ => !Pk.isRed(v.pkPoints))
+        val verdict  = murderer.fold(DeathVerdict.Ordinary) { k =>
+          if Pk.isMurder(v.pkPoints, v.brawler) then
+            setPoints(k, k.pkPoints + Pk.KillPoints)
+            w.out.notice(k, s"你犯了谋杀罪！！！PK 值 ${k.pkPoints}${standingNote(k.pkPoints)}", Tone.Bad)
+            w.out.notice(v, s"你被 ${k.charName} 杀害了！！！", Tone.Bad)
+            DeathVerdict.Murder
+          else
+            w.out.notice(k, "[你受到正当规则保护。]", Tone.Good)
+            DeathVerdict.SelfDefense
+        }
+        (verdict, Pk.deathDrop(v.pkPoints).fold(Vector.empty[ItemName])(scatter(v, _)))
+    w.out.chronicle(Chronicle.PlayerSlain(v.charName, v.level, v.cell, slayer(by), verdict, v.pkPoints, lost))
+
+  /** 打死玩家的那一下是谁（日志用） */
+  private def slayer(by: Option[Actor]): Slayer = by match
+    case Some(p: Player)  => Slayer.Human(p.charName)
+    case Some(m: Monster) => m.master.fold(Slayer.Mob(m.defn.name))(id => Slayer.Pet(m.defn.name, w.player(id).map(_.charName)))
+    case Some(_: Npc) | None => Slayer.Unknown
 
   private def standingNote(points: Int): String =
     if Pk.isRed(points) then "，名字变红：守卫见了就砍，死了包裹全掉、身上的也可能掉"
@@ -113,8 +126,8 @@ final class Justice(w: World):
 
   private def setPoints(p: Player, n: Int): Unit = p.pkPoints = math.max(0, n)
 
-  /** 红名死了：身上每件按几率掉，包裹（含快捷栏）全掉在身边；身上掉了东西要重算属性。 */
-  private def scatter(v: Player, d: Pk.DeathDrop): Unit =
+  /** 红名死了：身上每件按几率掉，包裹（含快捷栏）全掉在身边；身上掉了东西要重算属性。返回掉了的东西。 */
+  private def scatter(v: Player, d: Pk.DeathDrop): Vector[ItemName] =
     val rng: Rng = w.rngOf
     val worn  = v.worn.keys.toList.sortBy(_.ordinal).filter(_ => rng.random(d.wornOdds) == 0).map(ItemPlace.Worn(_))
     val bag   = if d.wholeBag then v.bag.indices.map(ItemPlace.Bag(_)) ++ v.belt.indices.map(ItemPlace.Belt(_)) else Nil
@@ -127,3 +140,4 @@ final class Justice(w: World):
     if lost.nonEmpty then
       val names = lost.map(_._2.name.value).mkString("、")
       w.out.notice(v, s"红名死亡，掉了：$names", Tone.Bad)
+    lost.map(_._2.name).toVector

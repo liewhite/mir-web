@@ -119,6 +119,10 @@ final class GameServer(
 
   def onlineCount: Int = online.size
 
+  /** 在线角色的账号名（日志用） */
+  private def accountOf(charName: String): Option[String] =
+    online.values.find(_.name == charName).map(_.conn.link.account.name)
+
   /** 走一步。 */
   def step(): Unit =
     val now = clock()
@@ -136,7 +140,7 @@ final class GameServer(
     val departures = active.flatMap { w =>
       val out = attempt(s"取地图 ${w.mapId} 的消息")(w.flush())
       out.toVector.flatMap { o =>
-        o.chronicle.foreach(e => System.err.println(BossReport.line(catalog, w.mapId, e)))
+        o.chronicle.foreach(e => System.err.println(ChronicleLog.line(catalog, w.mapId, e, accountOf)))
         o.messages.foreach((actor, msgs) => byActor.get((w.mapId, actor)).flatMap(online.get).foreach(on => msgs.foreach(on.conn.link.send)))
         // 升级、交易成交的人立刻存档（交易双方在这里一起存；同一步换了图的已不在图上，由下面换图存档）
         o.checkpoints.foreach(actor => byActor.get((w.mapId, actor)).flatMap(online.get).foreach(on => w.snapshot(on.actor).foreach(save(on.id, _))))

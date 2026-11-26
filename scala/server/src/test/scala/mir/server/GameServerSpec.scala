@@ -5,10 +5,10 @@ import mir.data.Catalog
 import mir.model.*
 import mir.protocol.*
 import mir.server.admin.{AdminCmd, AdminReply}
-import mir.server.game.{BossReport, Farewell, GameServer, Headcount, Link, LinkEvent, LoadLog, Maps}
+import mir.server.game.{BossReport, ChronicleLog, Farewell, GameServer, Headcount, Link, LinkEvent, LoadLog, Maps}
 import mir.server.store.{Db, Freezer, Frozen, Snapshots}
 import mir.social.Social
-import mir.world.{BossAlive, BossSpot, CharacterData, Chronicle, Loot}
+import mir.world.{BossAlive, BossSpot, CharacterData, Chronicle, DeathVerdict, Loot, Slayer}
 import zio.test.*
 
 import java.nio.file.{Files, Path, Paths}
@@ -262,8 +262,12 @@ object GameServerSpec extends ZIOSpecDefault:
         status(spot, 1_764_050_400_000L - 30 * 60_000L) == "牛魔王 牛魔寺庙大厅(D2079) (52,51)：死了，11-25 14:00 刷（还有 30 分钟）",
         status(spot, 1_764_050_400_000L + 1) == "牛魔王 牛魔寺庙大厅(D2079) (52,51)：死了，到点时图上没人，有人进图就刷",
         status(alive, 0) == "牛魔王 牛魔寺庙大厅(D2079) (52,51)：活着 (53,50) 血 100/200",
-        BossReport.line(catalog, MapId("D2079"), Chronicle.BossSlain(MonsterName("牛魔王"), Cell(53, 50), Some("甲"), None, Some(Millis(1_764_050_400_000L)))) ==
-          "boss 死亡：牛魔王 牛魔寺庙大厅(D2079) (53,50)，归属 甲，最后一下 无，下次刷新 11-25 14:00"
+        ChronicleLog.line(catalog, MapId("D2079"), Chronicle.BossSlain(MonsterName("牛魔王"), Cell(53, 50), Some("甲"), None, Some(Millis(1_764_050_400_000L))), _ => None) ==
+          "boss 死亡：牛魔王 牛魔寺庙大厅(D2079) (53,50)，归属 甲，最后一下 无，下次刷新 11-25 14:00",
+        ChronicleLog.line(catalog, MapId("D2079"), Chronicle.PlayerSlain("乙", 35, Cell(10, 12), Slayer.Pet(MonsterName("神兽"), Some("甲")), DeathVerdict.Murder, 0, Vector.empty), n => Option.when(n == "乙")("bob")) ==
+          "玩家死亡：乙（账号 bob） 35 级 牛魔寺庙大厅(D2079) (10,12)，被甲的宝宝「神兽」杀死，算谋杀（凶手 PK 值涨），死时 PK 值 0",
+        ChronicleLog.line(catalog, MapId("D2079"), Chronicle.PlayerSlain("丙", 40, Cell(1, 2), Slayer.Mob(MonsterName("带刀护卫")), DeathVerdict.Ordinary, 250, Vector(ItemName("金创药(中量)"), ItemName("裁决之杖"))), _ => None) ==
+          "玩家死亡：丙 40 级 牛魔寺庙大厅(D2079) (1,2)，被怪物「带刀护卫」杀死，不算 PK，死时 PK 值 250，红名掉了：金创药(中量)、裁决之杖"
       )
     }
   )

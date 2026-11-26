@@ -3,13 +3,13 @@ package mir.server.game
 import mir.core.*
 import mir.data.Catalog
 import mir.rules.Rates
-import mir.world.{BossSpot, Chronicle}
+import mir.world.BossSpot
 
 import java.time.{Instant, ZoneId}
 import java.time.format.DateTimeFormatter
 
 /**
- * boss 的服务端日志和管理命令「各 boss 现在怎样」（#1277）的文字。时刻按北京时间写（玩家和用户都在国内，服务器时区不一定是）。
+ * 管理命令「各 boss 现在怎样」（#1277）的文字；boss 刷出、死亡的日志行在 ChronicleLog。时刻按北京时间写（玩家和用户都在国内，服务器时区不一定是）。
  */
 object BossReport:
   private val Zone = ZoneId.of("Asia/Shanghai")
@@ -17,17 +17,10 @@ object BossReport:
 
   def time(t: Millis): String = Fmt.format(Instant.ofEpochMilli(t.value))
 
-  private def mapName(catalog: Catalog, id: MapId): String =
+  private[game] def mapName(catalog: Catalog, id: MapId): String =
     catalog.map(id).fold(id.value)(d => s"${d.title}(${id.value})")
 
-  private def cell(c: Cell): String = s"(${c.x},${c.y})"
-
-  /** 世界报来的一件事写成一行日志。 */
-  def line(catalog: Catalog, map: MapId, e: Chronicle): String = e match
-    case Chronicle.BossSpawned(m, at) => s"boss 刷出：${m.value} ${mapName(catalog, map)} ${cell(at)}"
-    case Chronicle.BossSlain(m, at, owner, killer, respawn) =>
-      val next = respawn.fold("不是刷怪点刷的，不会补")(t => s"下次刷新 ${time(t)}")
-      s"boss 死亡：${m.value} ${mapName(catalog, map)} ${cell(at)}，归属 ${owner.getOrElse("无")}，最后一下 ${killer.getOrElse("无")}，$next"
+  private[game] def cell(c: Cell): String = s"(${c.x},${c.y})"
 
   /**
    * 全部 boss 刷怪点的现状，一个刷怪点一行，按怪名排。spots：开过的图里各 boss 刷怪点（没开过的图为空，即没人进过）。
