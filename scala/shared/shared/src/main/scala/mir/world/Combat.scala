@@ -64,7 +64,7 @@ object Combat:
   /** 拿鹤嘴锄朝矿壁挥（原版 CM_HEAVYHIT 挖矿：只出重击动作，不算剑术）。 */
   private def dig(w: World, p: Player, dir: Dir): Unit =
     w.grid.setAction(p, ActKind.Heavy, Pace.HitAnimMs)
-    p.busyUntil = w.now + math.max(Pace.HitAnimMs, p.stats.hitInterval)
+    p.busyFor(w.now, math.max(Pace.HitAnimMs, p.stats.hitInterval))
     w.out.sound(p.cell, Sounds.weaponSwing(w.vitals.weaponShape(p)))
     w.quarry.dig(p, dir)
 
@@ -76,7 +76,7 @@ object Combat:
       else if p.longHitOn && p.knows(Skill.LongHit) then HitStyle.Long
       else HitStyle.Normal
     w.grid.setAction(p, if style == HitStyle.Normal then ActKind.Attack else ActKind.Heavy, Pace.HitAnimMs, hit = Some(style))
-    p.busyUntil = w.now + math.max(Pace.HitAnimMs, p.stats.hitInterval)
+    p.busyFor(w.now, math.max(Pace.HitAnimMs, p.stats.hitInterval))
     w.out.sound(p.cell, Sounds.weaponSwing(w.vitals.weaponShape(p)))
     val styleSound = style match
       case HitStyle.Power  => Some(if p.sex == Sex.Female then Sounds.yedoWoman else Sounds.yedoMan)
@@ -177,7 +177,7 @@ object Combat:
                     w.out.sound(p.cell, Sounds.magic(skillId, SpellPhase.Start))
                     handler.castFx.foreach(f => w.out.effect(f.lib, f.start, f.frames, f.frameTime, Anchor.OnActor(p.id)))
                     w.grid.setAction(p, ActKind.Spell, Pace.SpellAnimMs, spellEffect = Some(d.effect))
-                    p.busyUntil = w.now + Pace.SpellIntervalMs
+                    p.busyFor(w.now, Pace.SpellIntervalMs)
                     if e == Effect.Cast then train(w, p, skillId, 1 + rng.random(3))
                     if !handler.keepsInvisible then reveal(w, p)
                     Outcome.Done

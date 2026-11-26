@@ -4,7 +4,7 @@ import mir.core.*
 import mir.data.*
 import mir.model.*
 import mir.protocol.*
-import mir.rules.{Rates, Rng}
+import mir.rules.{Pace, Rates, Rng}
 import mir.terrain.Terrain
 import mir.testkit.TestFiles
 import mir.view.ViewState
@@ -693,6 +693,62 @@ object WorldSpec extends ZIOSpecDefault:
           s.cmd(p, GameCmd.Attack(Dir.Right, Some(m.id))): Unit
         }
         assertTrue(m.hp < hp || m.dead)
+      }
+    ),
+    suite("防加速（#1319）：早到的指令照收，但提前量不累积")(
+      test("每步都抢早 200 毫秒发走路：10 步至少花 9×600−200 毫秒（旧规则只要 9×400）") {
+        val s  = sim()
+        val p  = join(s.w, "甲", Cell(30, 30))
+        s.flush()
+        // 改版客户端：每 50 毫秒都试一次，能收就收
+        val oks = Iterator.continually {
+          s.run(50)
+          val dir = if p.cell.x < 35 then Dir.Right else Dir.Left
+          Option.when(s.cmd(p, GameCmd.Walk(p.cell, dir)).contains(ServerMsg.MoveOk))(s.w.now)
+        }.flatten.take(10).toVector
+        assertTrue(oks.last - oks.head >= 9L * Pace.WalkMs - World.Slack)
+      },
+      test("每下都抢早发普通攻击：10 下至少花 9×攻击间隔−200 毫秒") {
+        val s  = sim()
+        val p  = join(s.w, "甲", Cell(30, 30))
+        s.flush()
+        val gap = math.max(Pace.HitAnimMs, p.stats.hitInterval)
+        val oks = Iterator.continually {
+          s.run(50)
+          Option.when(Combat.attack(s.w, p, Dir.Up, World.Slack) == Outcome.Done)(s.w.now)
+        }.flatten.take(10).toVector
+        assertTrue(oks.last - oks.head >= 9L * gap - World.Slack)
+      },
+      test("正常节奏带 0~150 毫秒网络抖动：走路、攻击、施法都不被拒") {
+        val s  = sim()
+        val p  = join(s.w, "甲", Cell(30, 30), job = Job.Wizard)
+        s.flush()
+        val jitter = Vector(150, 0, 150, 0, 120, 30, 0, 150, 90, 10, 150, 0, 60, 140, 0, 150, 0, 0, 150, 75)
+        // 客户端按节奏发，每条在路上多耽搁 jitter 毫秒才到
+        def paced(every: Int)(act: => Boolean): Boolean =
+          val t0 = s.w.now + 1000
+          jitter.zipWithIndex.forall { (j, k) =>
+            s.w.tick(t0 + (k.toLong * every + j))
+            s.flush()
+            act
+          }
+        val walked = paced(Pace.WalkMs) {
+          val dir = if p.cell.x < 35 then Dir.Right else Dir.Left
+          s.cmd(p, GameCmd.Walk(p.cell, dir)).contains(ServerMsg.MoveOk)
+        }
+        val gap = math.max(Pace.HitAnimMs, p.stats.hitInterval)
+        val hit = paced(gap)(Combat.attack(s.w, p, Dir.Up, World.Slack) == Outcome.Done)
+        // 施法：只看「忙到」，冷却（火球术 800 毫秒、不带余量）每次清掉
+        val fireBall = SkillId(1)
+        p.skills += LearnedSkill(fireBall, 3, 0, None)
+        val dummy = put(s.w, "鸡", p.cell.step(Dir.Up, 3))
+        val cast = paced(Pace.SpellIntervalMs) {
+          p.mp = 1000
+          p.cooldown.clear()
+          dummy.hp = 1_000_000 // 打不死的靶子
+          Combat.cast(s.w, p, fireBall, SpellTarget(dummy.cell, Some(dummy)), World.Slack) == Outcome.Done
+        }
+        assertTrue(walked, hit, cast)
       }
     ),
     suite("非法指令被拒，不能凭空生成物品和金币")(

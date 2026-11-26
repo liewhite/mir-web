@@ -91,7 +91,7 @@ final class Placement(w: World):
         case m: Monster => monsterMoveMs(m)
         case _: Npc     => Pace.WalkMs
       setAction(a, if run then ActKind.Run else ActKind.Walk, dur, from = Some(from))
-      a.busyUntil = w.now + dur
+      a.busyFor(w.now, dur)
       a match
         case p: Player => afterPlayerMove(p, run)
         case _         => ()
