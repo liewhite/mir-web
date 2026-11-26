@@ -1,7 +1,7 @@
 package mir.client.render
 
 import mir.core.*
-import mir.data.{ActionInfo, MonsterActionTable, MonsterLook}
+import mir.data.{ActionInfo, GateLook, MonsterActionTable, MonsterLook}
 import mir.model.{ActKind, Cover, HitStyle, Sex}
 import mir.protocol.ActionView
 
@@ -20,6 +20,13 @@ object Frames:
     val die      = ActionInfo(536, 4, 4, 120, 0)
 
   val HumanFrames = 600
+
+  /**
+   * 门那格补画的图（#1322）：(图库, 帧号)，按格子左上角加图自带偏移画（同原版 TClEvent.DrawEvent）。
+   * 尸王的坑：原版 ClEvent.pas ET_DIGOUTZOMBI 画 WMon6 第 ZOMBIDIGUPDUSTBASE(420)+方向 帧，门上没有方向，固定用 0。
+   */
+  def gateLook(l: GateLook): (String, Int) = l match
+    case GateLook.ZombiePit => ("mon6", 420)
 
   def finished(a: ActionView, now: Millis): Boolean = now - a.startedAt >= a.duration
 

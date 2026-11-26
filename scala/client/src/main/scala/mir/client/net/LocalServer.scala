@@ -66,7 +66,8 @@ final class LocalServer(catalog: Catalog, assets: Assets, listener: LinkEvent =>
       val base = CharacterData.newbie(catalog, name, job, sex, uids)
       val strong = if hero then heroOf(base) else base
       val mined  = if miner then minerOf(strong) else strong
-      val data   = if gear180 then gear180Of(mined) else mined
+      val geared = if gear180 then gear180Of(mined) else mined
+      val data   = startAt.fold(geared)(p => geared.copy(place = p))
       chars :+= CharSummary(id, name, job, sex, data.level) -> data
       deliver(ServerMsg.CharList(chars.map(_._1).toList))
     case SessionCmd.DeleteChar(id) =>
@@ -91,6 +92,12 @@ final class LocalServer(catalog: Catalog, assets: Assets, listener: LinkEvent =>
   do
     val find = (n: String) => Option.when(n.equalsIgnoreCase(p.charName))(mir.social.Seen(p.charName, !p.isDead))
     society.handle(p.charName, s, mir.social.Directory.onlineOnly(find)).filter(_.to == p.charName).foreach(l => deliver(l.msg))
+
+  /** 地址带 at=图,x,y（如 `?local&at=H006,83,27`，#1322，本机看某张图某处用）：新建的角色就出生在那里；写错了照常出生。 */
+  private def startAt: Option[Place] =
+    Option(new dom.URLSearchParams(dom.window.location.search).get("at")).map(_.split(',')).collect {
+      case Array(m, x, y) if x.toIntOption.isDefined && y.toIntOption.isDefined => Place(MapId(m), Cell(x.toInt, y.toInt))
+    }
 
   /** 地址带 &hero：新建的角色 40 级、学会本职业全部技能（3 级，前 8 个按 F1–F8）、左手镯戴护身符、包裹里放灰黄药粉（本机看技能效果用）。 */
   private def hero: Boolean = dom.window.location.search.contains("hero")

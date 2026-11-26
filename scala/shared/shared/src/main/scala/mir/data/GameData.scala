@@ -67,8 +67,22 @@ object MapDef:
   private given JsonCodec[Set[MapFlag]] = MapFlag.setCodec
   given JsonCodec[MapDef]               = DeriveJsonCodec.gen
 
-/** 地图之间的通道：踩到 from 图的 (x, y) 就到 to 图的 (tx, ty)。 */
-final case class RouteDef(from: MapId, x: Int, y: Int, to: MapId, tx: Int, ty: Int):
+/**
+ * 门在地上的样子：原版有的门不是地图里画好的楼梯口、洞口，而是事件留在地上的东西，地图图块里没有，
+ * 由客户端在门那格补画，好让玩家看得见门在哪（#1322）。图号见客户端 Frames.gateLook。
+ */
+enum GateLook:
+  /** 尸王钻出地面留下的坑（幻境六层去七层：原版踩石墓尸王的坑；原版 ClEvent.pas ET_DIGOUTZOMBI） */
+  case ZombiePit
+
+object GateLook:
+  given JsonCodec[GateLook] = EnumCodec.byName(
+    values,
+    { case ZombiePit => "zombie-pit" }
+  )
+
+/** 地图之间的通道：踩到 from 图的 (x, y) 就到 to 图的 (tx, ty)；look 是门那格要补画的东西（没有就是地图本身画着门）。 */
+final case class RouteDef(from: MapId, x: Int, y: Int, to: MapId, tx: Int, ty: Int, look: Option[GateLook] = None):
   def at: Cell     = Cell(x, y)
   def target: Cell = Cell(tx, ty)
 

@@ -3,7 +3,7 @@ package mir.client.render
 import mir.client.assets.{Assets, LoadCache, Loaded, MapData, Sprite, SpriteStore}
 import mir.client.assets.MapData.{GroundBlock, UnitX, UnitY}
 import mir.core.*
-import mir.data.Catalog
+import mir.data.{Catalog, GateLook}
 import mir.model.{ActKind, Affliction, Aura, BodyTint, Cover, FieldKind, Mood}
 import mir.protocol.*
 import mir.rules.{GearTiers, ItemKind, PkStanding}
@@ -174,6 +174,8 @@ final class Renderer(
           drawActor(a, s, y).foreach(newHits += _)
         }
     hits = newHits.result()
+    // 门的样子画在物件上面：这类门常在建筑脚下的窝里（如幻境六层 (83,25) 在圆顶门洞里），按行画会被建筑盖住、还是看不见
+    gateLooks(s.map.id).foreach(drawGateLook)
 
     drawEffects(s)
     drawOverlays(s)
@@ -211,6 +213,16 @@ final class Renderer(
       val img     = ground(map.asset, bx, by)
       val visible = bx >= bx0 && bx <= bx1 && by >= by0 && by <= by1
       if visible then img.foreach(i => ctx.drawImage(i, bx * bw - camX, by * bh - camY, bw + 1.0, bh + 1.0))
+
+  /** 这张图上要补画样子的门（地图图块里没画的，如尸王的坑，#1322）；按图缓存，进图后不变。 */
+  private val gateLooksByMap = mutable.HashMap.empty[MapId, List[(Cell, GateLook)]]
+
+  private def gateLooks(map: MapId): List[(Cell, GateLook)] =
+    gateLooksByMap.getOrElseUpdate(map, catalog.routesByMap.getOrElse(map, Nil).flatMap(r => r.look.map(r.at -> _)))
+
+  private def drawGateLook(at: Cell, look: GateLook): Unit =
+    val (lib, idx) = Frames.gateLook(look)
+    sprites.sprite(lib, idx).foreach(sp => blit(sp, at.x * UnitX - camX + sp.ox, at.y * UnitY - camY + sp.oy))
 
   private def drawGroundItem(g: GroundView): Unit =
     val look = g.thing match

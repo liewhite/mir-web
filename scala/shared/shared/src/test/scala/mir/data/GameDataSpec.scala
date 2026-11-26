@@ -77,6 +77,9 @@ object GameDataSpec extends ZIOSpecDefault:
         fire.job == mir.model.Job.Wizard,
         fire.needLevel == SkillTiers(7, 11, 16),
         gate == RouteDef(MapId("0"), 346, 186, MapId("0122"), 11, 41),
+        // 幻境六层去七层的门地上补画尸王的坑（#1322），别的门不补画
+        catalog.data.routes.filter(_.look.isDefined) ==
+          List(RouteDef(MapId("H006"), 83, 25, MapId("H007"), 161, 172, Some(GateLook.ZombiePit))),
         catalog.data.guards.head.direction == Dir.UpLeft,
         catalog.expToNext(1).contains(Exp(100)),
         catalog.expToNext(47).isDefined,

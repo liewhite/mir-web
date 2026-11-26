@@ -5,6 +5,7 @@
 - 门：GitHub dreamHeroK/Mir200 的 Envir/MapInfo.txt（和 2004 年攻略、旧图楼梯口对得上），抄在 ROUTES。
   七层去八层原版要穿过「幻境迷宫」，迷宫地图和走法找不到原版数据（用户 11-25 定：迷宫要做就和原版一样），
   这里照那份 MapInfo 直接通八层；三层去四层原版找幻境向导对话、六层去七层原版踩石墓尸王的坑，都做成普通的门。
+  六层那扇门地上没画东西，在门上补画尸王钻出来的坑（LOOKS，#1322）。
 - 刷怪：没有原版刷怪表（用户 11-26 认可的做法，#1245/#1317）：沿用旧图原来的刷怪点（位置、范围、数量、间隔），
   怪换成攻略里那层的怪（旧图本来就刷的照旧，别的按顺序轮换）；旧图的 boss 和不在名单里的怪都换掉。
   小 boss（攻略写的）和每层另加的 2 个 boss 刷在整张图随机位置。数值、爆率都用数据表里同名怪的。
@@ -58,6 +59,8 @@ ROUTES = [
     ("H008", 21, 25, "H009", 289, 150), ("H009", 290, 151, "H008", 22, 25),
     ("H009", 149, 103, "H010", 155, 157), ("H010", 155, 156, "H009", 151, 105),
 ]
+# 门那格补画的样子（地图里没画门的，取值见 scala mir.data.GateLook）：(图, x, y) -> 样子
+LOOKS = {("H006", 83, 25): "zombie-pit"}
 
 
 def main() -> None:
@@ -94,7 +97,10 @@ def main() -> None:
     for a, x, y, b, tx, ty in ROUTES:
         if not walkable(a, x, y) or not walkable(b, tx, ty):
             raise SystemExit(f"门不对：{a} {x},{y} -> {b} {tx},{ty}")
-        routes.append({"from": a, "x": x, "y": y, "to": b, "tx": tx, "ty": ty})
+        look = {"look": LOOKS[(a, x, y)]} if (a, x, y) in LOOKS else {}
+        routes.append({"from": a, "x": x, "y": y, "to": b, "tx": tx, "ty": ty} | look)
+    if stray := set(LOOKS) - {(a, x, y) for a, x, y, *_ in ROUTES}:
+        raise SystemExit(f"LOOKS 对不上门：{sorted(stray)}")
 
     out = {
         "_说明": "幻境一层～十层（#1317），由 tools/import_huanjing.py 生成，格式同 ref/Mir176 catalog.json，见 tools/catalog.py",
