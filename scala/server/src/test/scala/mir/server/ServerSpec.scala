@@ -136,8 +136,10 @@ object ServerSpec extends ZIOSpecDefault:
         // 建角色规则：重名、超过两个
         b.send(SessionCmd.CreateChar("阿狸", Job.Wizard, Sex.Female))
         val dupName = b.await("重名被拒") { case ServerMsg.Refused(r) => r }
-        a.send(SessionCmd.CreateChar("阿狸二号", Job.Wizard, Sex.Female))
+        a.send(SessionCmd.CreateChar("Ali", Job.Wizard, Sex.Female))
         a.await("第二个角色") { case ServerMsg.CharList(cs) if cs.size == 2 => () }
+        b.send(SessionCmd.CreateChar("ALI", Job.Wizard, Sex.Female))
+        val dupCase = b.await("只差大小写也算重名（#1343）") { case ServerMsg.Refused(r) => r }
         a.send(SessionCmd.CreateChar("阿狸三号", Job.Wizard, Sex.Female))
         val tooMany = a.await("第三个被拒") { case ServerMsg.Refused(r) => r }
         a.send(SessionCmd.DeleteChar(aChar))
@@ -190,10 +192,10 @@ object ServerSpec extends ZIOSpecDefault:
         a4.send(GameCmd.Teleport(TeleportRef(0)))
         val home = a4.await("独自传回比奇") { case ServerMsg.EnterMap(_, m, _, _, _) if m == MapId("0") => m }
 
-        (dupName, tooMany, delOnline, aSeesB, bSeesA, dest, walked, hit, back, kicked, again, a2.closed, moved, stillThere, home)
-      }.map { case (dupName, tooMany, delOnline, aSeesB, bSeesA, dest, walked, hit, back, kicked, again, oldClosed, moved, stillThere, home) =>
+        (dupName, dupCase, tooMany, delOnline, aSeesB, bSeesA, dest, walked, hit, back, kicked, again, a2.closed, moved, stillThere, home)
+      }.map { case (dupName, dupCase, tooMany, delOnline, aSeesB, bSeesA, dest, walked, hit, back, kicked, again, oldClosed, moved, stillThere, home) =>
         assertTrue(
-          dupName.contains("已被使用"), tooMany.contains("最多"), delOnline.contains("在线"),
+          dupName.contains("已被使用"), dupCase.contains("已被使用"), tooMany.contains("最多"), delOnline.contains("在线"),
           aSeesB match { case Look.Human(n, Job.Taoist, _, _, _, _, _) => n == "小波"; case _ => false },
           bSeesA match { case Look.Human(n, Job.Warrior, _, _, _, _, _) => n == "阿狸"; case _ => false },
           walked == dest, hit == ActKind.Attack, back == dest, kicked.nonEmpty, again == dest, oldClosed,
