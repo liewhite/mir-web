@@ -204,6 +204,7 @@ final class Vitals(w: World):
   /**
    * 按爆率表掉落（概率按 Rates 换算，boss 的高级装备另有保底；金币数量 amount/2 + Random(amount)；装备照原版可能是极品，见 RandomUpgrade）。
    * 先把每行都掷完，物品超过 Rates.maxDropsPerKill 件时只留最稀有的（DropRules.cap，#1241）；金币不占名额。
+   * 金币和药直接进归属者身上（DropRules.toOwner，#1328），包裹放不下的和其余物品掉地上。
    */
   private def dropLoot(m: Monster, owner: Player): Unit =
     given rng: Rng = w.rngOf
@@ -214,18 +215,21 @@ final class Vitals(w: World):
       rng.random(1_000_000) / 1_000_000.0 < Rates.dropChance(rank, d, itemDef)
     }
     val (gold, items) = hits.partition(_.isGold)
-    gold.foreach { d =>
+    val coins = gold.flatMap { d =>
       val g = d.amount / 2 + rng.random(d.amount)
-      if g > 0 then w.dropAt(m.cell, Loot.Coins(Gold(g)), ward)
+      Option.when(g > 0)(Loot.Coins(Gold(g)))
     }
     val pieces = items.flatMap(d => w.catalog.item(d.item).toList.flatMap(DropRules.pieces(d, _)))
-    DropRules.cap(pieces).foreach { p =>
+    val things = DropRules.cap(pieces).map { p =>
       val fresh = ItemInstance.fresh(w.newUid(), p.item)
       // 可叠的一叠（#1159）：护身符、药粉的数量是次数（#1213）；不可叠的装备可能是极品
       val inst =
         if ItemKind.stacks(p.item) then Charges.settle(p.item, fresh.copy(count = p.count))
         else RandomUpgrade.monsterDrop(fresh, p.item)
-      w.dropAt(m.cell, Loot.Item(inst), ward)
+      Loot.Item(inst) -> DropRules.toOwner(p.item)
+    }
+    (coins.map(_ -> true) ++ things).foreach { (loot, toOwner) =>
+      if !(toOwner && PlayerOps.receive(w, owner, loot).isRight) then w.dropAt(m.cell, loot, ward)
     }
 
   // ---------------- 回血回蓝、血上限 ----------------

@@ -486,23 +486,45 @@ object WorldSpec extends ZIOSpecDefault:
           s.views(a.id).ground.isEmpty, s.views(b.id).ground.isEmpty
         )
       },
-      test("一只怪最多掉 10 件：掷中 13 件时留最稀有的，金币照掉不占名额（#1241）") {
+      test("一只怪最多掉 10 件：掷中 13 件时留最稀有的，金币照掉不占名额（#1241）；金币和药直接进归属者身上（#1328）") {
         def row(n: String, num: Int, den: Int, amount: Int = 1) = DropDef(ItemName(n), num, den, amount)
         // 12 行药各一叠（必中）+ 裁决之杖（原版 1/20，×20 必中，最稀有）+ 金币
         val rows = List.fill(12)(row("金创药(小量)", 1, 1)) ++ List(row("裁决之杖", 1, 20), row(DropDef.GoldName.value, 1, 1, 100))
         val cat  = Catalog(catalog.data.copy(drops = catalog.data.drops + (MonsterName("鸡") -> rows)))
         val w    = World(cat, testMap, Terrain.open(testMap.width, testMap.height), Rng.seeded(1), UidSource.counter(1_000_000), Millis(0))
         val p    = join(w, "甲", Cell(20, 30))
+        def pots = (p.bag.iterator ++ p.belt.iterator).flatten.filter(_.name == ItemName("金创药(小量)")).map(_.count).sum
+        val (pots0, gold0) = (pots, p.gold)
         val hen  = put(w, "鸡", Cell(21, 30))
         w.vitals.damage(hen, 100_000, Some(p.id))
         val loot  = w.groundItems.map(_.loot).toList
         val items = loot.collect { case Loot.Item(it) => it.name.value }
         assertTrue(
           hen.dead,
-          items.size == 10,
-          items.count(_ == "裁决之杖") == 1,
-          items.count(_ == "金创药(小量)") == 9,
-          loot.count { case Loot.Coins(_) => true; case _ => false } == 1
+          items == List("裁决之杖"),
+          pots - pots0 == 9,
+          p.gold.value > gold0.value,
+          loot.count { case Loot.Coins(_) => true; case _ => false } == 0
+        )
+      },
+      test("怪掉的药放不下（包裹和快捷栏满了）照旧掉地上，带归属保护（#1328）") {
+        val rows = List(DropDef(ItemName("金创药(中量)"), 1, 1, 1), DropDef(DropDef.GoldName, 1, 1, 100))
+        val cat  = Catalog(catalog.data.copy(drops = catalog.data.drops + (MonsterName("鸡") -> rows)))
+        val w    = World(cat, testMap, Terrain.open(testMap.width, testMap.height), Rng.seeded(1), UidSource.counter(1_000_000), Millis(0))
+        val p    = join(w, "甲", Cell(20, 30))
+        p.settings = p.settings.copy(autoPickup = false)
+        val pot  = cat.item(ItemName("金创药(中量)")).get
+        p.bag.indices.foreach(i => p.bag(i) = w.newItem(ItemName("木剑")))
+        p.belt.indices.foreach(i => p.belt(i) = w.newItem(ItemName("木剑")))
+        val gold0 = p.gold
+        val hen  = put(w, "鸡", Cell(21, 30))
+        w.vitals.damage(hen, 100_000, Some(p.id))
+        val ground = w.groundItems.toList
+        assertTrue(
+          !Inventory.hasRoom(p, pot),
+          ground.map(_.loot).collect { case Loot.Item(it) => it.name } == List(pot.name),
+          ground.forall(_.ward.exists(_.owner == "甲")),
+          p.gold.value > gold0.value
         )
       },
       test("归属照原版（#1158）：先打的人拿经验和掉落，补最后一刀的拿不走；保护 1 分钟内只有他和队友捡得起") {

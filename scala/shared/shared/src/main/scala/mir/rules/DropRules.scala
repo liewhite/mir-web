@@ -26,5 +26,11 @@ object DropRules:
         .flatMap((_, same) => Rng.shuffle(same))
         .take(Rates.maxDropsPerKill)
 
+  /**
+   * 怪掉的这件直接进归属者身上、不落地（用户 11-26 #1328 定）：药（含捆装药，即自动捡物里「药品」那类）是；
+   * 金币不经过这里，也一律直接进。其余照旧掉地上。进不去（包裹满了）的照旧落地。
+   */
+  def toOwner(item: ItemDef): Boolean = ItemKind.pickupKind(item) == mir.model.PickupKind.Potion
+
   /** 原版爆率（不乘倍率），越小越稀有；比值相同的算同一档（如 1/10 和 2/20）。 */
   private def rarity(p: Piece): Double = p.row.numerator.toDouble / p.row.denominator

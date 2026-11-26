@@ -149,27 +149,35 @@ object PlayerOps:
   def pickUp(w: World, p: Player, take: Loot => Boolean = _ => true): Boolean =
     val (here, warded) = w.groundItems.filter(g => g.cell == p.cell && take(g.loot)).toVector.partition(mayPick(w, p, _))
     val got = here.count { g =>
-      g.loot match
-        case Loot.Coins(amount) =>
-          w.out.selfSound(p, Sounds.money)
-          p.gold = p.gold + amount
-          w.out.notice(p, s"捡到金币 ${amount.value}", Tone.Item)
+      receive(w, p, g.loot) match
+        case Left(why) =>
+          w.out.notice(p, why, Tone.Bad)
+          false
+        case Right(()) =>
           w.removeGround(g.id)
           true
-        case Loot.Item(it) =>
-          w.catalog.item(it.name).foreach(d => w.out.selfSound(p, ItemSounds.click(d)))
-          defOf(w, it).flatMap(fits(p, _)) match
-            case Left(why) =>
-              w.out.notice(p, why, Tone.Bad)
-              false
-            case Right(()) =>
-              addToBag(w, p, it)
-              w.out.notice(p, s"捡到 ${label(it)}", Tone.Item)
-              w.removeGround(g.id)
-              true
     }
     if got == 0 && warded.nonEmpty then w.out.notice(p, "在一定时间以内无法捡起此物品！", Tone.Bad)
     got > 0
+
+  /**
+   * 把一份东西收到身上（金币加钱，物品进包裹），带捡到的声音和提示；放不下返回原因、什么都不动。
+   * 捡起地上的和怪掉的金币、药直接进身上（#1328）共用。
+   */
+  private[world] def receive(w: World, p: Player, loot: Loot): Either[String, Unit] = loot match
+    case Loot.Coins(amount) =>
+      w.out.selfSound(p, Sounds.money)
+      p.gold = p.gold + amount
+      w.out.notice(p, s"捡到金币 ${amount.value}", Tone.Item)
+      Right(())
+    case Loot.Item(it) =>
+      for
+        d <- defOf(w, it)
+        _ <- fits(p, d)
+      yield
+        w.out.selfSound(p, ItemSounds.click(d))
+        addToBag(w, p, it): Unit
+        w.out.notice(p, s"捡到 ${label(it)}", Tone.Item)
 
   /** 双击物品：喝药、读书、用卷轴、穿装备、拆药包。 */
   def useItem(w: World, p: Player, uid: ItemUid): Result =
