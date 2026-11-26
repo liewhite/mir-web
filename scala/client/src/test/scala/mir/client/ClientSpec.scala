@@ -325,6 +325,58 @@ object ClientSpec extends ZIOSpecDefault:
       val mate = r.client.actor(other).get
       assertTrue(before, r.client.teammate(mate), !r.client.canAttack(mate))
     },
+    test("连点攻击键（关着按住攻击）：每刀都被服务端收下，间隔等于攻击间隔（#1321：原来 600 毫秒发一刀、一半被丢、实际 1200）") {
+      val r = Rig()
+      r.join(Cell(10, 10))
+      WorldAccess.settings(r.world, r.me, _.copy(stickyAttack = false))
+      val dummy = WorldAccess.spawn(r.world, catalog.monster(MonsterName("鸡")).get, Cell(11, 10)).get
+      r.run(500)
+      r.ctl.tapActor(dummy.id)
+      val hits = scala.collection.mutable.LinkedHashSet.empty[Millis]
+      (0 until 200).foreach { _ =>
+        WorldAccess.setHp(dummy, 1_000_000)
+        if r.ctl.intent == mir.client.game.Intent.Idle then r.ctl.attack()
+        r.run(50)
+        r.client.view.self.map(_.action).filter(a => a.kind == ActKind.Attack || a.kind == ActKind.Heavy).foreach(a => hits += a.startedAt)
+      }
+      val sent = r.sent.count(_.isInstanceOf[GameCmd.Attack])
+      val gaps = hits.toVector.sliding(2).collect { case Vector(a, b) => b - a }.toVector
+      val want = r.client.view.stats.get.stats.hitInterval.toLong
+      assertTrue(sent == hits.size, hits.size >= 9, gaps.forall(g => g >= want && g <= want + 50))
+    },
+    test("砍完马上推摇杆走开（按住攻击开着、服务端替你接着砍）：不被拉回（#1321）") {
+      val r = Rig()
+      r.join(Cell(10, 10))
+      val dummy = WorldAccess.spawn(r.world, catalog.monster(MonsterName("鸡")).get, Cell(9, 10)).get
+      r.run(500)
+      r.ctl.tapActor(dummy.id)
+      r.ctl.attack()
+      (0 until 40).foreach { _ =>
+        WorldAccess.setHp(dummy, 1_000_000)
+        r.run(50)
+      }
+      val attacking = r.client.view.self.exists(a => a.action.kind == ActKind.Attack || a.action.kind == ActKind.Heavy)
+      r.ctl.stick(Dir.Right, run = false)
+      (0 until 40).foreach { _ =>
+        WorldAccess.setHp(dummy, 1_000_000)
+        r.run(50)
+      }
+      assertTrue(attacking, r.client.motion.blockedUntil == Millis.zero, r.serverCell.x > 10)
+    },
+    test("自己下一个动作的时刻（#1321）：自己发的按发出时刻+服务端的忙；视野里的动作按开始时刻+忙−允许早到+误差余地，取晚的") {
+      import mir.rules.Pace
+      def act(kind: ActKind, at: Long, dur: Int) = ActionView(kind, Millis(at), dur)
+      val own     = SelfPace().sent(Millis(1000), Pace.hitBusyMs(900))
+      val ownHit  = own.readyAt(act(ActKind.Attack, 1030, Pace.HitAnimMs), 900)
+      val autoHit = SelfPace().readyAt(act(ActKind.Attack, 1000, Pace.HitAnimMs), 900)
+      val autoMag = SelfPace().readyAt(act(ActKind.Spell, 1000, Pace.SpellAnimMs), 900)
+      val fast    = SelfPace().readyAt(act(ActKind.Attack, 1000, Pace.HitAnimMs), 300)
+      val walking = SelfPace().readyAt(act(ActKind.Walk, 1000, Pace.WalkMs), 900)
+      assertTrue(
+        ownHit == Millis(1900), autoHit == Millis(1000 + 900 - Pace.EarlyMs + SelfPace.LagMs), autoMag == Millis(1000 + 800 - Pace.EarlyMs + SelfPace.LagMs),
+        fast == Millis(1510), walking == Millis.zero
+      )
+    },
     test("点全景地图走过去：寻路走到那一格停下") {
       val r = Rig(blocked = (8 to 14).map(y => Cell(12, y)).toSet)
       r.join(Cell(10, 10))

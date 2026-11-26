@@ -30,8 +30,6 @@ final class Controller(client: GameClient):
   import Controller.*
 
   var intent: Intent = Intent.Idle
-  /** 下一次可以发攻击的时刻（服务端时钟；攻击动画没完别再发） */
-  private var nextAttack = Millis.zero
 
   // ---------------- 输入入口 ----------------
 
@@ -94,7 +92,7 @@ final class Controller(client: GameClient):
         t
       case SkillAim.Friend => lockedInReach(client.isFriend).map(_.id)
     val cell = target.flatMap(client.actor).orElse(client.self).map(_.cell)
-    cell.foreach(c => client.send(GameCmd.Cast(id, target, c)))
+    cell.foreach(client.cast(id, target, _))
     // 持续施法（#1308）由服务端接着放：别再走过去近身打（普通攻击会把它停掉）
     if target.isDefined && sustains(id) then
       intent match
@@ -162,18 +160,15 @@ final class Controller(client: GameClient):
           case None => intent = Intent.Idle
           // 贴身，或开着刺杀时隔一格直线，就地出刀；都不是才走到最近能出刀的格子（#1264）
           case Some(a) if MeleeReach.canStrike(reach, me.cell, a.cell, ground) =>
-            if now >= nextAttack && client.motion.ready(now) && client.actionDone(me, now) then
-              client.send(GameCmd.Attack(me.cell.dirTo(a.cell), Some(t)))
-              nextAttack = now + Pace.HitAnimMs + AttackGapMs
+            if client.motion.ready(now) && client.actionDone(me, now) then
+              client.attack(me.cell.dirTo(a.cell), Some(t))
               // 服务端「按住攻击」关着时只打一下
               if !client.view.settings.stickyAttack then intent = Intent.Idle
           case Some(a) => follow(me.cell, a.cell, MeleeReach.path(reach, client.passable, ground, me.cell, a.cell, PathNodes))
       // 被挤开、自动捡物走开了、换了武器：这个方向不再是矿壁就停
       case Intent.Dig(dir) if !client.rocksAround.contains(dir) => intent = Intent.Idle
       case Intent.Dig(dir) =>
-        if now >= nextAttack && client.motion.ready(now) && client.actionDone(me, now) then
-          client.send(GameCmd.Attack(dir, None))
-          nextAttack = now + Pace.HitAnimMs + AttackGapMs
+        if client.motion.ready(now) && client.actionDone(me, now) then client.attack(dir, None)
       case Intent.GoTo(route) =>
         Travel.follow(route, me.cell) match
           case Travel.Step.Arrived => intent = Intent.Idle
@@ -204,6 +199,4 @@ final class Controller(client: GameClient):
 object Controller:
   /** 离 NPC 几格就能对话（服务端允许 Pace.NpcRange 格，走近一点更像原版） */
   val TalkRange: Int = math.min(3, Pace.NpcRange)
-  /** 两次攻击之间在动画之外多等的毫秒（服务端还会按攻速再拒） */
-  val AttackGapMs = 90L
   val PathNodes   = 3000

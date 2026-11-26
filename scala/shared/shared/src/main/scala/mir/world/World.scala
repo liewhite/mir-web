@@ -50,11 +50,8 @@ object Company:
 object World:
   /** 视野：玩家能看到身边多少格以内（切比雪夫距离） */
   val ViewRange = 14
-  /**
-   * 指令到早了也算数的余量（网络抖动），毫秒。#1319 起提前量不累积（Actor.busyFor），作弊最多一次性快这么多，
-   * 所以放宽到 300（原 200），网络忽快忽慢、砍完马上走时少被拒（用户 11-26 要求尽量不影响体验）。
-   */
-  val Slack = 300
+  /** 指令到早了也算数的余量（网络抖动），毫秒；客户端也按它排动作，数值和缘由见 Pace.EarlyMs */
+  val Slack = mir.rules.Pace.EarlyMs
   val CorpseMs    = 10_000L
   val ItemKeepMs  = 10 * 60_000L
 

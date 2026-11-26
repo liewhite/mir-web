@@ -5,8 +5,8 @@ import mir.client.net.{LinkEvent, ServerClock, Transport}
 import mir.client.render.*
 import mir.core.*
 import mir.data.Catalog
-import mir.model.{ActKind, GearTier, ItemBonus}
-import mir.rules.{GearTiers, Upgrade}
+import mir.model.{GearTier, ItemBonus}
+import mir.rules.{GearTiers, Pace, Rules, Skill, SkillUse, Upgrade}
 import mir.protocol.*
 import mir.view.ViewState
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits.*
@@ -38,6 +38,8 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
 
   var view: ViewState    = ViewState()
   var motion: SelfMotion = SelfMotion()
+  /** 自己出刀、施法后什么时候能做下一个动作（断线、进图清空：服务端重启后时钟不接着算） */
+  private var pace = SelfPace()
   var fx: Transients     = Transients()
   /** 当前地图的格子数据（进图后下载好才有） */
   var map: Option[MapData] = None
@@ -83,6 +85,7 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
       ping()
     case LinkEvent.Down(why) =>
       motion = SelfMotion()
+      pace = SelfPace()
       ui.link(Some(why))
     case LinkEvent.Received(m) => onMessage(m)
 
@@ -105,6 +108,7 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
           case _                                 => ()
         clock.roughly(now, local)
         motion = SelfMotion()
+        pace = SelfPace()
         fx = fx.cleared
         locked = None
         announced = Set.empty
@@ -320,9 +324,33 @@ final class GameClient(catalog: Catalog, env: ClientEnv):
             if s.dir != dir then send(GameCmd.Turn(dir))
             false
 
-  /** 自己在做的攻击、施法等动作完了没（服务端在动作里不让走）。 */
-  def actionDone(s: ActorView, now: Millis): Boolean =
-    s.action.kind == ActKind.Walk || s.action.kind == ActKind.Run || Frames.finished(s.action, now)
+  /** 自己在做的攻击、施法等动作完了没、服务端不再忙了没（忙的时候来的攻击被丢、走路被拉回，#1321）。 */
+  def actionDone(s: ActorView, now: Millis): Boolean = pace.ready(s.action, hitInterval, now)
+
+  /** 朝 dir 出一刀（挖矿也是它）：调用方先确认 actionDone。 */
+  def attack(dir: Dir, target: Option[ActorId]): Unit =
+    send(GameCmd.Attack(dir, target))
+    pace = pace.sent(serverNow, Pace.hitBusyMs(hitInterval))
+
+  /**
+   * 放技能。看得出服务端会收（进施法动作的魔法、不在冷却、蓝够、不忙）就从现在起按施法间隔排下一个动作；
+   * 其余等服务端的动作回来再算（猜错了会白卡住走路一会儿）。
+   */
+  def cast(skill: SkillId, target: Option[ActorId], cell: Cell): Unit =
+    val now = serverNow
+    val likely = self.exists(actionDone(_, now)) && castable(skill, now)
+    send(GameCmd.Cast(skill, target, cell))
+    if likely then pace = pace.sent(now, Pace.SpellIntervalMs)
+
+  private def castable(id: SkillId, now: Millis): Boolean =
+    (for
+      s     <- Skill.of(id) if s.use == SkillUse.Spell
+      known <- view.skills.find(_.id == id)
+      d     <- catalog.skill(id)
+      mp    <- view.stats.map(_.mp.value)
+    yield view.cooldowns.get(id).forall(_ <= now) && mp >= Skill.manaCost(d, known.level)).getOrElse(false)
+
+  private def hitInterval: Int = view.stats.fold(Rules.hitInterval(0))(_.stats.hitInterval)
 
 object GameClient:
   val RecentKeep = 20

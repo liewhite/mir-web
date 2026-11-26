@@ -64,7 +64,7 @@ object Combat:
   /** 拿鹤嘴锄朝矿壁挥（原版 CM_HEAVYHIT 挖矿：只出重击动作，不算剑术）。 */
   private def dig(w: World, p: Player, dir: Dir): Unit =
     w.grid.setAction(p, ActKind.Heavy, Pace.HitAnimMs)
-    p.busyFor(w.now, math.max(Pace.HitAnimMs, p.stats.hitInterval))
+    p.busyFor(w.now, Pace.hitBusyMs(p.stats.hitInterval))
     w.out.sound(p.cell, Sounds.weaponSwing(w.vitals.weaponShape(p)))
     w.quarry.dig(p, dir)
 
@@ -76,7 +76,7 @@ object Combat:
       else if p.longHitOn && p.knows(Skill.LongHit) then HitStyle.Long
       else HitStyle.Normal
     w.grid.setAction(p, if style == HitStyle.Normal then ActKind.Attack else ActKind.Heavy, Pace.HitAnimMs, hit = Some(style))
-    p.busyFor(w.now, math.max(Pace.HitAnimMs, p.stats.hitInterval))
+    p.busyFor(w.now, Pace.hitBusyMs(p.stats.hitInterval))
     w.out.sound(p.cell, Sounds.weaponSwing(w.vitals.weaponShape(p)))
     val styleSound = style match
       case HitStyle.Power  => Some(if p.sex == Sex.Female then Sounds.yedoWoman else Sounds.yedoMan)
@@ -160,7 +160,8 @@ object Combat:
           case None => Outcome.Refused("这个技能还没做")
           case Some(skill) =>
             if p.dead then Outcome.Refused("你已经死了")
-            else if w.now + slack < p.busyUntil || p.cooldown.get(skillId).exists(_ > w.now) then Outcome.Busy
+            // 冷却和「忙到」一样容忍早到 slack 毫秒，下一次冷却从原来的到期时刻接着算，提前量不累积（#1321）
+            else if w.now + slack < p.busyUntil || p.cooldown.get(skillId).exists(_ > w.now + slack) then Outcome.Busy
             else
               val cost = Skill.manaCost(d, s.level)
               if p.mp < cost then Outcome.Refused("魔法值不够")
@@ -170,7 +171,10 @@ object Combat:
                 val handler = SkillHandlers.of(skill)
                 def paid(): Unit =
                   if skill.costsMana then w.vitals.spendMp(p, cost)
-                  skill.cooldownMs(d).foreach(ms => p.cooldown(skillId) = w.now + ms)
+                  skill.cooldownMs(d).foreach { ms =>
+                    val from = p.cooldown.get(skillId).filter(_ > w.now).getOrElse(w.now)
+                    p.cooldown(skillId) = from + ms
+                  }
                 handler.cast(SpellCtx(w, p, skill, s, d, t, tgt.cell)) match
                   case e @ (Effect.Cast | Effect.Spent) =>
                     paid()

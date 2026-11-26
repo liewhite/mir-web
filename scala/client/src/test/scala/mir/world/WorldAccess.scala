@@ -11,3 +11,10 @@ object WorldAccess:
   def adopt(w: World, m: Monster, owner: mir.core.ActorId): Unit =
     m.master = Some(owner)
     w.player(owner).foreach(_.pets += m.id)
+
+  /** 把怪的血设成 hp（做打不死的靶子）。 */
+  def setHp(m: Monster, hp: Int): Unit = m.hp = hp
+
+  /** 角色设置（如关掉「按住攻击」）。 */
+  def settings(w: World, id: mir.core.ActorId, f: mir.model.CharSettings => mir.model.CharSettings): Unit =
+    w.player(id).foreach(p => p.settings = f(p.settings))

@@ -738,17 +738,37 @@ object WorldSpec extends ZIOSpecDefault:
         }
         val gap = math.max(Pace.HitAnimMs, p.stats.hitInterval)
         val hit = paced(gap)(Combat.attack(s.w, p, Dir.Up, World.Slack) == Outcome.Done)
-        // 施法：只看「忙到」，冷却（火球术 800 毫秒、不带余量）每次清掉
+        // 施法：「忙到」和冷却（火球术 800 毫秒）都容忍抖动（#1321）
         val fireBall = SkillId(1)
         p.skills += LearnedSkill(fireBall, 3, 0, None)
         val dummy = put(s.w, "鸡", p.cell.step(Dir.Up, 3))
-        val cast = paced(Pace.SpellIntervalMs) {
+        def castAt(skill: SkillId) =
           p.mp = 1000
-          p.cooldown.clear()
           dummy.hp = 1_000_000 // 打不死的靶子
-          Combat.cast(s.w, p, fireBall, SpellTarget(dummy.cell, Some(dummy)), World.Slack) == Outcome.Done
-        }
-        assertTrue(walked, hit, cast)
+          Combat.cast(s.w, p, skill, SpellTarget(dummy.cell, Some(dummy)), World.Slack) == Outcome.Done
+        val cast = paced(Pace.SpellIntervalMs)(castAt(fireBall))
+        // 冷却比施法间隔长的（雷电术 1000 毫秒）按冷却的节奏发
+        val thunder = SkillId(11)
+        p.skills += LearnedSkill(thunder, 3, 0, None)
+        val cd = mir.rules.Skill.of(thunder).flatMap(sk => s.w.catalog.skill(thunder).flatMap(sk.cooldownMs)).get
+        val cooled = paced(cd)(castAt(thunder))
+        assertTrue(walked, hit, cast, cooled, cd > Pace.SpellIntervalMs)
+      },
+      test("每次都抢早发雷电术（冷却 1000）：10 次至少花 9×冷却−余量 毫秒（#1321 冷却加了余量也不累积）") {
+        val s  = sim()
+        val p  = join(s.w, "甲", Cell(30, 30), job = Job.Wizard)
+        s.flush()
+        val thunder = SkillId(11)
+        p.skills += LearnedSkill(thunder, 3, 0, None)
+        val dummy = put(s.w, "鸡", p.cell.step(Dir.Up, 3))
+        val cd    = mir.rules.Skill.of(thunder).flatMap(sk => s.w.catalog.skill(thunder).flatMap(sk.cooldownMs)).get
+        val oks = Iterator.continually {
+          s.run(50)
+          p.mp = 1000
+          dummy.hp = 1_000_000
+          Option.when(Combat.cast(s.w, p, thunder, SpellTarget(dummy.cell, Some(dummy)), World.Slack) == Outcome.Done)(s.w.now)
+        }.flatten.take(10).toVector
+        assertTrue(oks.last - oks.head >= 9L * cd - World.Slack)
       }
     ),
     suite("非法指令被拒，不能凭空生成物品和金币")(
