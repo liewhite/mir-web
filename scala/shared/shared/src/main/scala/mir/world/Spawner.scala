@@ -57,16 +57,18 @@ final class Spawner(w: World, start: Millis):
     (alive, due.toList.flatMap((i, at) => byIndex.get(i).map(FrozenRefill(_, at))))
 
   /**
-   * 开图后接上快照：放回活着的野怪（原位被占就放附近）、改回补怪时刻。认不出的刷怪点（数据表改过）的怪丢掉、
+   * 开图后接上快照：放回活着的野怪（原位被占就放附近）、改回补怪时刻。刷怪点按 matchSlots 认（别的图增删刷怪点不影响），认不出的刷怪点的怪丢掉、
    * 补怪时刻不改（开图就补满，同没有快照）；一个刷怪点放回的不超过数据表现在的只数。返回放回了几只。
    */
   private[world] def thaw(monsters: List[FrozenMonster], refills: List[FrozenRefill]): Int =
-    val known = spawns.map((s, i) => keyOf(s, i)).toSet
-    refills.filter(r => known(r.spawn)).foreach(r => due(r.spawn.index) = r.at)
+    val current = Spawner.matchSlots(monsters.map(_.spawn) ++ refills.map(_.spawn), spawns.map((s, i) => keyOf(s, i)))
+    refills.foreach(r => current.get(r.spawn.index).foreach(due(_) = r.at))
     // 数据表把某个刷怪点的只数改少了：只放回新的只数
-    val capped = monsters.filter(m => known(m.spawn)).groupBy(_.spawn.index).toList.flatMap((i, ms) => ms.take(spawns.find(_._2 == i).fold(0)(_._1.count)))
-    capped.flatMap { f =>
-      w.catalog.monster(f.spawn.monster).flatMap(spawnMonster(_, Some(f.spawn.index), f.cell, 0)).map { m =>
+    val capped = monsters.flatMap(m => current.get(m.spawn.index).map(_ -> m)).groupBy(_._1).toList.flatMap { (i, ms) =>
+      ms.take(spawns.find(_._2 == i).fold(0)(_._1.count))
+    }
+    capped.flatMap { (i, f) =>
+      w.catalog.monster(f.spawn.monster).flatMap(spawnMonster(_, Some(i), f.cell, 0)).map { m =>
         w.grid.face(m, f.dir)
         w.vitals.setMaxHp(m, m.maxHp, Some(math.max(1, f.hp)))
       }
@@ -83,3 +85,17 @@ final class Spawner(w: World, start: Millis):
       MonsterAi.init(w, m)
       m
     }
+
+object Spawner:
+  /**
+   * 快照里的刷怪点（停服时 game.json 的下标）→ 现在的下标（#1339）。下标是全表的，别的图加了刷怪点就整体挪动，
+   * 所以不按下标认，按「刷哪种怪、在哪、本图同种同位置的第几个（按下标顺序）」认；只有在本图同一位置插进同种怪的刷怪点时才会认错位。
+   * frozen、present 都是同一张图的刷怪点；对不上的不在结果里。
+   */
+  def matchSlots(frozen: Iterable[SpawnKey], present: Iterable[SpawnKey]): Map[Int, Int] =
+    def slots(keys: Iterable[SpawnKey]): Map[(MonsterName, Cell, Int), Int] =
+      keys.toVector.distinctBy(_.index).groupBy(k => (k.monster, k.at)).toVector.flatMap { case ((m, at), ks) =>
+        ks.sortBy(_.index).zipWithIndex.map((k, n) => (m, at, n) -> k.index)
+      }.toMap
+    val now = slots(present)
+    slots(frozen).toVector.flatMap((slot, old) => now.get(slot).map(old -> _)).toMap

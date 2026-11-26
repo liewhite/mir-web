@@ -67,6 +67,38 @@ object FrozenSpec extends ZIOSpecDefault:
         census(w2) == before
       )
     },
+    test("别的图加了刷怪点、本图下标整体挪动（#1339）：活着的怪、死了的 boss 的刷新时刻照样接上") {
+      val w1 = world(Millis(0), 1)
+      val d  = CharacterData.newbie(catalog, "甲", Job.Warrior, Sex.Male, UidSource.counter(5_000))
+      val pid = w1.join(d.copy(place = Place(w1.mapId, Cell(bossMap.width / 2, bossMap.height / 2))))
+      run(w1, 3000)
+      val boss = w1.monsters.find(m => Rates.rankOf(m.defn.name) == MonsterRank.Boss && m.spawn.isDefined).get
+      w1.vitals.damage(boss, boss.hp + 1, None)
+      run(w1, 1000)
+      w1.leave(pid): Unit
+      val before = census(w1)
+      val refill = boss.spawn.flatMap(w1.spawner.nextRefill)
+      // 停服时表里本图前面还少 7 个别的图的刷怪点：快照里的下标都比现在小 7
+      def shift(k: SpawnKey) = k.copy(index = k.index - 7)
+      val f  = w1.freeze()
+      val old = f.copy(monsters = f.monsters.map(m => m.copy(spawn = shift(m.spawn))), refills = f.refills.map(r => r.copy(spawn = shift(r.spawn))))
+      val w2 = world(w1.now + 5_000, 2)
+      w2.thaw(old): Unit
+      assertTrue(
+        refill.exists(_ > w2.now),
+        boss.spawn.flatMap(w2.spawner.nextRefill) == refill,
+        census(w2) == before
+      )
+    },
+    test("matchSlots：按怪和位置认，同种同位置的按先后对上；本图删掉的认不出") {
+      val a  = Cell(1, 1)
+      val b  = Cell(2, 2)
+      val m  = MonsterName("甲怪")
+      val n  = MonsterName("乙怪")
+      val frozen  = List(SpawnKey(10, m, a), SpawnKey(11, m, a), SpawnKey(12, n, b), SpawnKey(13, n, a))
+      val present = List(SpawnKey(20, m, a), SpawnKey(21, m, a), SpawnKey(22, n, b))
+      assertTrue(Spawner.matchSlots(frozen, present) == Map(10 -> 20, 11 -> 21, 12 -> 22))
+    },
     test("认不出的刷怪点（数据表改过）的怪丢掉、计时不改；数据表里没有的物品丢掉") {
       val w  = world(Millis(0), 1)
       val bogus = SpawnKey(0, MonsterName("没有这种怪"), Cell(1, 1))
