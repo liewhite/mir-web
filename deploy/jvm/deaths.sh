@@ -19,9 +19,9 @@ shift $((OPTIND - 1))
 [[ "$days" =~ ^[0-9]+$ ]] || { echo "天数要是整数：$days"; exit 2; }
 name="${1:-}"
 if [[ -n "$name" ]]; then
-  filter="grep -F -e $(printf %q "玩家死亡：$name ") -e $(printf %q "玩家死亡：$name（")"
+  filter="grep -F -e $(printf %q "玩家死亡：${name} ") -e $(printf %q "玩家死亡：${name}（")"
 else
   filter=cat
 fi
 ssh -o ConnectTimeout=10 "${MIR_DEPLOY_HOST:-kaojiang}" \
-  "out=\$(sudo journalctl -u mir176 --since -${days}d --no-pager -o short-iso | grep -F '玩家死亡：' | $filter); if [ -n \"\$out\" ]; then echo \"\$out\"; else echo '最近 $days 天没有${name:+ $name 的}玩家死亡记录（11-26 #1338 部署后才开始记）'; fi"
+  "out=\$(sudo journalctl -u mir176 --since -${days}d --no-pager -o short-iso | grep -F '玩家死亡：' | $filter); if [ -n \"\$out\" ]; then echo \"\$out\"; else echo '最近 $days 天没有${name:+ ${name} 的}玩家死亡记录（11-26 #1338 部署后才开始记）'; fi"

@@ -74,7 +74,7 @@ B=$(backup_db)
 echo "== 备份数据库：$B"
 echo "== 回滚 $cur → $prev"
 if switch_to "$prev"; then
-  echo "ok 已回滚到 $prev（数据库没回退；旧版读不懂新版写的停服快照时只跳过那部分：野怪重刷、地上物品不保留，角色存档不受影响）"
+  echo "ok 已回滚到 ${prev}（数据库没回退；旧版读不懂新版写的停服快照时只跳过那部分：野怪重刷、地上物品不保留，角色存档不受影响）"
 else
   echo "回滚后健康检查不过，看 journalctl -u mir176 -n 50"; exit 1
 fi
@@ -84,7 +84,7 @@ fi
 
 # 只从 master 部署：在 worktree 分支上跑会把没合并的代码推上线，盖掉别人已合进 master 的改动。
 BR=$(git rev-parse --abbrev-ref HEAD)
-[[ $BR == master || $MODE != deploy ]] || { echo "当前分支是 $BR：先合进 master，再在主仓库 mir/ 里部署"; exit 1; }
+[[ $BR == master || $MODE != deploy ]] || { echo "当前分支是 ${BR}：先合进 master，再在主仓库 mir/ 里部署"; exit 1; }
 # 几个会话可能同时部署：排队，一个打包上传完下一个再从最新 master 打包（不排队的话后打包的可能缺先合并的提交）。
 exec 9>/tmp/mir176-deploy.lock
 "$FLOCK" -w 1800 9 || { echo "等别的部署超过 30 分钟，先看 pgrep -fl deploy/jvm/deploy.sh"; exit 1; }
@@ -121,9 +121,9 @@ REL=$(date +%Y%m%d-%H%M%S)-$COMMIT
 WIRE_PY='import sys,zipfile,re; m=re.findall(rb"[0-9a-f]{16}", zipfile.ZipFile(sys.argv[1]).read("mir/protocol/Release$.class")); print(m[0].decode() if m else "?")'
 NEW_WIRE=$(/usr/bin/python3 -c "$WIRE_PY" "$JAR")
 OLD_WIRE=$(ssh $H python3 - /opt/mir176/current/mir176.jar <<<"$WIRE_PY" 2>/dev/null || echo "?")
-if [[ $NEW_WIRE == "$OLD_WIRE" ]]; then echo "== 通讯格式没变（$NEW_WIRE）：旧页面先接着玩，换图、回城、复活时刷新"
-else echo "== 通讯格式变了（$OLD_WIRE → $NEW_WIRE）：旧页面重连时马上刷新"; fi
-echo "== 上传新版本 $REL（旧服照常在跑）"
+if [[ $NEW_WIRE == "$OLD_WIRE" ]]; then echo "== 通讯格式没变（${NEW_WIRE}）：旧页面先接着玩，换图、回城、复活时刷新"
+else echo "== 通讯格式变了（$OLD_WIRE → ${NEW_WIRE}）：旧页面重连时马上刷新"; fi
+echo "== 上传新版本 ${REL}（旧服照常在跑）"
 ssh $H 'sudo mkdir -p /opt/mir176/releases /opt/mir176/bin /opt/mir176/public && sudo chown "$(id -un)": /opt/mir176 /opt/mir176/releases /opt/mir176/bin /opt/mir176/public'
 if ! ssh $H 'test -x /opt/mir176/jre/bin/java'; then
   scp $JRE $H:/tmp/mir176-jre.tar.gz
@@ -144,7 +144,7 @@ rsync -az --delete public/assets/ $H:/opt/mir176/public/assets/
 scp -q deploy/jvm/mir176.service $H:/tmp/mir176.service
 scp -q deploy/jvm/mir176ctl $H:/tmp/mir176ctl
 
-echo "== 试启动新版（线上库的副本、127.0.0.1:$TRIAL_PORT）"
+echo "== 试启动新版（线上库的副本、127.0.0.1:${TRIAL_PORT}）"
 remote REL="$REL" TRIAL_PORT="$TRIAL_PORT" MODE="$MODE" <<'R'
 d=$OPT/releases/$REL
 T=$DATA/trial
@@ -206,7 +206,7 @@ else
   sudo journalctl -u mir176 -n 30 --no-pager
   if [[ -n $prev ]]; then
     echo "新版开服后健康检查不过，自动切回 $prev"
-    switch_to "$prev" && echo "已切回 $prev，线上恢复" || echo "切回后也起不来，马上看 journalctl -u mir176"
+    switch_to "$prev" && echo "已切回 ${prev}，线上恢复" || echo "切回后也起不来，马上看 journalctl -u mir176"
   else
     echo "新版开服后健康检查不过（没有上一版可切回），马上看 journalctl -u mir176"
   fi
