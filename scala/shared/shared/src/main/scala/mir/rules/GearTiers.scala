@@ -1,7 +1,8 @@
 package mir.rules
 
 import mir.core.ItemName
-import mir.model.{CharSettings, GearTier, PickupFloor}
+import mir.data.{ItemDef, Span}
+import mir.model.{CharSettings, GearTier, Job, PickupFloor}
 
 /**
  * 哪件装备算沃玛 / 祖玛 / 赤月装（#1301，自动捡装备的档位滑条和「出现好装备」提示用）。
@@ -63,6 +64,33 @@ object GearTiers:
   /** 自动捡装备时这件过不过档位门槛（「全部」都过）。 */
   def passes(name: ItemName, floor: PickupFloor): Boolean =
     floor.tier.forall(f => of(name).exists(_.atLeast(f)))
+
+  /**
+   * 设了档位（不是「全部」）时自动捡这件：过档位门槛，且不是别的职业的装备（用户 11-26 定，留言板 #26：
+   * 道士设沃玛档在幻境捡了一包战神盔甲、恶魔长袍）。「全部」照旧什么装备都捡。
+   */
+  def picks(d: ItemDef, floor: PickupFloor, job: Job): Boolean =
+    passes(d.name, floor) && (floor.tier.isEmpty || jobOf(d).forall(_ == job))
+
+  /**
+   * 装备归哪个职业（用户 11-26 定，留言板 #26），None 是谁都用得上：
+   * - 穿戴要求是攻击/魔法/道术的，归战士/法师/道士（战神盔甲、恶魔长袍、生命项链）；
+   * - 只要求等级的看加的属性（下限或上限有一个不为 0 就算加，和物品说明一致）：加道术不加魔法算道士（银蛇、龙纹剑、魔血戒指），
+   *   加魔法不加道术算法师（魔杖、魔血项链），只加攻击算战士（天魔神甲、屠龙）；
+   * - 魔法道术都加（凤天魔甲）或都不加（幽灵手套、记忆头盔）的谁都算。
+   */
+  def jobOf(d: ItemDef): Option[Job] =
+    def adds(s: Span): Boolean = s.lo > 0 || s.hi > 0
+    Requirement.of(d) match
+      case Requirement.Dc(_) => Some(Job.Warrior)
+      case Requirement.Mc(_) => Some(Job.Wizard)
+      case Requirement.Sc(_) => Some(Job.Taoist)
+      case Requirement.Level(_) =>
+        (adds(d.dc), adds(d.mc), adds(d.sc)) match
+          case (_, false, true)     => Some(Job.Taoist)
+          case (_, true, false)     => Some(Job.Wizard)
+          case (true, false, false) => Some(Job.Warrior)
+          case _                    => None
 
   /** 地上出现这件要不要在聊天栏提示：达到设置里的档位（「全部」时按沃玛），返回它的档位。 */
   def worthAnnouncing(name: ItemName, s: CharSettings): Option[GearTier] =

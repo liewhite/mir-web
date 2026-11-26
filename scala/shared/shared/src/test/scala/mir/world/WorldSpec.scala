@@ -1052,7 +1052,7 @@ object WorldSpec extends ZIOSpecDefault:
         val gotGold = p.gold == g0 + Gold(77) && s.w.groundItems.map(_.loot).toList.collect { case Loot.Item(it) => it.name } == List(ItemName("金创药(小量)"))
         assertTrue(onlySword, masterOff, gotGold, s.consistent(p))
       },
-      test("自动捡装备按档位：只捡该档及以上，药品不受影响；「全部」都捡（#1301）") {
+      test("自动捡装备按档位：只捡该档及以上、跳过别的职业的，药品不受影响；「全部」都捡（#1301、#1355）") {
         val s = sim()
         // 法师：铁剑、炼狱没有魔法，不算比身上强，只看档位
         val p = join(s.w, "甲", Cell(30, 30), Job.Wizard)
@@ -1060,17 +1060,30 @@ object WorldSpec extends ZIOSpecDefault:
         def drop(n: String, at: Cell) = s.w.dropAt(at, Loot.Item(s.w.newItem(ItemName(n)).get))
         drop("铁剑", Cell(32, 30))
         drop("炼狱", Cell(28, 30))
-        drop("裁决之杖", Cell(30, 32))
-        drop("屠龙", Cell(30, 28))
+        drop("阎罗手套", Cell(30, 32)) // 祖玛档、谁都能用
+        drop("屠龙", Cell(30, 28)) // 赤月档、战士的
         drop("金创药(小量)", Cell(31, 31))
         s.run(8000)
         // 药捡起来进快捷栏
         def has(n: String) = (p.bag.iterator ++ p.belt.iterator).flatten.exists(_.name == ItemName(n))
-        val zuma = List(has("裁决之杖"), has("屠龙"), has("金创药(小量)"), !has("铁剑"), !has("炼狱"))
+        val zuma = List(has("阎罗手套"), !has("屠龙"), has("金创药(小量)"), !has("铁剑"), !has("炼狱"))
         s.cmd(p, GameCmd.UpdateSettings(p.settings.copy(pickupTier = PickupFloor.All)))
         s.run(8000)
-        val all = List(has("铁剑"), has("炼狱"), s.w.groundItems.isEmpty)
-        assertTrue(zuma == List.fill(5)(true), all == List.fill(3)(true), s.consistent(p))
+        val all = List(has("铁剑"), has("炼狱"), has("屠龙"), s.w.groundItems.isEmpty)
+        assertTrue(zuma == List.fill(5)(true), all == List.fill(4)(true), s.consistent(p))
+      },
+      test("按档位自动捡时跳过别的职业的装备：道士不捡战神盔甲/恶魔长袍/生命项链，照捡本职业和通用的（#1355）") {
+        val s = sim()
+        val p = join(s.w, "甲", Cell(30, 30), Job.Taoist)
+        p.settings = p.settings.copy(autoPickup = true, pickupKinds = PickupKind.values.toSet, pickupTier = PickupFloor.Woma)
+        val others = List("战神盔甲(男)", "恶魔长袍(男)", "生命项链")
+        val mine   = List("幽灵战衣(男)", "天珠项链", "银蛇", "幽灵手套", "凤天魔甲")
+        (others ++ mine).zipWithIndex.foreach { (n, i) =>
+          s.w.dropAt(Cell(27 + i % 4 * 2, 28 + i / 4 * 2), Loot.Item(s.w.newItem(ItemName(n)).get))
+        }
+        s.run(15000)
+        val names = p.bag.flatten.map(_.name.value).toSet
+        assertTrue(mine.forall(names), !others.exists(names), s.w.groundItems.size == others.size, s.consistent(p))
       },
       test("祝福油：给手上的武器加幸运并计入人物幸运；手上没武器不消耗（#1320）") {
         val s   = sim()

@@ -23,6 +23,24 @@ object RulesSpec extends ZIOSpecDefault:
           GearTiers.worthAnnouncing(ItemName("炼狱"), s).contains(GearTier.Woma), GearTiers.worthAnnouncing(ItemName("铁剑"), s).isEmpty,
           GearTiers.worthAnnouncing(ItemName("裁决之杖"), s.copy(pickupTier = PickupFloor.Redmoon)).isEmpty
         )
+      },
+      test("装备归哪个职业（#1355）：先看穿戴要求，只要求等级的看加的属性，魔法道术都加或都不加的谁都算") {
+        def job(n: String): Option[Job] = catalog.item(ItemName(n)).flatMap(GearTiers.jobOf)
+        def known(n: String): Boolean   = catalog.item(ItemName(n)).isDefined
+        val cases = List(
+          "战神盔甲(男)" -> Some(Job.Warrior), "恶魔长袍(男)" -> Some(Job.Wizard), "幽灵战衣(男)" -> Some(Job.Taoist),
+          "天魔神甲" -> Some(Job.Warrior), "法神披风" -> Some(Job.Wizard), "天尊道袍" -> Some(Job.Taoist),
+          "魔杖" -> Some(Job.Wizard), "银蛇" -> Some(Job.Taoist), "屠龙" -> Some(Job.Warrior), "血饮" -> Some(Job.Wizard),
+          "凤天魔甲" -> None, "幽灵手套" -> None, "记忆头盔" -> None
+        )
+        assertTrue(cases.forall((n, _) => known(n)), cases.forall((n, j) => job(n) == j))
+      },
+      test("设了档位跳过别的职业的装备，「全部」不分职业（#1355）") {
+        val d = catalog.item(ItemName("战神盔甲(男)")).get
+        assertTrue(
+          GearTiers.picks(d, PickupFloor.Woma, Job.Warrior), !GearTiers.picks(d, PickupFloor.Woma, Job.Taoist),
+          GearTiers.picks(d, PickupFloor.All, Job.Taoist), !GearTiers.picks(d, PickupFloor.Redmoon, Job.Warrior)
+        )
       }
     ),
     suite("1.80 新装备（#1312）")(

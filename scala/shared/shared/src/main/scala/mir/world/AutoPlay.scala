@@ -188,6 +188,7 @@ object AutoPlay:
 
   /**
    * 自动捡物要不要这件：设置里勾了这一类，且包裹放得下。装备还要过档位门槛（#1301），
+   * 设了档位时还跳过别的职业的装备（GearTiers.picks，用户 11-26 定）；
    * 但比身上同部位那件强的（地上名字粉紫的那些，Upgrade.gain）不管什么档都捡（用户 11-25 定）。
    */
   private def worth(w: World, p: Player, loot: Loot): Boolean =
@@ -198,7 +199,7 @@ object AutoPlay:
         w.catalog.item(it.name).exists { d =>
           val kind = ItemKind.pickupKind(d)
           def upgrade = Upgrade.gain(Upgrade.Wearer(p.job, p.sex, p.worn.toMap), d, it.bonus, w.catalog.item).isDefined
-          s.pickupKinds(kind) && (kind != PickupKind.Equip || GearTiers.passes(d.name, s.pickupTier) || upgrade) && PlayerOps.fits(p, d).isRight
+          s.pickupKinds(kind) && (kind != PickupKind.Equip || GearTiers.picks(d, s.pickupTier, p.job) || upgrade) && PlayerOps.fits(p, d).isRight
         }
 
   /**
