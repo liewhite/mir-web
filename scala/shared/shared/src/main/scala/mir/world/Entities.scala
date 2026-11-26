@@ -38,7 +38,7 @@ sealed abstract class Actor(val id: ActorId, initCell: Cell, initDir: Dir, now: 
   /**
    * 接受了一个动作，忙 ms 毫秒（#1319）：从原来的「忙到」时刻接着算，不从「现在」算。
    * 玩家指令早到 World.Slack 以内照收（容忍网络抖动），但提前量不累积：
-   * 每步都提前发的改版客户端最多一次性快 Slack 毫秒，而不是每步都快（走跑 600→400 毫秒一步）。
+   * 每步都提前发的改版客户端最多一次性快 Slack 毫秒，而不是每步都快（旧规则下走跑 600→400 毫秒一步）。
    */
   private[world] def busyFor(now: Millis, ms: Long): Unit =
     busyUntil = (if busyUntil > now then busyUntil else now) + ms

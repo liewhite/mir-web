@@ -696,7 +696,7 @@ object WorldSpec extends ZIOSpecDefault:
       }
     ),
     suite("防加速（#1319）：早到的指令照收，但提前量不累积")(
-      test("每步都抢早 200 毫秒发走路：10 步至少花 9×600−200 毫秒（旧规则只要 9×400）") {
+      test("每步都抢早发走路：10 步至少花 9×600−余量 毫秒（旧规则每步都快一个余量）") {
         val s  = sim()
         val p  = join(s.w, "甲", Cell(30, 30))
         s.flush()
@@ -708,7 +708,7 @@ object WorldSpec extends ZIOSpecDefault:
         }.flatten.take(10).toVector
         assertTrue(oks.last - oks.head >= 9L * Pace.WalkMs - World.Slack)
       },
-      test("每下都抢早发普通攻击：10 下至少花 9×攻击间隔−200 毫秒") {
+      test("每下都抢早发普通攻击：10 下至少花 9×攻击间隔−余量 毫秒") {
         val s  = sim()
         val p  = join(s.w, "甲", Cell(30, 30))
         s.flush()
@@ -719,11 +719,11 @@ object WorldSpec extends ZIOSpecDefault:
         }.flatten.take(10).toVector
         assertTrue(oks.last - oks.head >= 9L * gap - World.Slack)
       },
-      test("正常节奏带 0~150 毫秒网络抖动：走路、攻击、施法都不被拒") {
+      test("正常节奏带 0~250 毫秒网络抖动：走路、攻击、施法都不被拒") {
         val s  = sim()
         val p  = join(s.w, "甲", Cell(30, 30), job = Job.Wizard)
         s.flush()
-        val jitter = Vector(150, 0, 150, 0, 120, 30, 0, 150, 90, 10, 150, 0, 60, 140, 0, 150, 0, 0, 150, 75)
+        val jitter = Vector(250, 0, 250, 0, 120, 30, 0, 250, 90, 10, 150, 0, 60, 240, 0, 250, 100, 0, 250, 75)
         // 客户端按节奏发，每条在路上多耽搁 jitter 毫秒才到
         def paced(every: Int)(act: => Boolean): Boolean =
           val t0 = s.w.now + 1000
