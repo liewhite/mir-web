@@ -301,7 +301,7 @@ object ClientSpec extends ZIOSpecDefault:
         onSelf.exists(c => c.target.isEmpty && c.cell == Cell(10, 10))
       )
     },
-    test("原版鼠标操作（#1353）：左键点怪走过去打死；点别的玩家只锁定、按住 Shift 才打；点空地按着朝鼠标走；电脑默认、触屏没有") {
+    test("原版鼠标操作（#1353）：左键点怪走过去打死；点别的玩家只锁定、按住 Shift 才打；点空地按着朝鼠标走、Shift 点空地原地空砍；电脑默认、触屏没有") {
       import mir.client.input.ControlMode
       import mir.client.render.ViewOptions
       val r = Rig()
@@ -325,10 +325,21 @@ object ClientSpec extends ZIOSpecDefault:
       r.ctl.stickReleased()
       r.run(1000)
       val walkedWest = r.serverCell.x < start.x && r.serverCell.y == start.y
+      // Shift+点空地：原地朝那边空砍，人不动；松开就停
+      val before = r.sent.count(_.isInstanceOf[GameCmd.Attack])
+      val here   = r.serverCell
+      val swing  = r.ctl.leftClick(Pointing(here.step(Dir.Up, 3), None), force = true)
+      r.run(2000)
+      val swung = r.sent.collect { case GameCmd.Attack(d, None) => d }.lastOption
+      val swings = r.sent.count(_.isInstanceOf[GameCmd.Attack]) - before
+      r.ctl.swingReleased()
+      r.run(500)
+      val stopped = r.ctl.intent == mir.client.game.Intent.Idle && r.serverCell == here
       assertTrue(
         onPlayer == LeftClick.Done, playerOnlyLocked, forced,
         onChick == LeftClick.Done, fights, killed,
         ground == LeftClick.Walk, walkedWest,
+        swing == LeftClick.Swing, swung.contains(Dir.Up), swings >= 2, stopped,
         ControlMode.of(touch = false, ViewOptions()) == ControlMode.Classic,
         ControlMode.of(touch = true, ViewOptions()) == ControlMode.Touch,
         ControlMode.of(touch = false, ViewOptions(classicControls = false)) == ControlMode.Touch

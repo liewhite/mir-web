@@ -21,6 +21,8 @@ enum Intent:
   case GoTo(route: Travel.Route)
   /** 朝这个方向的矿壁一直挖（#1286，原版 g_boAutoDig：挖到做别的事为止） */
   case Dig(dir: Dir)
+  /** 原版操作 Shift+左键按住空地：朝这个方向一直空砍，松开鼠标停（#1353，原版 ClMain.pas ssShift 且没点中对象） */
+  case Swing(dir: Dir)
 
 /** 原版操作（#1353）下鼠标指着的地方：地图格，和按图像点中的对象（没有为 None）。 */
 final case class Pointing(cell: Cell, actor: Option[ActorId])
@@ -38,6 +40,8 @@ enum LeftClick:
   case Done
   /** 点在空地上：按着就朝鼠标走 */
   case Walk
+  /** Shift+点空地：按着就朝鼠标方向空砍（swingToward 跟着鼠标转向，swingReleased 停） */
+  case Swing
 
 /**
  * 输入意图 → 游戏指令（照 TS 版 game/controller.ts，自动喝药、自动捡物、还手、烈火已挪到服务端 AutoPlay）。
@@ -156,6 +160,10 @@ final class Controller(client: GameClient):
             client.locked = Some(a.id)
             if client.canAttack(a) && (force || client.isEnemy(a)) then intent = Intent.Fight(a.id)
         LeftClick.Done
+      // Shift 点空地（含自己脚下）：朝那边空砍；前面是矿壁时服务端照挖（原版 Shift 强行挖矿）
+      case (None, Some(me)) if force =>
+        intent = Intent.Swing(Controller.towards(me.cell, at.cell))
+        LeftClick.Swing
       case (None, Some(me)) if at.cell == me.cell =>
         pickUpHere()
         LeftClick.Done
@@ -178,6 +186,15 @@ final class Controller(client: GameClient):
     else
       val to = Cell(dx, dy)
       stick(Controller.towards(Cell(0, 0), to), run && Cell(0, 0).chebyshev(to) >= 2)
+
+  /** 按着 Shift+左键拖动：空砍的方向跟着鼠标（dx、dy 是鼠标离自己几格）。 */
+  def swingToward(dx: Int, dy: Int): Unit = intent match
+    case Intent.Swing(_) => intent = Intent.Swing(Controller.towards(Cell(0, 0), Cell(dx, dy)))
+    case _               => ()
+
+  def swingReleased(): Unit = intent match
+    case Intent.Swing(_) => intent = Intent.Idle
+    case _               => ()
 
   /** Ctrl+右键点别的玩家：看他身上的装备（原版 CM_QUERYUSERSTATE，#1263）。点的不是玩家返回 false。 */
   def inspect(at: Pointing): Boolean =
@@ -256,6 +273,8 @@ final class Controller(client: GameClient):
       // 被挤开、自动捡物走开了、换了武器：这个方向不再是矿壁就停
       case Intent.Dig(dir) if !client.rocksAround.contains(dir) => intent = Intent.Idle
       case Intent.Dig(dir) =>
+        if client.motion.ready(now) && client.actionDone(me, now) then client.attack(dir, None)
+      case Intent.Swing(dir) =>
         if client.motion.ready(now) && client.actionDone(me, now) then client.attack(dir, None)
       case Intent.GoTo(route) =>
         Travel.follow(route, me.cell) match

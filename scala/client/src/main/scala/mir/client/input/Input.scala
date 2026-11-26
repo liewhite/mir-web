@@ -34,7 +34,7 @@ trait Overlay:
  * 键盘：先给界面（窗口快捷键、聊天），剩下 F1–F8 放技能、空格捡脚下的东西；WASD 是键盘摇杆（默认跑，按住 Shift 走，#1189），
  * 和屏幕摇杆并存。
  * 原版鼠标操作（ControlMode.Classic，电脑默认，#1353，照原版 ClMain.pas 的鼠标处理）：地图上左键交给 Controller.leftClick
- * （点在空地上就按着朝鼠标走，Ctrl 跑），右键按着朝鼠标跑（Ctrl+右键点玩家看装备），松开就停；F1–F8 技能放向鼠标（Aim.Mouse）；
+ * （点在空地上就按着朝鼠标走，Ctrl 跑；Shift 点空地按着朝鼠标方向空砍），右键按着朝鼠标跑（Ctrl+右键点玩家看装备），松开就停；F1–F8 技能放向鼠标（Aim.Mouse）；
  * 每帧（frame）算鼠标指着的对象，显示它的名字。
  */
 final class Input(
@@ -54,8 +54,8 @@ final class Input(
 
   /** 原版操作：鼠标最后在画布上的位置（CSS 像素），移出画布为 None */
   private var mouseCss = Option.empty[(Double, Double)]
-  /** 原版操作：按着鼠标朝它走（哪个指针、跑不跑）；没按着为 None */
-  private var steering = Option.empty[(Double, Boolean)]
+  /** 原版操作：按着鼠标做的事（哪个指针、做什么）；没按着为 None */
+  private var steering = Option.empty[(Double, Hold)]
 
   private def css(e: dom.PointerEvent): (Double, Double) =
     val r = canvas.getBoundingClientRect()
@@ -121,24 +121,27 @@ final class Input(
     mouseCss = Some((cx, cy))
     val at = pointing(cx, cy)
     e.button match
-      case 2 => if !(e.ctrlKey && ctl.inspect(at)) then steer(e.pointerId, run = true)
+      case 2 => if !(e.ctrlKey && ctl.inspect(at)) then steer(e.pointerId, Hold.Move(run = true))
       case 0 =>
         ctl.leftClick(at, force = e.shiftKey) match
-          case LeftClick.Walk => steer(e.pointerId, run = e.ctrlKey)
-          case LeftClick.Done => ()
+          case LeftClick.Walk  => steer(e.pointerId, Hold.Move(run = e.ctrlKey))
+          case LeftClick.Swing => steer(e.pointerId, Hold.Swing)
+          case LeftClick.Done  => ()
       case _ => ()
 
-  /** 开始（或接着）朝鼠标走 */
-  private def steer(pointer: Double, run: Boolean): Unit =
-    steering = Some((pointer, run))
+  /** 开始（或接着）朝鼠标走、空砍 */
+  private def steer(pointer: Double, hold: Hold): Unit =
+    steering = Some((pointer, hold))
     steerNow()
 
   private def steerNow(): Unit = for
-    (_, run) <- steering
-    (cx, cy) <- mouseCss
+    (_, hold) <- steering
+    (cx, cy)  <- mouseCss
   do
     val (dx, dy) = renderer.cellsFromSelf(renderer.toLogical(cx, cy))
-    ctl.steer(dx, dy, run)
+    hold match
+      case Hold.Move(run) => ctl.steer(dx, dy, run)
+      case Hold.Swing     => ctl.swingToward(dx, dy)
 
   /** 每帧：原版操作下算鼠标指着的对象（怪走动、自己走动时鼠标不动也会变），盖着界面时不算。 */
   def frame(): Unit =
@@ -171,6 +174,7 @@ final class Input(
     if steering.exists(_._1 == e.pointerId) then
       steering = None
       ctl.stickReleased()
+      ctl.swingReleased()
     else if joystick.owns(e.pointerId) then
       joystick.end()
       ctl.stickReleased()
@@ -230,6 +234,13 @@ final class Input(
     "visibilitychange",
     (_: dom.Event) => if dom.document.visibilityState != "visible" then follow(keys.clear())
   )
+
+/** 原版操作按住鼠标时做什么 */
+private enum Hold:
+  /** 朝鼠标走（跑） */
+  case Move(run: Boolean)
+  /** Shift+左键按在空地上：朝鼠标方向空砍 */
+  case Swing
 
 object Input:
   val SlopCss = 14.0
