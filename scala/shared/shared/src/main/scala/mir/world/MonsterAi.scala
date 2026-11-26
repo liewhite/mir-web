@@ -3,7 +3,7 @@ package mir.world
 import mir.core.*
 import mir.model.*
 import mir.protocol.Anchor
-import mir.rules.{PetBody, Rng, SpellRules}
+import mir.rules.{PetBody, PetBreed, Rng, SpellRules}
 import mir.terrain.Path
 
 /**
@@ -459,14 +459,14 @@ object MonsterAi:
 
   /**
    * 认了主的宝宝按宝宝等级定走路、出手间隔：召唤时、诱惑收服时、跟主人换图重新放出来时都调。
-   * 召唤骷髅按 WhiteSkeleton 公式定走路（出手照数据表）；神兽在 shinsuPace 里每回合定；
+   * 召唤骷髅按 WhiteSkeleton 公式定走路（出手照数据表）；神兽、白虎（#1336）按 shinsuPace；
    * 收服的按 petWalkCap / petAttackCap 压到上限以内。
    */
-  def petPace(m: Monster): Unit = SpellRules.summonedAs(m.defn.name) match
-    case Some(SpellRules.SkeletonPet) =>
+  def petPace(m: Monster): Unit = SpellRules.breedOf(m.defn.name) match
+    case Some(PetBreed.Skeleton) =>
       m.walkInterval = SpellRules.skeletonWalkMs(m.petLevel)
       m.attackInterval = SpellRules.skeletonHitMs(m.petLevel)
-    case Some(_)                      => shinsuPace(m)
+    case Some(PetBreed.Shinsu | PetBreed.WhiteTiger) => shinsuPace(m)
     case None =>
       m.walkInterval = math.min(m.defn.walkSpeed, SpellRules.petWalkCap(m.petLevel))
       m.attackInterval = math.min(m.defn.attackSpeed, SpellRules.petAttackCap(m.petLevel))

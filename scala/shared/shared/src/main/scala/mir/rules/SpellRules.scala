@@ -39,6 +39,19 @@ object StatGrowth:
   def ratio(permille: Int): String = plain(BigDecimal(permille) / 1000)
 
 /**
+ * 召唤出来的宝宝品种：slot 占哪个召唤技能的名额，growth 按哪份成长算；走路出手节奏见 MonsterAi.petPace。
+ * 白虎（#1336）占骷髅的名额，成长和节奏同神兽。
+ */
+enum PetBreed:
+  case Skeleton, Shinsu, WhiteTiger
+  def slot: MonsterName = this match
+    case Skeleton | WhiteTiger => SpellRules.SkeletonPet
+    case Shinsu                => SpellRules.ShinsuPet
+  def growth: SummonGrowth = this match
+    case Skeleton             => SpellRules.StandardGrowth
+    case Shinsu | WhiteTiger  => Rates.shinsuGrowth
+
+/**
  * 召唤宝宝的成长：levelPermille 每级技能加血、攻多少；血、攻击、防御魔防（guard）各一份底数折扣和道术加成。
  */
 final case class SummonGrowth(levelPermille: Int, hp: StatGrowth, attack: StatGrowth, guard: StatGrowth):
@@ -83,11 +96,24 @@ object SpellRules:
   val ShinsuWarrior   = MonsterName("神兽1")
   /** 大神兽连续多久没仗打变回小神兽（TElfWarriorMonster.Run 6 * 10 * 1000） */
   val ShinsuCalmMs    = 60_000
-  /** 召唤出来的宝宝算哪一种召唤（同种计数用；大神兽算神兽），不是召唤的为 None */
-  def summonedAs(pet: MonsterName): Option[MonsterName] =
-    if pet == SkeletonPet then Some(SkeletonPet)
-    else if pet == ShinsuPet || pet == ShinsuWarrior then Some(ShinsuPet)
+  /**
+   * 白虎：道士 WhiteTigerLevel 级起「召唤骷髅」召出的是它，占骷髅的名额（用户 11-26 在 #1336 定）。
+   * 原版没有召唤白虎，外观是 1.80 客户端 Mon23 的白虎（Appr 222），贴身物理攻击；
+   * 数值和大神兽一样：数据表行由素材管线照 ShinsuWarrior 抄（tools/data/baihu.json 的 StatsFrom），成长、走路出手间隔同神兽。
+   */
+  val WhiteTigerPet   = MonsterName("白虎")
+  val WhiteTigerLevel = 48
+  /** 「召唤骷髅」这次召出哪种宝宝：按道士等级 */
+  def skeletonSkillPet(casterLevel: Int): MonsterName =
+    if casterLevel >= WhiteTigerLevel then WhiteTigerPet else SkeletonPet
+  /** 召唤出来的宝宝是哪个品种，不是召唤的为 None */
+  def breedOf(pet: MonsterName): Option[PetBreed] =
+    if pet == SkeletonPet then Some(PetBreed.Skeleton)
+    else if pet == ShinsuPet || pet == ShinsuWarrior then Some(PetBreed.Shinsu)
+    else if pet == WhiteTigerPet then Some(PetBreed.WhiteTiger)
     else None
+  /** 召唤出来的宝宝占哪个召唤技能的名额（同种计数用；大神兽算神兽，白虎算骷髅），不是召唤的为 None */
+  def summonedAs(pet: MonsterName): Option[MonsterName] = breedOf(pet).map(_.slot)
   /** 是不是召唤出来的宝宝（不占诱惑之光的名额） */
   def isSummoned(pet: MonsterName): Boolean = summonedAs(pet).isDefined
   /** 圣言术：怪物等级上限（MagTurnUndeadLevel） */
@@ -310,9 +336,9 @@ object SpellRules:
     guard = StatGrowth(basePermille = 1000, scPermille = 18)
   )
 
-  /** 召唤出来的这种宝宝按哪份成长算（神兽两种形态同一份）。 */
+  /** 召唤出来的这种宝宝按哪份成长算（神兽两种形态、白虎同一份）。 */
   def growthOf(pet: MonsterName): SummonGrowth =
-    if summonedAs(pet).contains(ShinsuPet) then Rates.shinsuGrowth else StandardGrowth
+    breedOf(pet).fold(StandardGrowth)(_.growth)
 
   /**
    * 召唤出来的宝宝：血、攻击、防御魔防各按自己那份成长 × 底数折扣 × 道术加成；技能等级加成只乘血量和攻击。
@@ -338,7 +364,7 @@ object SpellRules:
 
   /** 宝宝往主人身边赶时每格最多多少毫秒：只有召唤骷髅加快（Rates.petCatchUpMs，#1275），别的宝宝照自己的走路间隔。 */
   def catchUpMs(pet: MonsterName): Option[Int] =
-    summonedAs(pet).filter(_ == SkeletonPet).map(_ => Rates.petCatchUpMs)
+    breedOf(pet).filter(_ == PetBreed.Skeleton).map(_ => Rates.petCatchUpMs)
 
   /** 收服后宝宝走路、出手间隔的上限（毫秒）：1500 - 等级×200、2000 - 等级×200。 */
   def petWalkCap(level: Int): Int   = 1500 - level * 200

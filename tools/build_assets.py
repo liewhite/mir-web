@@ -21,6 +21,9 @@ from wemade import MapFile, open_library
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "raw/m176/Resource/Data"
+# 1.76 没有的图库：1.80 官方客户端镜像 qigedashen/mir2-1.80-mirror 的 Data（只放本机，如白虎的 Mon23，#1336）。
+# 同名图库以前面的为准。
+DATA_DIRS = [DATA_DIR, ROOT / "raw/c180/Data"]
 OUT = ROOT / "public/assets"
 
 UNITX, UNITY = 48, 32
@@ -42,7 +45,7 @@ def objects_lib(area: int) -> str:
     return "objects" if area == 0 else f"objects{area + 1}"
 
 
-_LIB_NAMES = {p.stem.lower() for p in DATA_DIR.iterdir() if p.suffix.lower() in (".wil", ".wzl")}
+_LIB_NAMES = {p.stem.lower() for d in DATA_DIRS if d.is_dir() for p in d.iterdir() if p.suffix.lower() in (".wil", ".wzl")}
 
 
 def object_areas(m: MapFile) -> np.ndarray:
@@ -155,9 +158,19 @@ def _render_ground(args):
 _LIBS: dict = {}
 
 
+def _open_first(name: str):
+    for d in DATA_DIRS:
+        if d.is_dir():
+            try:
+                return open_library(d, name)
+            except FileNotFoundError:
+                pass
+    raise FileNotFoundError(f"图库 {name} 在 {', '.join(map(str, DATA_DIRS))} 都没有")
+
+
 def _lib_cache(name: str):
     if name not in _LIBS:
-        _LIBS[name] = open_library(DATA_DIR, name)
+        _LIBS[name] = _open_first(name)
     return _LIBS[name]
 
 

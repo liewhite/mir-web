@@ -143,6 +143,40 @@ object SpellSpec extends ZIOSpecDefault:
         count(SpellRules.ShinsuPet) == 2
       )
     },
+    test("白虎（#1336）：道士 47 级召唤骷髅召出骷髅，48 级召出白虎；白虎数值、成长、节奏同大神兽，贴身物理攻击，和骷髅共用 3 只名额") {
+      val s47 = sim()
+      val p47 = caster(s47, Job.Taoist, List(17), level = 47, charm = true)
+      s47.cast(p47, 17, None, p47.cell); s47.run(3000)
+      val young = p47.pets.flatMap(s47.w.actor).collect { case m: Monster => m.defn.name }.toList
+
+      val s = sim()
+      val p = caster(s, Job.Taoist, List(17), level = 47, charm = true)
+      (1 to 2).foreach { _ => s.cast(p, 17, None, p.cell); s.run(3000) }
+      p.level = 48
+      (1 to 2).foreach { _ => s.cast(p, 17, None, p.cell); s.run(3000) }
+      val mine   = p.pets.flatMap(s.w.actor).collect { case m: Monster => m }.toList
+      val tigers = mine.filter(_.defn.name == SpellRules.WhiteTigerPet)
+      val tiger  = tigers.head
+      val big    = catalog.monster(SpellRules.ShinsuWarrior).get
+      val td     = catalog.monster(SpellRules.WhiteTigerPet).get
+      assertTrue(
+        young == List(SpellRules.SkeletonPet),
+        SpellRules.skeletonSkillPet(47) == SpellRules.SkeletonPet,
+        SpellRules.skeletonSkillPet(48) == SpellRules.WhiteTigerPet,
+        mine.count(_.defn.name == SpellRules.SkeletonPet) == 2, // 48 级前召的骷髅留着
+        tigers.size == 1,                                        // 骷髅 + 白虎一共 3 只
+        s.notices.exists(_.contains(s"变异骷髅和白虎一共最多 ${SpellRules.SummonsEach} 只")),
+        PetBody.of(td) == PetBody.of(big),                       // 数据表数值照大神兽抄（tools/data/baihu.json StatsFrom）
+        td.hit == big.hit && td.speed == big.speed,
+        SpellRules.growthOf(SpellRules.WhiteTigerPet) == SpellRules.growthOf(SpellRules.ShinsuPet),
+        tiger.summoning.exists(how => tiger.body == how.body(big)),
+        tiger.walkInterval == SpellRules.shinsuWalkMs(3),
+        tiger.attackInterval == SpellRules.shinsuHitMs(3),
+        tiger.behavior.strike == Strike.Melee,
+        SpellRules.summonedAs(SpellRules.WhiteTigerPet).contains(SpellRules.SkeletonPet),
+        SpellRules.catchUpMs(SpellRules.WhiteTigerPet).isEmpty
+      )
+    },
     test("召唤骷髅走路按原版 1200 - 等级×250（3 级 450 毫秒/格）；没仗打往主人身边赶时每格 300 毫秒，跟得上跑步（#1275）；出手间隔 3000 - 等级×600（3 级 1200 毫秒，#1276）") {
       val s = sim()
       val p = caster(s, Job.Taoist, List(17), charm = true)

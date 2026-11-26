@@ -1,0 +1,12 @@
+{
+ "_说明": "白虎（#1336）：道士 48 级起「召唤骷髅」召出的宝宝。外观照盛大怪物表（Race 81 普通近战、RaceImg 19、Appr 222，图库 mon23 取自 1.80 官方客户端镜像，放本机 raw/c180/Data/），数值照大神兽（StatsFrom，见 tools/catalog.py）",
+ "monsters": [
+  {
+   "Name": "白虎",
+   "Race": 81,
+   "RaceImg": 19,
+   "Appr": 222,
+   "StatsFrom": "神兽1"
+  }
+ ]
+}

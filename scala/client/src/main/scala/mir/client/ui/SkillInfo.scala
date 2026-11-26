@@ -170,7 +170,7 @@ object SkillInfo:
       case Skill.Poisoning  => Some(l => s"绿毒 ${poisonSecs(l, PoisonKind.Green)} 秒，红毒 ${poisonSecs(l, PoisonKind.Red)} 秒")
       case Skill.SoulShield | Skill.HolyArmor => Some(l => s"${span(r => SpellRules.defenceUpSecs(d, l, sc, rangeLuck)(using r))} 秒")
       case Skill.HolyCurtain => Some(l => s"定住 ${span(r => SpellRules.holyCurtainSecs(d, l, sc)(using r))} 秒")
-      case Skill.SummonSkeleton => Some(l => s"血、攻击 ×${SpellRules.growthOf(SpellRules.SkeletonPet).levelBoost(l)}")
+      case Skill.SummonSkeleton => Some(l => s"血、攻击 ×${SpellRules.growthOf(SpellRules.skeletonSkillPet(L)).levelBoost(l)}")
       case Skill.SummonShinsu   => Some(l => s"血、攻击 ×${SpellRules.growthOf(SpellRules.ShinsuPet).levelBoost(l)}")
       case Skill.Invisible | Skill.GroupInvisible => Some(l => s"隐身 ${span(r => SpellRules.invisibleSecs(d, l, sc)(using r))} 秒")
       case Skill.ShowHp => Some(l => s"成功 ${chance(r => SpellRules.showHpWorks(l)(using r))}")
@@ -296,8 +296,17 @@ object SkillInfo:
           say(s"　${L + 1} 级 ${at(3)}，${L + 2} 级 ${at(4)}")
         )
       case Skill.SummonSkeleton =>
-        val pet = SpellRules.SkeletonPet
-        summonHead ++ petBody(pet.value, l) ++ petRule(SpellRules.growthOf(pet))
+        val pet   = SpellRules.skeletonSkillPet(L)
+        val tiger = SpellRules.WhiteTigerPet.value
+        val about =
+          if pet == SpellRules.WhiteTigerPet then
+            List(
+              say(s"你 ${SpellRules.WhiteTigerLevel} 级以上，召出的是$tiger"),
+              say(s"　贴身咬，物理伤害按防御减，每 ${SpellRules.shinsuHitMs(l) / 1000.0} 秒一口"),
+              note(s"　数值和成长同大神兽；和以前召的骷髅共用 ${SpellRules.SummonsEach} 只的名额")
+            )
+          else List(note(s"${SpellRules.WhiteTigerLevel} 级起召出的是$tiger（数值同大神兽）"))
+        summonHead ++ about ++ petBody(pet.value, l) ++ petRule(SpellRules.growthOf(pet))
       case Skill.SummonShinsu =>
         val big  = SpellRules.ShinsuWarrior.value
         val calm = SpellRules.ShinsuCalmMs / 1000

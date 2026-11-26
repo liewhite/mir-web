@@ -6,6 +6,8 @@
 - drops_append（怪名 → 爆率行）接在已有怪的爆率表后面（全部补充表合并完再接，怪没有爆率表就报错）。
 地图条目的 asset 是地图文件名（不带 .map），在 MAP_DIRS 里按顺序找，可以指向 1.76 已有的地图文件
 （内容相同的地图共用素材）；没写 sha256 的按文件现算。同名的地图编号、怪物名、物品名重复就报错。
+怪物条目可以写 StatsFrom（另一只怪的名字）：只写名字和外观（Race、RaceImg、Appr），其余数值照那只怪抄，
+免得同一份数值抄两处（白虎照大神兽，#1336）。
 """
 from __future__ import annotations
 
@@ -55,6 +57,25 @@ def _merge(cat: dict, extra: dict, source: str, append: list[tuple[str, dict]]) 
             raise SystemExit(f"{source}: 不认识的键 {key}")
 
 
+_OWN_FIELDS = {"Name", "Race", "RaceImg", "Appr", "StatsFrom"}
+
+
+def _fill_stats_from(monsters: list[dict]) -> None:
+    by_name = {m["Name"]: m for m in monsters}
+    copied = {m["Name"] for m in monsters if "StatsFrom" in m}
+    for m in monsters:
+        src_name = m.pop("StatsFrom", None)
+        if src_name is None:
+            continue
+        src = by_name.get(src_name)
+        if src is None or src_name in copied:
+            raise SystemExit(f"{m['Name']}: StatsFrom 的 {src_name} 不存在或自己也是抄来的")
+        extra = set(m) - _OWN_FIELDS
+        if extra:
+            raise SystemExit(f"{m['Name']}: 写了 StatsFrom 就不能再写数值：{sorted(extra)}")
+        m.update({k: v for k, v in src.items() if k not in _OWN_FIELDS})
+
+
 def load_catalog() -> dict:
     cat = json.loads(CATALOG.read_text())
     append: list[tuple[str, dict]] = []
@@ -65,6 +86,7 @@ def load_catalog() -> dict:
             if monster not in cat["drops"]:
                 raise SystemExit(f"{source}: drops_append 的 {monster} 没有爆率表")
             cat["drops"][monster].extend(rows)
+    _fill_stats_from(cat["monsters"])
     for m in cat["maps"]:
         if "sha256" not in m and (p := map_file(m["asset"])) is not None:
             m["sha256"] = hashlib.sha256(p.read_bytes()).hexdigest()

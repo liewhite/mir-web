@@ -55,7 +55,7 @@ def monster_libs(catalog: dict, maps: list[str]) -> set[str]:
     也在同一个图库里、不在动作表范围内，按帧挑容易漏。"""
     names = {s["monster"] for s in catalog["spawns"] if s["map"] in maps}
     names |= {g["monster"] for g in catalog["guards"] if g["map"] in maps}
-    names |= {"变异骷髅", "神兽", "骷髅", "卫士", "弓箭守卫", "带刀护卫"}  # 召唤物、守卫
+    names |= {"变异骷髅", "神兽", "神兽1", "白虎", "骷髅", "卫士", "弓箭守卫", "带刀护卫"}  # 召唤物、守卫
     names |= {"蝙蝠", "爆裂蜘蛛"}  # 怪物召唤的小怪（角蝇、幻影蜘蛛；game/src/world/monster_ai.ts）
     by_name = {m["Name"]: m for m in catalog["monsters"]}
     libs: set[str] = set()

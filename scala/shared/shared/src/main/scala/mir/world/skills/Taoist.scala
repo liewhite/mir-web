@@ -112,18 +112,22 @@ object Taoist:
         else w.out.notice(p, "没有困住怪（要比你低几级的怪才困得住）", Tone.System)
       })
 
-  /** 召唤宝宝：同名的最多 SpellRules.SummonsEach 只，按技能等级和主人道术上限加成（SpellRules.summonedBody）。 */
-  final class Summon(pet: MonsterName, override val castFx: Option[CastFx]) extends SkillHandler:
+  /**
+   * 召唤宝宝：占 slot 名额的最多 SpellRules.SummonsEach 只，召出哪种由 pick 按道士等级定（召唤骷髅 48 级起是白虎），
+   * 按技能等级和主人道术上限加成（SpellRules.summonedBody）。
+   */
+  final class Summon(slot: MonsterName, pick: Int => MonsterName, override val castFx: Option[CastFx]) extends SkillHandler:
     def cast(c: SpellCtx)(using Rng): Effect =
       import c.*
+      val pet = pick(p.level)
       val have = p.pets.flatMap(w.actor).count {
-        case m: Monster => SpellRules.summonedAs(m.defn.name).contains(pet) // 变了身的大神兽也算神兽
+        case m: Monster => SpellRules.summonedAs(m.defn.name).contains(slot) // 变了身的大神兽也算神兽，白虎算骷髅
         case _          => false
       }
       charm match
         case Left(fail) => fail
         case Right(_) if have >= SpellRules.SummonsEach =>
-          Effect.Fail(s"${pet.value}最多 ${SpellRules.SummonsEach} 只")
+          Effect.Fail(if pet == slot then s"${pet.value}最多 ${SpellRules.SummonsEach} 只" else s"${slot.value}和${pet.value}一共最多 ${SpellRules.SummonsEach} 只")
         case Right(a) =>
           w.catalog.monster(pet) match
             case None => Effect.Fail("召唤失败")
@@ -141,8 +145,8 @@ object Taoist:
               }
               Effect.Cast
 
-  val SummonSkeleton = Summon(SpellRules.SkeletonPet, fx(1500))
-  val SummonShinsu   = Summon(SpellRules.ShinsuPet, None)
+  val SummonSkeleton = Summon(SpellRules.SkeletonPet, SpellRules.skeletonSkillPet, fx(1500))
+  val SummonShinsu   = Summon(SpellRules.ShinsuPet, _ => SpellRules.ShinsuPet, None)
 
   /** 隐身：盯着他的怪（看不穿隐身的）丢掉目标。 */
   private def makeInvisible(w: World, a: Actor, secs: Int): Unit =
