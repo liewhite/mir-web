@@ -1302,6 +1302,30 @@ object WorldSpec extends ZIOSpecDefault:
         s.run(19_000)
         assertTrue(before6s == half, after6s == half + m.maxHp / 75 + 1, m.hp < poisoned)
       },
+      test("野怪挨打后 5 秒内那一跳只回 20%，5 秒没挨打恢复正常；宝宝不受影响（#1376）") {
+        val s = sim()
+        val p = join(s.w, "甲", Cell(5, 5))
+        val m = put(s.w, "沃玛教主", Cell(55, 55))
+        m.statuses.put(Status.Seized, Millis(Long.MaxValue / 2))
+        val full = m.maxHp / 75 + 1
+        m.hp = m.maxHp / 2
+        m.lastRegen = s.w.now
+        s.run(2000)
+        s.w.vitals.damage(m, 10, None, interrupt = false)
+        val hit = m.hp
+        s.run(4500) // 第 6 秒那一跳：离挨打 4 秒
+        val slowed = m.hp - hit
+        val mid    = m.hp
+        s.run(6000) // 第 12 秒那一跳：离挨打 10 秒
+        val normal = m.hp - mid
+        m.master = Some(p.id) // 当成宝宝：挨打照常回
+        s.run(5000)
+        s.w.vitals.damage(m, 10, None, interrupt = false)
+        val petHit = m.hp
+        s.run(1000) // 第 18 秒那一跳：离挨打 0.5 秒
+        val pet = m.hp - petHit
+        assertTrue(full >= 5, slowed == full * 20 / 100, normal == full, pet == full)
+      },
       test("玩家中绿毒不自然回血回蓝，毒消失后照常回") {
         val s = sim()
         val p = join(s.w, "甲", Cell(5, 5))

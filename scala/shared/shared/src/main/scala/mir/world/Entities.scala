@@ -194,6 +194,8 @@ final class Monster(id: ActorId, initDefn: MonsterDef, initBehavior: Behavior, i
   private[world] var target: Option[ActorId] = None
   /** 归属（经验和掉落给谁，Claim；Vitals 挨打时更新） */
   private[world] var claim: Option[Claim] = None
+  /** 上次挨打的时刻（绿毒掉血不算）：挨打后几秒内自然回血变少（Recovery.monster，#1376） */
+  private[world] var lastStruck: Option[Millis] = None
   private[world] var nextThink: Millis  = now
   private[world] var lastAttack: Millis = Millis.zero
   /** 上次找最近目标的时刻（有目标时按 behavior.retarget 定时重找） */

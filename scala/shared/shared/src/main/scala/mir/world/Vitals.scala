@@ -61,6 +61,7 @@ final class Vitals(w: World):
         src.foreach(w.justice.assaulted(target, _))
         target match
           case m: Monster =>
+            if struck then m.lastStruck = Some(w.now)
             src.flatMap(w.justice.ownerOf).foreach(o => m.claim = Some(Claim.struck(heldClaim(m).map(_._1), o.id, w.now)))
             val shape = src.collect { case p: Player => p }.flatMap(weaponShape)
             w.out.sound(m.cell, Sounds.struckBody(shape))
@@ -320,7 +321,7 @@ final class Vitals(w: World):
 
   private def recovery(a: Actor): Option[Recovery.Tick] = a match
     case p: Player  => Some(Recovery.player(p.stats))
-    case m: Monster => Some(Recovery.monster(m.maxHp))
+    case m: Monster => Some(Recovery.monster(m.maxHp, m.lastStruck.filter(_ => m.master.isEmpty).map(w.now - _)))
     case _: Npc     => None
 
   /** 重算属性：等级 + 身上装备（持久用完的不算；护身符和毒药不加属性）+ 被动技能。血蓝按新上限截。 */

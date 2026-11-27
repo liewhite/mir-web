@@ -236,6 +236,8 @@ object Rules:
  * - 玩家：每 IntervalMs 回 max(1, 上限/75) + 装备的体力/魔法恢复（原版 1.76 是每 6 秒回 上限/75+1、
  *   蓝每 16 秒回 上限/18+1，这里沿用 TS 版加快后的规则）。
  * - 怪物和宝宝：照原版每 MonsterIntervalMs 回 上限/75+1（ObjBase.pas 2276–2320），没有蓝。
+ * - 本服改动（用户 11-27 定，#1376）：野怪挨打后 StruckSlowMs 毫秒内，到点的那一跳只回 StruckHpPct%（减少 80%，向下取整），
+ *   5 秒没挨打恢复正常；绿毒自己掉的血不算挨打。宝宝不受影响。
  */
 object Recovery:
   /** 一次自然回复：隔多久、回多少血和蓝 */
@@ -246,7 +248,15 @@ object Recovery:
   def hpPerTick(s: Stats): Int = math.max(1, s.maxHp / 75) + s.hpRegen
   def mpPerTick(s: Stats): Int = math.max(1, s.maxMp / 75) + s.mpRegen
   def player(s: Stats): Tick   = Tick(IntervalMs, hpPerTick(s), mpPerTick(s))
-  def monster(maxHp: Int): Tick = Tick(MonsterIntervalMs, maxHp / 75 + 1, 0)
+
+  val StruckSlowMs      = 5000
+  val StruckHpPct       = 20
+
+  /** sinceStruck：野怪离上次挨打过了多少毫秒（没挨打过、宝宝为 None） */
+  def monster(maxHp: Int, sinceStruck: Option[Long]): Tick =
+    val full = maxHp / 75 + 1
+    val hp   = if sinceStruck.exists(_ < StruckSlowMs) then full * StruckHpPct / 100 else full
+    Tick(MonsterIntervalMs, hp, 0)
 
 /**
  * 精确概率：把一个用 Rng 的计算的每一种随机取值都走一遍，得出每种结果的概率（技能说明用，#1165）。
