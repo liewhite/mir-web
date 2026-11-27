@@ -5,6 +5,9 @@
 #   deploy/jvm/deploy.sh --dry-run   只在本机打包，并在本机用临时库试启动一次、跑冒烟检查，不连服务器
 #   deploy/jvm/deploy.sh --rollback  切回上一版并重启（不打包；数据库不回退，玩家进度保留）
 #   deploy/jvm/deploy.sh --trial     只上传并在服务器上试启动一次，不换下旧服（试完删掉这个版本目录）；不限 master 分支
+#   MIR_TRIAL_AT=local deploy/jvm/deploy.sh
+#                                    服务器内存紧、在旁边试启动会挤线上时用（#1378）：同样上传、备份线上库，
+#                                    但试启动改在本机跑（线上库的备份拉到本机临时目录，试完删掉）；不生成类缓存，新版开服慢几秒
 #
 # 只动 mir176 自己的东西：/opt/mir176、/etc/mir176.env、/etc/systemd/system/mir176.service、/var/lib/mir176，
 # 试启动时临时用 systemd 单元 mir176-trial（及 -check、-smoke）、端口 MIR_TRIAL_PORT（默认 18177，只听 127.0.0.1）、/run/mir176-trial.env。
@@ -33,6 +36,8 @@ JRE=deploy/jvm/jre.tar.gz
 JAR=scala/server/target/scala-3.10.1/mir176.jar
 MODE=${1:-deploy}
 case $MODE in deploy|--dry-run|--trial|--rollback) ;; *) echo "用法：$0 [--dry-run | --trial | --rollback]"; exit 2 ;; esac
+TRIAL_AT=${MIR_TRIAL_AT:-server}   # 试启动在哪跑：server（服务器上、线上库副本）| local（本机、拉下来的线上库副本，#1378）
+case $TRIAL_AT in server|local) ;; *) echo "MIR_TRIAL_AT 只能是 server 或 local"; exit 2 ;; esac
 
 # 服务器上的公共函数：切版本、等健康检查、留备份。部署和回滚都用。
 REMOTE_LIB=$(cat <<'LIB'
@@ -144,6 +149,45 @@ rsync -az --delete public/assets/ $H:/opt/mir176/public/assets/
 scp -q deploy/jvm/mir176.service $H:/tmp/mir176.service
 scp -q deploy/jvm/mir176ctl $H:/tmp/mir176ctl
 
+# 本机试启动（#1378）：在服务器上备份线上库，拉到本机临时目录，用刚打的 jar 跑 存档检查 → 开服 → 冒烟，试完删掉库副本。
+# 不通过就删掉刚上传的版本目录退出，旧服不受影响。
+local_trial() {
+  local B T PORT PID
+  B=$(remote <<<'backup_db' | tail -1) || { echo "试启动不通过：数据库备份失败"; ssh $H "rm -rf /opt/mir176/releases/$REL"; exit 1; }
+  echo "数据库备份：$B"
+  T=$(mktemp -d)
+  PID=
+  trap '[[ -n $PID ]] && kill $PID 2>/dev/null; wait $PID 2>/dev/null; rm -rf "$T"' EXIT
+  local_fail() {
+    echo "试启动不通过：$1"; [[ -f $T/serve.log ]] && tail -30 "$T/serve.log"
+    echo "旧服没停，线上不受影响。新版本目录已删。"; ssh $H "rm -rf /opt/mir176/releases/$REL"; exit 1
+  }
+  ssh $H "sudo cat '$B'" > "$T/mir.db" || local_fail "拉不下数据库备份"
+  [[ $(sqlite3 "$T/mir.db" 'PRAGMA quick_check') == ok ]] || local_fail "拉下来的数据库校验不过"
+  PORT=$(/usr/bin/python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')
+  local ENV=(env HOST=127.0.0.1 PORT=$PORT DATA_DIR=$T ASSETS_DIR=public/assets WEB_DIR=scala/client/web MIR_SESSION_SECRET=trial-$RANDOM-$RANDOM-0123456789)
+  echo "-- 角色存档检查"
+  "${ENV[@]}" "$JAVA_HOME/bin/java" -Xmx512m -jar "$JAR" check || local_fail "新版读不了现有的角色存档"
+  echo "-- 开服"
+  "${ENV[@]}" "$JAVA_HOME/bin/java" -Xmx1024m -jar "$JAR" serve > "$T/serve.log" 2>&1 &
+  PID=$!
+  local t0; t0=$(date +%s)
+  for _ in $(seq 1 150); do curl -sf -m 2 "http://127.0.0.1:$PORT/healthz" >/dev/null && break; kill -0 $PID 2>/dev/null || break; sleep 1; done
+  curl -sf -m 2 "http://127.0.0.1:$PORT/healthz" >/dev/null || local_fail "150 秒内健康检查不过"
+  echo "开服 $(( $(date +%s) - t0 )) 秒"
+  echo "-- 冒烟（注册一次性账号、建角色、进图；在副本库上）"
+  "$JAVA_HOME/bin/java" -jar "$JAR" smoke "http://127.0.0.1:$PORT" || local_fail "冒烟检查不过"
+  kill $PID; wait $PID 2>/dev/null || true; PID=
+  rm -rf "$T"; trap - EXIT
+  echo "（本机试启动不生成类缓存，新版开服慢几秒，不影响）"
+  echo "试启动通过"
+}
+
+if [[ $TRIAL_AT == local ]]; then
+echo "== 本机试启动新版（线上库的副本）"
+local_trial
+[[ $MODE == --trial ]] && { ssh $H "rm -rf /opt/mir176/releases/$REL"; echo "（--trial：版本目录已删，线上没动）"; }
+else
 echo "== 试启动新版（线上库的副本、127.0.0.1:${TRIAL_PORT}）"
 remote REL="$REL" TRIAL_PORT="$TRIAL_PORT" MODE="$MODE" <<'R'
 d=$OPT/releases/$REL
@@ -229,6 +273,7 @@ if sudo test -s "$T/mir176.jsa"; then sudo cp "$T/mir176.jsa" "$d/mir176.jsa" &&
 echo "试启动通过"
 if [[ $MODE == --trial ]]; then rm -rf "$d"; echo "（--trial：版本目录已删，线上没动）"; fi
 R
+fi
 
 [[ $MODE == --trial ]] && exit 0
 
