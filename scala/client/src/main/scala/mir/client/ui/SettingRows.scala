@@ -93,6 +93,7 @@ object SettingRow:
       GameToggle(
         s"自动治愈术（自己、队友、宝宝血低于 ${AutoRules.HealBelowPercent}% 就治最缺血的，要学会治愈术）",
         _.autoHeal, (s, v) => s.copy(autoHeal = v)),
+      GameToggle("自动治愈术只治自己（不管队友和宝宝；手动放不受影响）", _.autoHealSelfOnly, (s, v) => s.copy(autoHealSelfOnly = v)),
       GameToggle("自动神圣战甲术（加防御没了就补，身边的队友、宝宝一起加；要学会、带护身符）", _.autoHolyArmor, (s, v) => s.copy(autoHolyArmor = v)),
       GameToggle("自动幽灵盾（加魔防没了就补，身边的队友、宝宝一起加；要学会、带护身符）", _.autoSoulShield, (s, v) => s.copy(autoSoulShield = v)),
       GameToggle(

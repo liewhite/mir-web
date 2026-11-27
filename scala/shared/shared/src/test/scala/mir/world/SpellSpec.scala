@@ -253,6 +253,20 @@ object SpellSpec extends ZIOSpecDefault:
         s.run(1500)
         assertTrue(pet.mending.isDefined || pet.hp > 1)
       },
+      test("自动治愈术开了只治自己：宝宝缺血也不治，自己缺血照治（#1367）") {
+        val s = sim()
+        val p = caster(s, Job.Taoist, List(2, 17), charm = true)
+        noRegen(p)
+        s.cast(p, 17, None, p.cell); s.run(3000)
+        val pet = p.pets.flatMap(s.w.actor).collectFirst { case m: Monster => m }.get
+        pet.hp = 1
+        p.settings = p.settings.copy(autoHeal = true, autoHealSelfOnly = true)
+        s.run(3000)
+        val petSkipped = pet.mending.isEmpty && p.mending.isEmpty
+        p.hp = p.maxHp / 2
+        s.run(1500)
+        assertTrue(petSkipped, p.mending.isDefined || p.hp > p.maxHp / 2, pet.mending.isEmpty)
+      },
       test("自动神圣战甲术、自动幽灵盾：勾了就补上，不勾不放") {
         val s = sim()
         val p = caster(s, Job.Taoist, List(14, 15), charm = true)
