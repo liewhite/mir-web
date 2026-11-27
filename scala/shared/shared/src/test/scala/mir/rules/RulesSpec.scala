@@ -294,13 +294,13 @@ object RulesSpec extends ZIOSpecDefault:
           SpellRules.mcDamage(fire, 2, mc, 0)(using Rng.highest) == all.max
         )
       },
-      test("法师攻击魔法伤害 ×1.3 四舍五入（#1285）") {
+      test("法师攻击魔法伤害 ×1.5 四舍五入（#1285，11-27 在 #1372 提到 1.5）") {
         val fire = catalog.skill(SkillId(1)).get
         val mc   = Span(3, 9)
         def orig(r: Rng) =
           given Rng = r
           Rules.attackPower(Rules.skillPower(Rules.magicBase(fire.power), 2, fire.defPower) + mc.lo, mc.hi - mc.lo + 1)
-        def x(v: Int)    = math.floor(v * 1.3 + 0.5).toInt
+        def x(v: Int)    = math.floor(v * 1.5 + 0.5).toInt
         assertTrue(
           SpellRules.mcDamage(fire, 2, mc, 0)(using Rng.lowest) == x(orig(Rng.lowest)),
           SpellRules.mcDamage(fire, 2, mc, 0)(using Rng.highest) == x(orig(Rng.highest)),

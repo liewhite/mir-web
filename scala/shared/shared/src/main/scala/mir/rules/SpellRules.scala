@@ -322,8 +322,11 @@ object SpellRules:
       else if rng.random(14) == 0 then TameOutcome.Killed
       else TameOutcome.NoEffect
 
-  /** 魔法盾挡掉的伤害比例：技能 0–3 级 30%/40%/50%/60%（挨打至少还掉 1 点）。 */
-  def shieldAbsorb(level: Int): Double = Vector(0.3, 0.4, 0.5, 0.6).lift(level).getOrElse(0.3)
+  /**
+   * 魔法盾挡掉的伤害比例：技能 0–3 级 40%/50%/60%/70%（挨打至少还掉 1 点）。
+   * 本服原定 30%/40%/50%/60%，用户 11-27 在 #1372 定每级 +10%。
+   */
+  def shieldAbsorb(level: Int): Double = Vector(0.4, 0.5, 0.6, 0.7).lift(level).getOrElse(0.4)
 
   /**
    * 召唤骷髅（原版每级 +35%）；道术加成是本服加的（#1209），#1258 用户 11-25 定每点道术上限 +1.8%、不封顶。
