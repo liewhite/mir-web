@@ -29,7 +29,7 @@ final class Spawner(w: World, start: Millis):
         case None => due.remove(i): Unit
         case Some(d) =>
           val alive = livingOf(i).size
-          val born  = (alive until math.min(s.count, alive + 40)).flatMap(_ => spawnMonster(d, Some(i), s.at, s.radius))
+          val born  = (alive until math.min(s.count, alive + 40)).flatMap(_ => refillOne(d, i, s))
           if Rates.rankOf(s.monster) == MonsterRank.Boss then born.foreach(m => w.out.chronicle(Chronicle.BossSpawned(m.defn.name, m.cell)))
           due(i) = w.now + math.max(1, Rates.respawnMinutes(s.monster, s.minutes)) * 60_000L
   }
@@ -78,19 +78,47 @@ final class Spawner(w: World, start: Millis):
       }
     }.size
 
+  /**
+   * 刷怪点补一只：先在范围里找；范围里一格能站的都没有（如石墓三/四层 (309,19)，#1371）就照原版 AddBaseObject
+   * 往右、换行挪着找（Spawner.originalSlide），这次没找到就等下次补怪再试。
+   */
+  private def refillOne(d: MonsterDef, i: Int, s: SpawnDef): Option[Monster] =
+    spawnMonster(d, Some(i), s.at, s.radius).orElse {
+      val rng   = w.rngOf
+      val start = Cell(s.at.x - s.radius + rng.random(s.radius * 2 + 1), s.at.y - s.radius + rng.random(s.radius * 2 + 1))
+      Spawner.originalSlide(start, w.terrain.width, w.terrain.height, rng).find(w.grid.canSettle).map(place(d, Some(i), _))
+    }
+
   /** 在 at 周围 radius 格内找空格放一只怪（找不到就扩大范围找）。 */
   private[world] def spawnMonster(d: MonsterDef, spawn: Option[Int], at: Cell, radius: Int): Option[Monster] =
     val rng   = w.rngOf
     val tries = Iterator.fill(20)(Cell(at.x + rng.random(radius * 2 + 1) - radius, at.y + rng.random(radius * 2 + 1) - radius))
-    tries.find(w.grid.canSettle).orElse(w.freeCellNear(at, math.max(3, radius))).map { c =>
-      val m = Monster(w.newActorId(), d, Behavior.of(d), spawn, c, Dir.fromCode(rng.random(8)), w.now)
-      m.nextThink = w.now + rng.random(2000)
-      w.enter(m)
-      MonsterAi.init(w, m)
-      m
-    }
+    tries.find(w.grid.canSettle).orElse(w.freeCellNear(at, math.max(3, radius))).map(place(d, spawn, _))
+
+  private def place(d: MonsterDef, spawn: Option[Int], c: Cell): Monster =
+    val rng = w.rngOf
+    val m   = Monster(w.newActorId(), d, Behavior.of(d), spawn, c, Dir.fromCode(rng.random(8)), w.now)
+    m.nextThink = w.now + rng.random(2000)
+    w.enter(m)
+    MonsterAi.init(w, m)
+    m
 
 object Spawner:
+  /**
+   * 原版 M2Server TUserEngine.AddBaseObject 的落脚点不能走时依次试的 31 格（含起点）：每次往右挪 n20 格（地图宽不到 50 挪 2，否则 3），
+   * 挪到离右边 n24 格（地图高 <30 取 2、<250 取 20、否则 50）就跳到左半边随机一列（再加 n24），同时往下挪 n20 行
+   * （到离底边 n24 行就跳到上半边随机一行）。原版这 31 格都不能走就这次不刷。
+   */
+  def originalSlide(start: Cell, width: Int, height: Int, rng: mir.rules.Rng): Iterator[Cell] =
+    val step   = if width < 50 then 2 else 3
+    val margin = if height >= 250 then 50 else if height < 30 then 2 else 20
+    Iterator.iterate(start) { c =>
+      if width - margin - 1 > c.x then Cell(c.x + step, c.y)
+      else
+        val x = rng.random(width / 2) + margin
+        Cell(x, if height - margin - 1 > c.y then c.y + step else rng.random(height / 2) + margin)
+    }.take(31)
+
   /**
    * 快照里的刷怪点（停服时 game.json 的下标）→ 现在的下标（#1339）。下标是全表的，别的图加了刷怪点就整体挪动，
    * 所以不按下标认，按「刷哪种怪、在哪、本图同种同位置的第几个（按下标顺序）」认；只有在本图同一位置插进同种怪的刷怪点时才会认错位。
