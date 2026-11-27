@@ -239,14 +239,16 @@ object AutoPlay:
   /**
    * 自动治愈术的对象：施法范围内自己这边的（自己、队友、自己和队友的宝宝）里，
    * 血加上还没回完的治疗量仍低于 HealBelowPercent 的，取最缺血的（按比例）。
-   * 开了「只治自己」（#1367）就只看自己。
+   * 没开「治疗宝宝」（#1367/#1370，默认关）就只看玩家（自己和队友），宝宝缺血不管。
    */
   private def woundedFriend(w: World, p: Player): Option[SpellTarget] =
     def ratio(a: Actor): Double = (a.hp + a.mending.fold(0)(_.left)).toDouble / math.max(1, a.maxHp)
-    def friends: Iterator[Actor] =
-      w.actorsNow.iterator.filter(a => !a.dead && !a.isInstanceOf[Npc] && w.allied(p, a) && p.cell.chebyshev(a.cell) <= SpellRules.CastRange)
-    val candidates: Iterator[Actor] = if p.settings.autoHealSelfOnly then Iterator.single(p).filterNot(_.dead) else friends
-    candidates
+    def wanted(a: Actor): Boolean = a match
+      case _: Player  => true
+      case _: Monster => p.settings.autoHealPets
+      case _          => false
+    w.actorsNow
+      .filter(a => !a.dead && wanted(a) && w.allied(p, a) && p.cell.chebyshev(a.cell) <= SpellRules.CastRange)
       .filter(a => ratio(a) * 100 < HealBelowPercent)
       .minByOption(ratio)
       .map(a => SpellTarget(a.cell, Some(a)))

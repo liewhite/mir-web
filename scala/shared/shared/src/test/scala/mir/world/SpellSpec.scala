@@ -43,8 +43,8 @@ object SpellSpec extends ZIOSpecDefault:
       w.handle(p.id, GameCmd.Cast(SkillId(skill), target.map(_.id), cell))
       flush()
 
-  private def sim(seed: Long = 1): Sim =
-    Sim(World(catalog, testMap, Terrain.open(testMap.width, testMap.height), Rng.seeded(seed), UidSource.counter(1_000_000), Millis(0)))
+  private def sim(seed: Long = 1, company: Company = Company.Alone): Sim =
+    Sim(World(catalog, testMap, Terrain.open(testMap.width, testMap.height), Rng.seeded(seed), UidSource.counter(1_000_000), Millis(0), company))
 
   /** 放一个高等级、血蓝很多、学会了这些技能（3 级）的角色。 */
   private def caster(s: Sim, job: Job, skills: List[Int], at: Cell = Cell(30, 30), level: Int = 40, charm: Boolean = false): Player =
@@ -243,29 +243,33 @@ object SpellSpec extends ZIOSpecDefault:
         s.run(3000)
         assertTrue(!before, healing, p.mp == mp, p.mending.isEmpty)
       },
-      test("自动治愈术也治身边缺血的宝宝") {
+      test("自动治愈术开了「治疗宝宝」就治身边缺血的宝宝（#1370）") {
         val s = sim()
         val p = caster(s, Job.Taoist, List(2, 17), charm = true)
         s.cast(p, 17, None, p.cell); s.run(3000)
         val pet = p.pets.flatMap(s.w.actor).collectFirst { case m: Monster => m }.get
         pet.hp = 1
-        p.settings = p.settings.copy(autoHeal = true)
+        p.settings = p.settings.copy(autoHeal = true, autoHealPets = true)
         s.run(1500)
         assertTrue(pet.mending.isDefined || pet.hp > 1)
       },
-      test("自动治愈术开了只治自己：宝宝缺血也不治，自己缺血照治（#1367）") {
-        val s = sim()
+      test("「治疗宝宝」没开（默认）：宝宝缺血不治，队友缺血照治（#1370）") {
+        val s = sim(company = n => if n == "甲" || n == "乙" then Vector("甲", "乙") else Vector.empty)
         val p = caster(s, Job.Taoist, List(2, 17), charm = true)
         noRegen(p)
         s.cast(p, 17, None, p.cell); s.run(3000)
         val pet = p.pets.flatMap(s.w.actor).collectFirst { case m: Monster => m }.get
         pet.hp = 1
-        p.settings = p.settings.copy(autoHeal = true, autoHealSelfOnly = true)
+        p.settings = p.settings.copy(autoHeal = true)
         s.run(3000)
         val petSkipped = pet.mending.isEmpty && p.mending.isEmpty
-        p.hp = p.maxHp / 2
+        val d    = CharacterData.newbie(catalog, "乙", Job.Warrior, Sex.Male, UidSource.counter(9000))
+        val mate = s.w.player(s.w.join(d.copy(place = Place(s.w.mapId, Cell(31, 31))))).get
+        noRegen(mate)
+        mate.stats = mate.stats.copy(maxHp = 100_000)
+        mate.hp = 1000
         s.run(1500)
-        assertTrue(petSkipped, p.mending.isDefined || p.hp > p.maxHp / 2, pet.mending.isEmpty)
+        assertTrue(!CharSettings().autoHealPets, petSkipped, mate.mending.isDefined || mate.hp > 1000, pet.mending.isEmpty)
       },
       test("自动神圣战甲术、自动幽灵盾：勾了就补上，不勾不放") {
         val s = sim()

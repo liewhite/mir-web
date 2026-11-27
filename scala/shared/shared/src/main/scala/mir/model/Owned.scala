@@ -107,8 +107,8 @@ final case class CharSettings(
     autoSummonShinsu: Boolean = false,
     /** 道士（#1307）：自己、队友、宝宝血低了自动放治愈术 */
     autoHeal: Boolean = false,
-    /** 道士（#1367，留言板 #48，默认关 = 照旧治全队）：自动治愈术只看自己的血，不治队友和宝宝；手动放不受影响 */
-    autoHealSelfOnly: Boolean = false,
+    /** 道士（#1367/#1370，留言板 #48，用户 11-27 定默认关）：自动治愈术也治宝宝（自己和队友的）；关着只治自己和队友。手动放不受影响 */
+    autoHealPets: Boolean = false,
     /** 道士（#1307）：神圣战甲术效果没了就自动补 */
     autoHolyArmor: Boolean = false,
     /** 道士（#1307）：幽灵盾效果没了就自动补 */
