@@ -26,11 +26,12 @@ from wemade import MapFile
 
 
 def _dark_lord() -> dict:
-    """暗之魔龙教主（用户 11-26 定，#1329）：血 32000、攻击上下限是魔龙教主的 1.5 倍，其余（含外观、经验）同魔龙教主。
+    """暗之魔龙教主（用户 11-26 定，#1329）：血 32000、攻击上下限是魔龙教主的 1.2 倍，其余（含外观、经验）同魔龙教主。
+    攻击倍率：#1329 原定 1.5 倍，用户 11-27 在 #1377 改成 1.2 倍（比魔龙教主高 20%）。
     1.80 素材和 GeeM2 数据库里都没有这只怪，外观用魔龙教主的；爆率同魔龙教主（import_v180_drops.py）。"""
     lord = next(m for m in MOLONG_MONSTERS if m["Name"] == "魔龙教主")
     return lord | {"Name": "暗之魔龙教主", "HP": 32000,
-                   "DC": round(lord["DC"] * 1.5), "DCMAX": round(lord["DCMAX"] * 1.5)}
+                   "DC": round(lord["DC"] * 1.2), "DCMAX": round(lord["DCMAX"] * 1.2)}
 
 
 DARK_LORD = _dark_lord()
