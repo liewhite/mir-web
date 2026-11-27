@@ -126,24 +126,28 @@ object SpellSpec extends ZIOSpecDefault:
         assertTrue(SpellRules.thunderStorm(55, undead = true) == 55, SpellRules.thunderStorm(55, undead = false) == 5)
       }
     ),
-    test("召唤骷髅、神兽同种各最多 3 只（#1176），第 4 只召唤失败并提示") {
+    test("召唤骷髅、神兽同种各最多 2 只（#1176、#1374），第 3 只召唤失败并提示") {
       val s = sim()
       val p = caster(s, Job.Taoist, List(17, 30), charm = true)
       def count(n: MonsterName) = p.pets.flatMap(s.w.actor).count {
         case m: Monster => m.defn.name == n
         case _          => false
       }
-      (1 to 4).foreach { _ => s.cast(p, 17, None, p.cell); s.run(3000) }
+      (1 to 3).foreach { _ => s.cast(p, 17, None, p.cell); s.run(3000) }
       val skeletons = count(SpellRules.SkeletonPet)
-      (1 to 2).foreach { _ => s.cast(p, 30, None, p.cell); s.run(3000) }
+      val failed    = s.notices.exists(_.contains("变异骷髅最多 2 只"))
+      (1 to 3).foreach { _ => s.cast(p, 30, None, p.cell); s.run(3000) }
       assertTrue(
-        skeletons == SpellRules.SummonsEach,
-        s.notices.exists(_.contains(s"最多 ${SpellRules.SummonsEach} 只")),
-        count(SpellRules.SkeletonPet) == 3,
-        count(SpellRules.ShinsuPet) == 2
+        SpellRules.SummonsEach == 2,
+        skeletons == 2,
+        failed,
+        count(SpellRules.SkeletonPet) == 2,
+        count(SpellRules.ShinsuPet) == 2,
+        s.notices.exists(_.contains("神兽最多 2 只")),
+        p.pets.size == 4
       )
     },
-    test("白虎（#1336）：道士 47 级召唤骷髅召出骷髅，48 级召出白虎；白虎数值、成长、节奏同大神兽，贴身物理攻击，和骷髅共用 3 只名额") {
+    test("白虎（#1336）：道士 47 级召唤骷髅召出骷髅，48 级召出白虎；白虎数值、成长、节奏同大神兽，贴身物理攻击，和骷髅共用 2 只名额") {
       val s47 = sim()
       val p47 = caster(s47, Job.Taoist, List(17), level = 47, charm = true)
       s47.cast(p47, 17, None, p47.cell); s47.run(3000)
@@ -151,7 +155,7 @@ object SpellSpec extends ZIOSpecDefault:
 
       val s = sim()
       val p = caster(s, Job.Taoist, List(17), level = 47, charm = true)
-      (1 to 2).foreach { _ => s.cast(p, 17, None, p.cell); s.run(3000) }
+      s.cast(p, 17, None, p.cell); s.run(3000)
       p.level = 48
       (1 to 2).foreach { _ => s.cast(p, 17, None, p.cell); s.run(3000) }
       val mine   = p.pets.flatMap(s.w.actor).collect { case m: Monster => m }.toList
@@ -163,8 +167,8 @@ object SpellSpec extends ZIOSpecDefault:
         young == List(SpellRules.SkeletonPet),
         SpellRules.skeletonSkillPet(47) == SpellRules.SkeletonPet,
         SpellRules.skeletonSkillPet(48) == SpellRules.WhiteTigerPet,
-        mine.count(_.defn.name == SpellRules.SkeletonPet) == 2, // 48 级前召的骷髅留着
-        tigers.size == 1,                                        // 骷髅 + 白虎一共 3 只
+        mine.count(_.defn.name == SpellRules.SkeletonPet) == 1, // 48 级前召的骷髅留着
+        tigers.size == 1,                                        // 骷髅 + 白虎一共 2 只
         s.notices.exists(_.contains(s"变异骷髅和白虎一共最多 ${SpellRules.SummonsEach} 只")),
         PetBody.of(td) == PetBody.of(big),                       // 数据表数值照大神兽抄（tools/data/baihu.json StatsFrom）
         td.hit == big.hit && td.speed == big.speed,
@@ -199,7 +203,7 @@ object SpellSpec extends ZIOSpecDefault:
         from - left >= 7
       )
     },
-    test("道士自动召唤（设置道士页）：勾了骷髅和神兽就各补到 3 只；不勾不召") {
+    test("道士自动召唤（设置道士页）：勾了骷髅和神兽就各补到 2 只；不勾不召") {
       val s = sim()
       val p = caster(s, Job.Taoist, List(17, 30), charm = true)
       def count(n: MonsterName) = p.pets.flatMap(s.w.actor).count {

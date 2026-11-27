@@ -88,8 +88,11 @@ object SpellRules:
   /** 诱惑之光：收服的宝宝上限（MagTammingCount，召唤的不算）、怪物等级上限（MagTammingLevel） */
   val MaxPets         = 5
   val TameLevelLimit  = 50
-  /** 召唤骷髅、召唤神兽召出的宝宝，同种各最多几只（原版 1 只，用户 11-24 在 #1176 定 3 只） */
-  val SummonsEach     = 3
+  /**
+   * 召唤骷髅、召唤神兽召出的宝宝，同种各最多几只（原版 1 只；用户 11-24 在 #1176 定 3 只，11-27 在 #1374 改成 2 只，骷髅 2 + 神兽 2 一共 4 只）。
+   * 已经召出更多的不收走，只是不满上限前不能再召。
+   */
+  val SummonsEach     = 2
   val SkeletonPet     = MonsterName("变异骷髅")
   val ShinsuPet       = MonsterName("神兽")
   /** 神兽有仗打时变成的大神兽（原版 g_Config.sDragon1），没仗打 60 秒变回 ShinsuPet */
