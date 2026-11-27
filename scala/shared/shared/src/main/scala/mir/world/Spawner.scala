@@ -67,8 +67,12 @@ final class Spawner(w: World, start: Millis):
     val capped = monsters.flatMap(m => current.get(m.spawn.index).map(_ -> m)).groupBy(_._1).toList.flatMap { (i, ms) =>
       ms.take(spawns.find(_._2 == i).fold(0)(_._1.count))
     }
+    // 原位走不到（停服时卡在地图边上的小块里，#1369）就在刷怪点范围里重新挑格
+    def home(i: Int) = spawns.find(_._2 == i).map(_._1)
     capped.flatMap { (i, f) =>
-      w.catalog.monster(f.spawn.monster).flatMap(spawnMonster(_, Some(i), f.cell, 0)).map { m =>
+      w.catalog.monster(f.spawn.monster).flatMap { d =>
+        spawnMonster(d, Some(i), f.cell, 0).orElse(home(i).flatMap(s => spawnMonster(d, Some(i), s.at, s.radius)))
+      }.map { m =>
         w.grid.face(m, f.dir)
         w.vitals.setMaxHp(m, m.maxHp, Some(math.max(1, f.hp)))
       }
@@ -78,7 +82,7 @@ final class Spawner(w: World, start: Millis):
   private[world] def spawnMonster(d: MonsterDef, spawn: Option[Int], at: Cell, radius: Int): Option[Monster] =
     val rng   = w.rngOf
     val tries = Iterator.fill(20)(Cell(at.x + rng.random(radius * 2 + 1) - radius, at.y + rng.random(radius * 2 + 1) - radius))
-    tries.find(w.canEnter).orElse(w.freeCellNear(at, math.max(3, radius))).map { c =>
+    tries.find(w.grid.canSettle).orElse(w.freeCellNear(at, math.max(3, radius))).map { c =>
       val m = Monster(w.newActorId(), d, Behavior.of(d), spawn, c, Dir.fromCode(rng.random(8)), w.now)
       m.nextThink = w.now + rng.random(2000)
       w.enter(m)

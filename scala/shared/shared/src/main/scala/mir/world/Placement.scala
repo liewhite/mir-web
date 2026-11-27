@@ -54,13 +54,17 @@ final class Placement(w: World):
     case _: Monster => true
     case _          => false
 
+  /** 能把人或怪放上去：没人站、且从主区域走得到（#1369：不放进地图边上走不进去的小块）。 */
+  def canSettle(c: Cell): Boolean = canEnter(c) && w.reachable(c)
+
   /** 本图随机一格能站的（MapRandomMove 的取格）；地图带 NORANDOMMOVE 的不许随机传送。 */
   def randomSpot(using rng: Rng): Either[String, Cell] =
     if w.mapDef.has(MapFlag.NoRandomMove) then Left("这张地图不能随机传送")
     else
       Iterator.fill(RandomSpotTries)(Cell(rng.random(w.terrain.width), rng.random(w.terrain.height)))
-        .find(canEnter).toRight("没找到落脚的地方")
+        .find(canSettle).toRight("没找到落脚的地方")
 
+  /** p 周围由近到远第一个能放的格（canSettle）。 */
   def freeCellNear(p: Cell, radius: Int = 6): Option[Cell] =
     (0 to radius).iterator.flatMap { r =>
       for
@@ -68,7 +72,7 @@ final class Placement(w: World):
         dx <- (-r to r).iterator
         if math.max(math.abs(dx), math.abs(dy)) == r
         c = Cell(p.x + dx, p.y + dy)
-        if canEnter(c)
+        if canSettle(c)
       yield c
     }.nextOption()
 

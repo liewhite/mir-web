@@ -5,7 +5,7 @@ import mir.data.{Catalog, MapDef, MonsterActionTable}
 import mir.model.*
 import mir.protocol.*
 import mir.rules.{Charges, Rng, Ward}
-import mir.terrain.Terrain
+import mir.terrain.{Reachable, Terrain}
 
 import scala.collection.mutable
 
@@ -117,6 +117,15 @@ final class World(
   def groundItems: Iterable[GroundItem] = ground.values
   def groundItem(id: GroundId): Option[GroundItem] = ground.get(id)
   private[world] def rngOf: Rng = rng
+  /**
+   * 本图从主区域走得到的格子（#1369）：刷怪、随机传送、找空格放人放怪只挑这些，不落进地图边上走不进去的小块。
+   * 门、别的图传进来的落点、传送员的落点所在的块都算。
+   */
+  private[world] lazy val reachable: Reachable =
+    val doors    = catalog.routesByMap.getOrElse(mapId, Nil).map(_.at)
+    val arrivals = catalog.data.routes.filter(_.to == mapId).map(_.target)
+    val teleports = catalog.data.teleports.filter(_.map == mapId).map(_.at)
+    Reachable.of(terrain, doors ++ arrivals ++ teleports)
   /** 此刻全部对象的快照（遍历时可以增删） */
   private[world] def actorsNow: Vector[Actor] = actors.values.toVector
   /** 全部对象（不拷贝；遍历时不能增删） */
