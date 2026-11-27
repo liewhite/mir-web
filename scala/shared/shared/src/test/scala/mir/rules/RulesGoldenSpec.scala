@@ -99,14 +99,14 @@ object RulesGoldenSpec extends ZIOSpecDefault:
       )
       assertTrue(golden.rates == scala)
     },
-    test("技能各级熟练度是原表的 1/10（向上取整）") {
+    test("技能各级熟练度是原表的 1/100（向上取整、至少 1）") {
       val fire = catalog.data.skills.find(_.name == "火球术").get
       val bad  = for
         d <- catalog.data.skills
         l <- 0 to 2
-        if Rates.trainNeed(d, l) != math.max(1, math.ceil(d.train(l) / 10.0).toInt)
+        if Rates.trainNeed(d, l) != math.max(1, math.ceil(d.train(l) / 100.0).toInt)
       yield (d.name, l)
-      assertTrue((0 to 2).map(Rates.trainNeed(fire, _)) == Seq(50, 150, 300), bad.isEmpty)
+      assertTrue((0 to 2).map(Rates.trainNeed(fire, _)) == Seq(5, 15, 30), bad.isEmpty)
     },
     test("等级基础属性：三职业 1–60 级") {
       val diffs = for

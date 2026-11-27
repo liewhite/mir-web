@@ -83,8 +83,8 @@ object Rates:
     attack = StatGrowth(basePermille = 650, scPermille = 12),
     guard = StatGrowth(basePermille = 850, scPermille = 6)
   )
-  /** 技能每级要的熟练度除以这个数（向上取整、至少 1；用户 11-24 在 #1179 定） */
-  val skillTrain: Int = 10
+  /** 技能每级要的熟练度除以这个数（向上取整、至少 1；用户 11-24 在 #1179 定 ÷10，11-27 再除以 10 改 ÷100） */
+  val skillTrain: Int = 100
 
   /** 技能从 level（0..2）升到 level+1 实际要的熟练度：数据表数值 ÷ skillTrain。 */
   def trainNeed(d: SkillDef, level: Int): Int = math.max(1, (d.train(level) + skillTrain - 1) / skillTrain)
