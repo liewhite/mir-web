@@ -164,7 +164,7 @@ object SkillInfo:
       case Skill.FireWall => Some(l => s"每跳 ${mcDmg(l)}，烧 ${span(r => SpellRules.fireWallSecs(d, l, mc)(using r))} 秒")
       case Skill.Repel  => Some(l => s"推开低 1 级的 ${repelOdds(l, 1)}")
       case Skill.SpaceMove => Some(l => s"成功 ${chance(r => SpellRules.spaceMoveWorks(l)(using r))}")
-      case Skill.MagicShield => Some(l => s"挡 ${pct(SpellRules.shieldAbsorb(l))}，${span(r => SpellRules.shieldSecs(d, l, mc)(using r))} 秒")
+      case Skill.MagicShield => Some(l => s"挡 ${pct(SpellRules.shieldAbsorb(l))}，共 ${SpellRules.shieldCap(l)} 点，${span(r => SpellRules.shieldSecs(d, l, mc)(using r))} 秒")
       case Skill.Tame => Some(l => s"收服 ${tamePct(l, "收服")}")
       case Skill.Healing | Skill.GroupHealing => Some(l => s"回血共 ${heal(l)}")
       case Skill.SoulFireBall => Some(l => s"威力 ${scDmg(l)}")
@@ -237,6 +237,7 @@ object SkillInfo:
         List(
           say(s"持续 ${span(r => SpellRules.shieldSecs(d, l, mc)(using r))} 秒"),
           say(s"期间挨打的伤害少 ${pct(SpellRules.shieldAbsorb(l))}"),
+          say(s"一共能挡掉 ${SpellRules.shieldCap(l)} 点伤害，挡满盾就破"),
           note("每下至少掉 1 点")
         )
       case Skill.Tame =>

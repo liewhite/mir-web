@@ -493,6 +493,26 @@ object WorldSpec extends ZIOSpecDefault:
           s.consistent(a), s.consistent(b)
         )
       },
+      test("魔法盾挡满上限就破：最后一下只挡剩下的，破了旁人看不到光效（#1373）") {
+        val s = sim()
+        val a = join(s.w, "甲", Cell(30, 30))
+        val b = join(s.w, "乙", Cell(33, 30))
+        a.hp = 5_000
+        s.w.conditions.addStatus(a, Status.Shielded(0), 60_000) // 0 级：挡 40%，共 200
+        s.flush()
+        val shown = s.views(b.id).actors(a.id).auras
+        s.w.vitals.damage(a, 300, None)                          // 挡 120，掉 180
+        val afterFirst = a.statuses.find { case x: Status.Shielded => x.absorbed }
+        val hp1 = a.hp
+        s.w.vitals.damage(a, 300, None)                          // 只剩 80 可挡，掉 220，盾破
+        val hp2 = a.hp
+        s.flush()
+        assertTrue(
+          shown == Set(Aura.MagicShield), afterFirst == Some(120),
+          hp1 == 5_000 - 180, hp2 == hp1 - 220,
+          !a.statuses.has(StatusKind.Shield), s.views(b.id).actors(a.id).auras.isEmpty
+        )
+      },
       test("各打各的怪；怪的血量、死活以世界为准，两人看到的一样") {
         val s  = sim(seed = 7)
         val a  = join(s.w, "甲", Cell(20, 30))

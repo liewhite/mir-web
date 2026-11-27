@@ -31,8 +31,11 @@ object StatusKind:
 enum Status(val kind: StatusKind):
   /** 中毒：绿毒每跳掉 power 血，红毒挨打伤害加深 power%。by：下毒的对象（经验归属；换图后没有） */
   case Poisoned(poison: PoisonKind, power: Int, nextTick: Millis, by: Option[ActorId]) extends Status(StatusKind.poison(poison))
-  /** 魔法盾：按等级减伤 */
-  case Shielded(level: Int) extends Status(StatusKind.Shield)
+  /**
+   * 魔法盾：按等级减伤；absorbed 是这个盾已经挡掉的伤害总量，挡满 SpellRules.shieldCap 盾就破（#1373）。
+   * 默认 0：#1373 之前的停服快照里没有这个字段。
+   */
+  case Shielded(level: Int, absorbed: Int = 0) extends Status(StatusKind.Shield)
   /** 隐身：看不穿隐身的怪看不见 */
   case Invisible extends Status(StatusKind.Invisible)
   /** 麻痹（原版 STONE 状态）：不能动 */

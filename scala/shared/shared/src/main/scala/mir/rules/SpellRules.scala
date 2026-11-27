@@ -328,6 +328,20 @@ object SpellRules:
    */
   def shieldAbsorb(level: Int): Double = Vector(0.4, 0.5, 0.6, 0.7).lift(level).getOrElse(0.4)
 
+  /** 一个魔法盾最多挡掉多少伤害，挡满就破：技能 0–3 级 200/400/600/800（原版没有上限，用户 11-27 在 #1373 定）。 */
+  def shieldCap(level: Int): Int = Vector(200, 400, 600, 800).lift(level).getOrElse(200)
+
+  /** 开着魔法盾挨一下：taken 实际掉的血，absorbed 这个盾累计挡掉的，broken 这下之后盾破了。 */
+  final case class ShieldHit(taken: Int, absorbed: Int, broken: Boolean)
+
+  /** 挡掉 shieldAbsorb 的比例（至少还掉 1 点），但不超过盾剩下的量；挡满 shieldCap 就破。 */
+  def shieldHit(level: Int, absorbedSoFar: Int, incoming: Int): ShieldHit =
+    val cap   = shieldCap(level)
+    val would = incoming - math.max(1, math.round(incoming * (1 - shieldAbsorb(level))).toInt)
+    val block = math.max(0, math.min(would, cap - absorbedSoFar))
+    val total = absorbedSoFar + block
+    ShieldHit(incoming - block, total, total >= cap)
+
   /**
    * 召唤骷髅（原版每级 +35%）；道术加成是本服加的（#1209），#1258 用户 11-25 定每点道术上限 +1.8%、不封顶。
    * 血、攻击、防御魔防都不打折、每点 +1.8%（#1334 削神兽时用户 11-26 定「骷髅不要削弱」）。神兽另有一份（Rates.shinsuGrowth）。

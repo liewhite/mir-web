@@ -125,5 +125,8 @@ object FrozenSpec extends ZIOSpecDefault:
         pkDecayAt = Some(Millis(66))
       )
       assertTrue(c.toJson.fromJson[Carried] == Right(c))
+    },
+    test("#1373 之前的快照：魔法盾没有已挡量，读成 0") {
+      assertTrue("""{"Shielded":{"level":3}}""".fromJson[Status] == Right(Status.Shielded(3, 0)))
     }
   )

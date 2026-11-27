@@ -51,10 +51,9 @@ final class Vitals(w: World):
         // 中红毒的挨打按它的强度加深（绿毒自己掉的血不算挨打）
         val redPct   = target.statuses.find { case p: Status.Poisoned if p.poison == PoisonKind.Red => p.power }
         val poisoned = redPct.filter(_ => struck).fold(amount)(SpellRules.redPoisonDamage(amount, _))
-        val shield    = target match
-          case _: Player => target.statuses.find { case s: Status.Shielded => s.level }
-          case _         => None
-        val dmg = shield.fold(poisoned)(lv => math.max(1, math.round(poisoned * (1 - SpellRules.shieldAbsorb(lv))).toInt))
+        val dmg = target match
+          case p: Player => p.statuses.find { case s: Status.Shielded => s }.fold(poisoned)(shieldBlock(p, _, poisoned))
+          case _         => poisoned
         target.hp -= dmg
         target.lastHitBy = source
         source.foreach(provokeGuard(target, _))
@@ -95,6 +94,15 @@ final class Vitals(w: World):
       m.grudge = Some(Grudge(by, w.now))
       if m.target.isEmpty then m.target = Some(by)
     case _ => ()
+
+  /** 魔法盾挡这一下，返回实际掉的血；挡满上限盾就破（去掉状态，旁人的光效随之消失）。 */
+  private def shieldBlock(p: Player, s: Status.Shielded, incoming: Int): Int =
+    val hit = SpellRules.shieldHit(s.level, s.absorbed, incoming)
+    if hit.broken then
+      p.statuses.remove(StatusKind.Shield)
+      w.out.notice(p, "魔法盾被打破", Tone.Bad)
+    else p.statuses.revise(s.copy(absorbed = hit.absorbed))
+    hit.taken
 
   private[world] def miss(t: Actor): Unit = w.out.nearby(t.cell, ServerMsg.Miss(t.id))
 
